@@ -1,0 +1,336 @@
+<?php
+
+/**
+ * @file 
+ * Functions for connecting to AFAS SOAP service.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function afas_api_menu() {
+  $menu = array();
+  // Configuration.
+  $menu['admin/config/services/afas'] = array(
+    'title' => 'AFAS',
+    'description' => 'AFAS related Configuration.',
+    'position' => 'right',
+    'weight' => -8,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('synchronize afas products'),
+    'file' => 'system.admin.inc',
+    'file path' => 'modules/system',
+  );
+  $menu['admin/config/services/afas/general'] = array(
+    'title' => 'General configuration',
+    'description' => 'General AFAS related settings',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('afas_api_settings_form'),
+    'access arguments' => array('synchronize afas products'),
+    'file' => 'afas_api.admin.inc',
+    'weight' => 1,
+  );
+  $menu['admin/config/services/afas/schema'] = array(
+    'title' => 'Check XSD ',
+    'description' => 'Check XML schema definitions for AFAS calls',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('afas_api_schema_form'),
+    'access arguments' => array('synchronize afas products'),
+    'file' => 'afas_api.admin.inc',
+    'weight' => 9,
+  );
+  return $menu;
+}
+
+/**
+ * Implements hook_libraries_info().
+ */
+function afas_api_libraries_info() {
+  return array(
+    'nusoap' => array(
+      'title' => 'NUSoap',
+      'vendor url' => 'http://sourceforge.net/projects/nusoap/',
+      'download url' => 'http://sourceforge.net/projects/nusoap/',
+      'version arguments' => array(
+        'file' => 'lib/nusoap.php',
+        'pattern' => '/\$Id: nusoap.php,v (.*)/',
+        'lines' => 50,
+      ),
+      'files' => array(
+        'php' => array(
+          'lib/nusoap.php',
+          'lib/class.wsdlcache.php',
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * Get/set error printing for the remainder of the HTTP session.
+ *
+ * Individual calls to afas_api_call_function() can override this setting.
+ *
+ * @param bool|null $print
+ *   TRUE: errors will get printed on screen (and logged). FALSE: only logged.
+ *   NULL: the value will not be changed.
+ *
+ * @return
+ *   The current (or when setting: the previous) state.
+ */
+function afas_api_error_printing($print = NULL) {
+  $printing = &drupal_static('afas_api_nusoap_print_errors', FALSE);
+  $ret = $printing;
+  if (isset($print)) {
+    $printing = $print;
+  }
+  return $ret;
+}
+
+/**
+ * Returns info for the last NuSOAP call made through afas_api_call_function().
+ * This is the way to get error information after a function returned FALSE.
+ *
+ * @param string $type
+ *   Type of information to return. Should be mostly self explanatory.
+ *   Can be 'error', 'debug', 'function', 'arguments' and 'time'.
+ *   If left empty, it returns an array with all these five elements.
+ *
+ * @return mixed
+ *  The requested info. 'error, 'function' and 'time' return strings.
+ *  'argument' and 'debug'(?) return arrays.
+ *  (empty) returns all these in an encompassing array.
+ */
+function afas_api_last_call_info($type = '') {
+  $last_call = &drupal_static('afas_api_last_call_info', array());
+  if (!empty($type)) {
+    return empty($last_call[$type]) ? '' : $last_call[$type];
+  }
+  return $last_call;
+}
+
+/**
+ * Sets up a SOAP connection to AFAS, calls a remote function.
+ *
+ * @param $function
+ *   Function name to call.
+ * @param $arguments
+ *   Function arguments. (Some arguments will be preprocessed, e.g.
+ *   'options' and 'filters'.)
+ * @param array $connection_options
+ *   Options for the connection/client object. Keys used:
+ *     print_errors: if TRUE, print errors on screen. If FALSE, to watchdog.
+ *     connector_type: type of connector. Default is 'get'.
+ *     timezone / userId / password: see _nusoap_connection().
+ *     timeout / response_timeout / soap_defencoding / decode_utf8:
+ *        nusoap_client object properties that can be overwritten.
+ *
+ * @return bool|mixed
+ *   Response object from NuSOAP call, or FALSE for error. In the last case,
+ *   error details can be retrieved through afas_api_last_call_info(), but
+ *   they are printed/logged already. (Be careful when checking only this
+ *   return value for errors; some successful calls return empty string.)
+ */
+function afas_api_call_function($function, $arguments, $connection_options = array()) {
+
+  module_load_include('inc', 'afas_api', 'afas_api.nusoap');
+  if ($client = afas_api_nusoap_connection($connection_options)) {
+
+    // Process remote function arguments into something the remote system expects.
+    _afas_api_normalize_arguments($arguments, $function,
+      empty($connection_options['connector_type']) ? 'get' :
+        strtolower($connection_options['connector_type']));
+
+    // Clear error, remember current function + arguments
+    $last_call = &drupal_static('afas_api_last_call_info');
+    $last_call = array('function' => $function, 'arguments' => $arguments);
+
+    if (variable_get('afas_api_use_wsdl', TRUE)) {
+      $response = $client->Call($function, $arguments);
+    }
+    else {
+      $response = $client->Call($function, $arguments, 'urn:Afas.Profit.Services', 'urn:Afas.Profit.Services/' . $function, FALSE, NULL, 'document', 'literal wrapped');
+    }
+    $print_errors = isset($connection_options['print_errors']) ? $connection_options['print_errors'] : NULL;
+    if (!afas_api_nusoap_handle_client_error($client, $print_errors)) {
+      // There was no error.
+      return $response;
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Call AFAS 'Update connector' with an XML string and standard arguments.
+ *
+ * @param $connector_name
+ * @param $xml
+ *
+ * @return bool|mixed
+ *   Response object from NuSOAP call, or FALSE for error. In the last case,
+ *   error details can be retrieved through afas_api_last_call_info(), but
+ *   they are printed/logged already. (Be careful when checking only this
+ *   return value for errors; some successful calls return empty string.)
+ */
+function afas_api_send_data($connector_name, $xml) {
+  // This is not a complicated function, just a 'shorthand' to hide away all
+  // those confusing arguments that we never want to see or change.
+  $arguments = array(
+    'logonAs'=> '',
+    'connectorType' => $connector_name,
+    'connectorVersion' => '1',
+    'dataXml' => $xml,
+  );
+  return afas_api_call_function('Execute', $arguments, array('connector_type' => 'UPDATE'));
+}
+
+/**
+ * Retrieve data from AFAS.
+ *
+ * @param string|int $data_id
+ *   Identifier for the data. (Usually the name of the AFAS 'get connector', but
+ *   this can differ with $data_type.)
+ *   Name of the AFAS 'get connector'
+ * @param array $filters
+ *   Filters to apply before returning data
+ * @param bool|string $data_type
+ *   Type of data to retrieve (and if it's a boolean, a directive how to return
+ *   it.)
+ *   TRUE (default): $data_id is a get connector; return data as array.
+ *   FALSE:        $data_id is a get connector; return data as SimpleXMLElement.
+ *   'report':     $data_id is the report ID for a report connector.
+ *   'attachment': $data_id is the 'subject ID' (int) for a subject connector.
+ *   'data':       $data_id is the ID for a data connector.
+ * @param array $extra_arguments
+ *   Other arguments (except connectorID and filters) to pass.
+ *   See _afas_api_normalize_arguments(). Usually unnecessary.
+ * @param array $connection_options
+ *   Connection options to pass. See afas_api_call_function().
+ *   Most notable: 'response_timeout' / 'print_errors'.
+ *
+ * @return array|bool|SimpleXMLElement
+ *   See $data_type; FALSE when error occurred.
+ */
+function afas_api_get_data($data_id, $filters = array(), $data_type = TRUE, $extra_arguments = array(), $connection_options = array()) {
+
+  if (!is_array($extra_arguments) || !is_array($connection_options)) {
+    return FALSE;
+  }
+
+  $function = '';
+  if (is_string($data_type)) {
+    // Switch is non-strict, so we can't use it for TRUE/FALSE.
+    switch (strtolower($data_type)) {
+
+      case 'report':
+        $extra_arguments['reportID'] = $data_id;
+        if (!empty($filters)) {
+          $extra_arguments['filters'] = $filters;
+        }
+        $connection_options['connector_type'] = 'report';
+        $function = 'Execute';
+        break;
+
+      case 'attachment':
+        $extra_arguments['subjectID'] = $data_id;
+        $connection_options['connector_type'] = 'subject';
+        $function = 'GetAttachment';
+        break;
+
+      case 'data':
+        $extra_arguments['dataID'] = $data_id;
+        // TODO convert $filters into parametersXML! (when we know its definition!)
+        $connection_options['connector_type'] = 'data';
+        $function = 'Execute';
+    }
+  }
+  else {
+    // assume $data_type is TRUE/FALSE.
+    // (If not, nothing will fail but this function will return raw XML.)
+    $extra_arguments['connectorId'] = $data_id;
+    if (!empty($filters)) {
+      $extra_arguments['filters'] = $filters;
+    }
+    $connection_options['connector_type'] = 'get';
+    $function = 'GetDataWithOptions';
+  }
+
+  if ($function) {
+    $data = afas_api_call_function($function, $extra_arguments, $connection_options);
+    if (isset($data[$function . 'Result'])) {
+
+      // What to return?
+      if ($data_type === TRUE) {
+        // Walk through the SimpleXMLElement to create array.
+        $element = new SimpleXMLElement($data[$function . 'Result']);
+        $items = array();
+        foreach ($element as $data) {
+          $items[] = (array) $data;
+        }
+        return $items;
+      }
+      elseif (!$data_type) {
+        return new SimpleXMLElement($data[$function . 'Result']);
+      }
+
+      // Default: raw data.
+      return $data[$function . 'Result'];
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Calls AFAS 'GetDataWithOptions' function, returns array of data retrieved.
+ * DEPRECATED.
+ *
+ * @param array $arguments
+ *   Function arguments to AFAS-SOAP call. (To be preprocessed.)
+ * @param array $connection_options
+ *  Options to set for the SOAP client/connection; see afas_api_call_function().
+ *
+ * @return array
+ *   Items, or empty when no items are there OR when there was an error.
+ */
+function afas_api_load_xml_array($arguments, $connection_options = array()) {
+  $output = array();
+  if ($xml = afas_api_load_xml($arguments, $connection_options)) {
+    foreach ($xml as $data) {
+      $output[] = (array) $data;
+    }
+  }
+  return $output;
+}
+
+/**
+ * Calls AFAS 'GetDataWithOptions' function, returns data.
+ * Note: the same can be achieved by calling afas_api_get_data(), which
+ * has different function parameters that make you not have to think about
+ * $arguments in most cases. This function may be deprecated in the future.
+ *
+ * @param array $arguments
+ *   Arguments to AFAS-SOAP function call. (To be preprocessed.)
+ * @param array $connection_options
+ *  Options to set for the SOAP client/connection; see afas_api_call_function().
+ *
+ * @return array
+ *   SimpleXMLElement containing data items, or FALSE for error.
+ */
+function afas_api_load_xml($arguments, $connection_options = array()) {
+  // NOTE: in earlier versions of the code, $connection_options was NOT passed
+  //   to afas_api_call_function(), but it seems logical that starting to do
+  //   this now, would never cause any backward compatibility problems.
+  //   So let's not complicate code by stripping the old options out...
+  /*if (is_array($connection_options)) {
+    $connection_options = array_intersect_key($connection_options, array('print_errors' => TRUE));
+  }
+  else {
+    $connection_options = array();
+  }*/
+
+  if ($data = afas_api_call_function('GetDataWithOptions', $arguments,
+                                     $connection_options)) {
+    return new SimpleXMLElement($data['GetDataWithOptionsResult']);
+  }
+  return FALSE;
+}
