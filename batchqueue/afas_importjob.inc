@@ -79,7 +79,11 @@ abstract class AfasImportJob extends BatchQueueImportJob {
   protected function getAfasItems($return_array = TRUE) {
 
     // Check if we need to use cached items.
-    $items = $this->checkCache();
+    // SimpleXMLElement cannot be cached, so if we're supposed to get one,
+    // we'll silently ignore cache settings.
+    if ($return_array) {
+      $items = $this->checkCache();
+    }
     if (!$items) {
 
       $items = FALSE;
@@ -117,7 +121,7 @@ abstract class AfasImportJob extends BatchQueueImportJob {
         // More details are always logged to watchdog.
         $items = afas_api_last_call_info('error') . ' (See Recent Log Messages for more details.)';
       }
-      else {
+      elseif ($return_array) {
         // Check if we need to cache items.
         $this->checkCacheSet($items);
       }

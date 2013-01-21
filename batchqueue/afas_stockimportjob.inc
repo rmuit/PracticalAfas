@@ -45,7 +45,11 @@ abstract class AfasStockImportJob extends AfasImportJob {
     unset($this->changed_field);
     // We fetch SimpleXMLElement, not array (for speed reasons), but that can't be cached.
     $this->opt_cache_items = FALSE;
-    ///
+
+    $this->opt_list = array(
+      'raw'  => 'Raw data as received from AFAS',
+      'used' => 'Data used for updating'
+    );
   }
 
   public function settingsForm() {
@@ -77,14 +81,17 @@ abstract class AfasStockImportJob extends AfasImportJob {
     // Don't check _everything_ here so the class is still useful for
     // list_format = raw. More checks in processItem().
     if (!empty($this->src_id_field) && !empty($this->stock_field)) {
-      $afas_items = $this->getAfasItems(FALSE);
 
       // Callers can set 'list_format' setting to 'raw' to retrieve unmodified
       // result from the AFAS query; this is not fit for processItem().
-      if (!empty($afas_items) && !is_string($afas_items) &&
-          (empty($this->settings['list_format'])
-           || $this->settings['list_format'] != 'raw')
-      ) {
+      // If 'raw', we get getAfasItems() convert the SimpleXMLElement
+      // to an array for us. Otherwise we do the conversion to a
+      // (differently structured) array ourseleves.
+      $raw = (!empty($this->settings['list_format'])
+              && $this->settings['list_format'] == 'raw');
+      $afas_items = $this->getAfasItems($raw);
+
+      if (!empty($afas_items) && !is_string($afas_items) && !$raw) {
 
         $items = array();
         foreach ($afas_items as $afas_item) {
@@ -312,7 +319,7 @@ abstract class AfasStockImportJob extends AfasImportJob {
         $this->log("'bundle' property not set; the stock for items missing in the AFAS feed cannot be updated to 0.", array(), WATCHDOG_WARNING);
       }
       else {
-        // only for readability:
+        // only for code readability:
         $type = $this->entity_type;
 
         // Update stock field(s) of entities not encountered in feed.

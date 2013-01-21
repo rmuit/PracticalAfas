@@ -31,7 +31,7 @@ function afas_api_menu() {
     'weight' => 1,
   );
   $menu['admin/config/services/afas/schema'] = array(
-    'title' => 'Check XSD ',
+    'title' => 'Check XSD',
     'description' => 'Check XML schema definitions for AFAS calls',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('afas_api_schema_form'),
