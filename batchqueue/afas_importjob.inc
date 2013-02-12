@@ -182,6 +182,14 @@ abstract class AfasImportJob extends BatchQueueImportJob {
 
   /// Interface functions
 
+  public function __construct($settings = array()) {
+    parent::__construct($settings);
+
+    // In case an extending class sets $this->opt_list, we also pass the
+    // 'filters' setting as an URL argument; see settingsForm()
+    $this->form_settings_display_filter[] = 'filters';
+  }
+
   /**
    * Extends BatchQueueImportJob::settingsForm()
    */
@@ -204,17 +212,17 @@ abstract class AfasImportJob extends BatchQueueImportJob {
       $field = !empty($this->changed_field) ? $this->changed_field : 'SOME-CHANGED-DATE';
       // Potential security hole; this edit screen must only be available for admins
       $form['selection']['filters'] = array(
-        '#type'        => 'textarea',
-        '#rows'        => 5,
-        '#title'       => 'Filter',
-        '#description' => "Fill a comma separated set of array definitions if you want to apply other filters.<br/>
+        '#type'          => 'textarea',
+        '#rows'          => 5,
+        '#title'         => 'Filter',
+        '#description'   => "Fill a comma separated set of array definitions if you want to apply other filters.<br/>
 One example, to get only products that changed in the past week:<br/><em>array(<br/>
 '$field' => " . date('Y-m-d\TH:i:s', time() - 7 * 86400) . ",<br/>
 '#op' => '>',<br/>
 ),</em>",
-        '#value'       => "array(
+        '#default_value' => "array(
 ),",
-        '#weight'      => 12,
+        '#weight'        => 12,
       );
     }
 
