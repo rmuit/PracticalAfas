@@ -155,9 +155,6 @@ function afas_api_nusoap_handle_client_error($client, $print_errors = NULL) {
  */
 function _afas_api_normalize_arguments(&$arguments, $function, $connector_type) {
 
-  // Allow other modules to alter the arguments.
-  drupal_alter('afas_api_client_arguments', $arguments);
-
   // Arguments that only apply to all functions:
   // (try to keep arguments in specified order of function definition.
   // Not that it matters, but it reads better while debugging.)

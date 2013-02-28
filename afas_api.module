@@ -112,9 +112,9 @@ function afas_api_last_call_info($type = '') {
 /**
  * Sets up a SOAP connection to AFAS, calls a remote function.
  *
- * @param $function
+ * @param string $function
  *   Function name to call.
- * @param $arguments
+ * @param array $arguments
  *   Function arguments. (Some arguments will be preprocessed, e.g.
  *   'options' and 'filters'.)
  * @param array $connection_options
@@ -132,6 +132,10 @@ function afas_api_last_call_info($type = '') {
  *   return value for errors; some successful calls return empty string.)
  */
 function afas_api_call_function($function, $arguments, $connection_options = array()) {
+
+  // Allow other modules to alter options/arguments.
+  // Pass $function inside $connection_options in case the alter needs it.
+  drupal_alter('afas_api_call', $arguments, $connection_options);
 
   module_load_include('inc', 'afas_api', 'afas_api.nusoap');
   if ($client = afas_api_nusoap_connection($connection_options)) {
