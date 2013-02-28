@@ -302,12 +302,12 @@ function _afas_api_normalize_arguments(&$arguments, $function, $connector_type) 
             }
             foreach ($filter as $key => $value) {
               if ($key != '#op') {
-                $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . $value . '</Field>';
+                $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . check_plain($value) . '</Field>';
               }
             }
           }
           else {
-            $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . $filter . '</Field>';
+            $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . check_plain($filter) . '</Field>';
           }
         }
       }
