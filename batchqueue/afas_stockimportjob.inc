@@ -1,5 +1,14 @@
 <?php
-
+/**
+ * @file
+ * Class providing a functional implementation of import for stock data from
+ * AFAS into commerce_stock and/or any FieldAPI field.
+ *
+ * The only thing that is missing (except for defining the GET connector for
+ * stock inside AFAS) is initialization of all variables (connector, source and
+ * destination fields) by the constructor.
+ * TODO: if we implement a configForm, this can be a non-abstract class.
+ */
 abstract class AfasStockImportJob extends AfasImportJob {
 
   // Field containing stock value in the source items.
@@ -52,6 +61,9 @@ abstract class AfasStockImportJob extends AfasImportJob {
     );
   }
 
+  /**
+   * Extends AfasImportJob::settingsForm()
+   */
   public function settingsForm() {
 
     $form = parent::settingsForm();
@@ -76,6 +88,9 @@ abstract class AfasStockImportJob extends AfasImportJob {
     return $form;
   }
 
+  /**
+   * Implements BatchQueueJobInterface::init()
+   */
   public function init() {
 
     // Don't check _everything_ here so the class is still useful for
@@ -154,7 +169,10 @@ abstract class AfasStockImportJob extends AfasImportJob {
       return 'src_id_field / stock_field properties (one or both) not defined; cannot fetch stock';
     }
   }
-  
+
+  /**
+   * Implements BatchQueueJobInterface::processItem()
+   */
   public function initContext(&$items, &$context) {
 
     // Add all keys we're using to the context array.
@@ -180,7 +198,10 @@ abstract class AfasStockImportJob extends AfasImportJob {
     }
 
   }
-  
+
+  /**
+   * Implements BatchQueueJobInterface::processItem()
+   */
   public function processItem($item, &$context) {
 
     // Check for properties needed to run properly.
@@ -310,6 +331,9 @@ abstract class AfasStockImportJob extends AfasImportJob {
     }
   }
 
+  /**
+   * Implements BatchQueueJobInterface::finish()
+   */
   public function finish($results) {
 
     $updated_to_0 = 0;

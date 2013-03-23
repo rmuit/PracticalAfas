@@ -1,9 +1,6 @@
 <?php
 /**
  * @file
- */
-
-/**
  * Class providing some helper functions for Batch/Queue jobs importing data
  * through an AFAS GET connector. Other modules can create import jobs by
  * - installing the 'batchqueue' Drupal contrib module;
