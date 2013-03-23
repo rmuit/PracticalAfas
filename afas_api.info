@@ -2,6 +2,7 @@ name = AFAS API
 description = Base functionality for communicating with AFAS
 core = 7.x
 
+files[] = batchqueue/afas_getconnector.inc
+files[] = batchqueue/afas_getconnector_view.inc
 files[] = batchqueue/afas_importjob.inc
 files[] = batchqueue/afas_stockimportjob.inc
-files[] = batchqueue/afas_getconnector.inc

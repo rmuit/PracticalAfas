@@ -67,6 +67,24 @@ function afas_api_libraries_info() {
 }
 
 /**
+ * Implements hook_queue_info().
+ */
+function afas_api_queue_info() {
+  $queues = array();
+
+  // This requires batchqueue module. See admin/config/system/batchqueue.
+  $queues['afas_getconnector_example'] = array(
+    'title'      => t('Fetch/view/export data from GetConnector (no processing).'),
+    'batchqueue' => array(
+      'class'         => 'AfasGetConnectorView',
+      'cron_disable' => TRUE,
+    ),
+  );
+
+  return $queues;
+}
+
+/**
  * Get/set error printing for the remainder of the HTTP session.
  *
  * Individual calls to afas_api_call_function() can override this setting.
