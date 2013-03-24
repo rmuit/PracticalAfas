@@ -4,7 +4,7 @@
  * Example of GetConnector, useful for fetching and viewing data;
  * processItem() does nothing.
  */
-class AfasGetConnectorView extends AfasGetConnector {
+class AfasGetConnectorDisplay extends AfasGetConnector {
 
   public function __construct($settings = array()) {
     parent::__construct($settings);
@@ -14,6 +14,8 @@ class AfasGetConnectorView extends AfasGetConnector {
     $this->opt_list = TRUE;
     $this->form_settings_display_filter[] = 'connector';
 
+    $this->opt_adv_filter = TRUE;
+    $this->opt_limit = TRUE;
   }
 
   /**
@@ -63,7 +65,7 @@ class AfasGetConnectorView extends AfasGetConnector {
    * Implements BatchQueueJobInterface::finish()
    */
   public function finish($results) {
-    return t('Congratulations, you did nothing at all with') . ' '
-           . format_plural($results['counter'], '1 item', '@count items');
+    return format_plural($results['counter'],
+      '1 item was not processed.', '@count items were not processed.');
   }
 }

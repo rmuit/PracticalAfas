@@ -73,10 +73,10 @@ function afas_api_queue_info() {
   $queues = array();
 
   // This requires batchqueue module. See admin/config/system/batchqueue.
-  $queues['afas_getconnector_example'] = array(
-    'title'      => t('Fetch/view/export data from GetConnector (no processing).'),
+  $queues['afas_getconnector_display'] = array(
+    'title'      => t('Fetch/display/export data from GetConnector (no processing).'),
     'batchqueue' => array(
-      'class'         => 'AfasGetConnectorView',
+      'class'         => 'AfasGetConnectorDisplay',
       'cron_disable' => TRUE,
     ),
   );
