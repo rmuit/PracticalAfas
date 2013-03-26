@@ -68,69 +68,8 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
           }
         }
 
-        // Look up stock values for those parts. (Use direct SQL; doing
-        // EntityFieldQuery and then loading full products just to get the stock,
-        // seems too much overhead - especially on cron.
-
-        // For the 'source/SKU fields in Drupal'...
-        // (which are the product.sku or a FieldAPI field)
-        if (empty($this->src_id_dest)) {
-          $query = db_select($this->entity_type, 'p');
-          $query->condition('p.sku', array_keys($part_ids), 'IN');
-          $query->addField('p', 'sku');
-          $join_field = 'product_id';
-        }
-        else {
-          // We don't need the 'entity table'; we can link against the
-          // src_id_field table.
-          $query = db_select('field_data_' . $this->src_id_dest, 'p');
-          $query->condition('p.' . $this->src_id_dest . '_value',
-            array_keys($part_ids), 'IN');
-          $query->condition('p.language', LANGUAGE_NONE);
-          $query->condition('p.deleted', 0);
-          $query->condition('p.delta', 0);
-          $query->addField('p', $this->src_id_dest . '_value', 'sku');
-          $join_field = 'entity_id';
-        }
-        // ...look up the stock values (can be multiple)...
-        // (which are commerce_stock_value or a FieldAPI field)
-        // NOTE: assumption we need delta=0 and language=und
-        if (!is_array($this->stock_dest)
-            && $this->entity_type == 'commerce_product'
-            && empty($this->ignore_commerce_stock)
-            && module_exists('commerce_stock')) {
-          $query->leftJoin('field_data_commerce_stock', 's',
-            'p.' . $join_field . " = s.entity_id AND s.language='" . LANGUAGE_NONE
-            . "' AND s.delta=0 AND s.deleted=0");
-          $query->addField('s', 'commerce_stock_value', 'stock');
-          $stock_fields = array('stock' => 'commerce_stock');
-        }
-        else {
-          if (is_array($this->stock_dest)) {
-            // The keys from $this->stock_dest (which represent internal
-            // 'warehouse' values in AFAS, in our parent class) will be used as
-            // fieldnames in the query we construct. Make sure they're
-            // alphanumeric / do not clash with 'sku'.
-            $stock_fields = array();
-            $i = 0;
-            foreach ($stock_fields as $dest_field) {
-              $stock_fields['s_' . ++$i] = $dest_field;
-            }
-            // for processItem():
-            $this->stock_dest = $stock_fields;
-          }
-          else {
-            $stock_fields = array('stock' => $this->stock_dest);
-          }
-          foreach ($stock_fields as $alias => $dest_field) {
-            $query->leftJoin('field_data_' . $dest_field, $alias,
-              'p.' . $join_field . " = $alias.entity_id AND $alias.language='"
-              . LANGUAGE_NONE . "' AND $alias.delta=0 AND $alias.deleted=0");
-            $query->addField('s', $dest_field . '_value', $stock_field);
-          }
-        }
-
-        $parts_stock = $query->execute()->fetchAllAssoc('sku', PDO::FETCH_ASSOC);
+        // Look up stock values for those parts.
+        $parts_stock = $this->drupalStock($part_ids);
 
 
         // Now construct array of items we need, just like in parent::init().
@@ -166,8 +105,8 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
               if (!is_array($this->stock_dest)) {
                 // 'stock' is single value.  Value in
                 // $parts_stock may be numeric or NULL (because of above left join).
-                $items[$sku]['stock'] = !empty($parts_stock[$part_sku]['stock']) ?
-                  $parts_stock[$part_sku]['stock'] : 0;
+                $items[$sku]['stock'] = !empty($parts_stock[$part_sku]['s_1']) ?
+                  $parts_stock[$part_sku]['s_1'] : 0;
               }
               else {
                 // 'stock' is array, equal to DB row but then without 'sku'.
@@ -179,32 +118,105 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
               // Update stock value if it's lower for this 'part'.
 
               if (empty($parts_stock[$part_sku]['stock'])
-                  || $parts_stock[$part_sku]['stock'] < $items[$sku]['stock']) {
-                $items[$sku]['stock'] = !empty($parts_stock[$part_sku]['stock']) ?
-                  $parts_stock[$part_sku]['stock'] : 0;
+                  || $parts_stock[$part_sku]['s_1'] < $items[$sku]['stock']) {
+                $items[$sku]['stock'] = !empty($parts_stock[$part_sku]['s_1']) ?
+                  $parts_stock[$part_sku]['s_1'] : 0;
               }
             }
             else {
               // Update stock values for all mentioned warehouses.
-              foreach (array_keys($stock_fields) as $stock_field) {
-                if (empty($parts_stock[$part_sku]['stock'][$stock_field])
-                    || $parts_stock[$part_sku]['stock'][$stock_field] < $items[$sku]['stock'][$stock_field]) {
-                  $items[$sku]['stock'][$stock_field] = !empty($parts_stock[$part_sku]['stock'][$stock_field]) ?
-                    $parts_stock[$part_sku]['stock'][$stock_field] : 0;
+              foreach (array_keys($this->stock_dest) as $stock_field) {
+                if (empty($parts_stock[$part_sku][$stock_field])
+                    || $parts_stock[$part_sku][$stock_field] < $items[$sku]['stock'][$stock_field]) {
+                  $items[$sku]['stock'][$stock_field] = !empty($parts_stock[$part_sku][$stock_field]) ?
+                    $parts_stock[$part_sku][$stock_field] : 0;
                 }
               }
             }
           }
         }
 
-        // $items is what we need, except we must have 'numbered' keys.
-        $afas_items = array_values($items);
+        // Now, $items may or may not have alphanumeric keys. That's OK; the
+        // BatchQueue API module explicitly ignores/discards those.
+        return $items;
       }
-      return $afas_items;
+      else {
+        // Empty data set, error condition or raw format requested.
+        return $afas_items;
+      }
     }
     else {
       return 'src_id_field not defined; cannot fetch stock';
     }
+  }
+
+  /**
+   * Returns stock for entities in Drupal, as an array of arrays.
+   * Outer arrays are keyed by item-id (sku); inner arrays have
+   * keys 'sku' and then 's_1' - 's_N' for stock fields.
+   */
+  protected function drupalStock($entity_ids) {
+    // Use direct SQL; doing EntityFieldQuery and then loading full products
+    // just to get the stock, seems too much overhead - especially on cron.)
+
+    // For the 'source/SKU fields in Drupal'...
+    // (which are the product.sku or a FieldAPI field)
+    if (empty($this->src_id_dest)) {
+      $query = db_select($this->entity_type, 'p');
+      $query->condition('p.sku', array_keys($part_ids), 'IN');
+      $query->addField('p', 'sku');
+      $join_field = 'product_id';
+    }
+    else {
+      // We don't need the 'entity table'; we can link against the
+      // src_id_field table.
+      $query = db_select('field_data_' . $this->src_id_dest, 'p');
+      $query->condition('p.' . $this->src_id_dest . '_value',
+        array_keys($part_ids), 'IN');
+      $query->condition('p.language', LANGUAGE_NONE);
+      $query->condition('p.deleted', 0);
+      $query->condition('p.delta', 0);
+      $query->addField('p', $this->src_id_dest . '_value', 'sku');
+      $join_field = 'entity_id';
+    }
+    // ...look up the stock values (can be multiple)...
+    // (which are commerce_stock_value or a FieldAPI field)
+    // NOTE: assumption we need delta=0 and language=und
+    if (!is_array($this->stock_dest)
+        && $this->entity_type == 'commerce_product'
+        && empty($this->ignore_commerce_stock)
+        && module_exists('commerce_stock')) {
+      $query->leftJoin('field_data_commerce_stock', 's',
+        'p.' . $join_field . " = s.entity_id AND s.language='" . LANGUAGE_NONE
+        . "' AND s.delta=0 AND s.deleted=0");
+      $query->addField('s', 'commerce_stock_value', 's_1');
+      $stock_fields = array('s_1' => 'commerce_stock');
+    }
+    else {
+      if (is_array($this->stock_dest)) {
+        // The keys from $this->stock_dest (which represent internal
+        // 'warehouse' values in AFAS, in our parent class) will be used as
+        // fieldnames in the query we construct. Make sure they're
+        // alphanumeric / do not clash with 'sku'.
+        $stock_fields = array();
+        $i = 0;
+        foreach ($stock_fields as $dest_field) {
+          $stock_fields['s_' . ++$i] = $dest_field;
+        }
+        // for the caller and processItem():
+        $this->stock_dest = $stock_fields;
+      }
+      else {
+        $stock_fields = array('s_1' => $this->stock_dest);
+      }
+      foreach ($stock_fields as $alias => $dest_field) {
+        $query->leftJoin('field_data_' . $dest_field, $alias,
+          'p.' . $join_field . " = $alias.entity_id AND $alias.language='"
+          . LANGUAGE_NONE . "' AND $alias.delta=0 AND $alias.deleted=0");
+        $query->addField('s', $dest_field . '_value', $alias);
+      }
+    }
+    return $query->execute()->fetchAllAssoc('sku', PDO::FETCH_ASSOC);
   }
 
   /**
