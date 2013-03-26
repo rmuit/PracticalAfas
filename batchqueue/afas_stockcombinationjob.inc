@@ -423,19 +423,26 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
   }
 
   /**
-   * Implements BatchQueueJobInterface::finish()
+   * Overrides AfasStockImportJob::finish().
    */
   public function finish($results) {
     // Do not update any products to 0.
-    // We'll assume that if you enable a job like this, it's run straight
-    // after the regular stock update - which has all product combination stock
-    // updated to 0.
-    // Ideally, you should override the regular finish() to exclude processing
-    // of product combinations, and override this finish() to update
-    // all un-encountered product combinations to 0.
+    // What should really be done is updating all product combinations which
+    // were not encountered in the connector, to 0 here. And then
+    // doing the same for _only_ all non-combination products in
+    // AfasStockImportJob::finish() -- but we have no standard way of
+    // distinguishing between the two types.
+    //
+    // This means that, with a 'bare' implementation of AfasStockImportJob
+    // and AfasStockCombinationJob, the stock of combinations will always
+    // alternate between 0 (set by AfasStockImportJob::finish()) and the
+    // actual value (set by AfasStockCombinationJob) :(
+    // This means AfasStockCombinationJob must be executed directly after
+    // AfasStockImportJob. And there's no mechanism to enforce that :(
+    //
+    // So, again, OVERRIDE the finish() methods in your own implementations!
 
     // Return status message.
-
     // always 'updated', also if 0
     $message = format_plural($results['updated'], '1 product updated', '@count products updated');
     if ($results['skipped']) {
