@@ -109,15 +109,21 @@ abstract class AfasStockImportJob extends AfasImportJob {
       if (!empty($afas_items) && !is_string($afas_items) && !$raw) {
 
         $items = array();
+        $i=0;
         foreach ($afas_items as $afas_item) {
+          $i++;
           $sku = (string)$afas_item->{$this->src_id_field};
+          if ($sku === '') {
+            $this->log('Source-id value for item #@nr is empty; skipping.',
+              array('@nr' => $i));
+          }
           // Implement 'single item' filter
-          if (empty($this->settings['single_item']) ||
+          elseif (empty($this->settings['single_item']) ||
                   $sku == $this->settings['single_item']) {
 
             $stock = (string)$afas_item->{$this->stock_field};
             if (!is_numeric($stock)) {
-              $this->log('Stock vaule for item @sku (@stock) is not a number; skipping.',
+              $this->log('Stock value for item @sku (@stock) is not a number; skipping.',
                 array('@sku' => $sku, '@stock' => $stock));
             }
             else {
@@ -132,14 +138,20 @@ abstract class AfasStockImportJob extends AfasImportJob {
               }
               else {
 
-                // One item can have stock values in several warehouses, which we received
-                // as separate rows. Regroup the array with unique rows per SKU:
-                // key = SKU, value = array (warehouse => stock, ...)
+                // One item can have stock values in several warehouses, which
+                // we have as separate rows. Build stock _array_ in one item.
                 $warehouse = (string)$afas_item->{$this->warehouse_field};
-                if (!isset($products[$sku])) {
-                  $products[$sku] = array();
+                if (empty($warehouse)) {
+                  $this->log('Warehouse value for item @sku/part @part (@w) is empty; skipping.',
+                    array('@sku' => $sku, '@part' => $part_sku));
                 }
-                $items[$sku][$warehouse] = $stock >= 0 ? $stock: 0;
+                else {
+                  if (!isset($items[$sku])) {
+                    $items[$sku] = array('src_id' => $sku,
+                                         'stock' => array());
+                  }
+                  $items[$sku]['stock'][$warehouse] = $stock >= 0 ? $stock: 0;
+                }
               }
             }
           }
@@ -151,19 +163,14 @@ abstract class AfasStockImportJob extends AfasImportJob {
           }
         }
 
-        if (empty($this->warehouse_field)) {
-          $afas_items = $items;
-        }
-        else {
-          // Now make this array into a numerically keyed one, with SKUs in the
-          // values again. (The caller ignores keys.)
-          $afas_items = array();
-          foreach ($items as $sku => $stock) {
-            $afas_items[] = array('src_id' => $sku, 'stock' => $stock);
-          }
-        }
+        // Now, $items may or may not have alphanumeric keys. That's OK; the
+        // BatchQueue API module explicitly ignores/discards those.
+        return $items;
       }
-      return $afas_items;
+      else {
+        // Empty data set, error condition or raw format requested.
+        return $afas_items;
+      }
     }
     else {
       return 'src_id_field / stock_field properties (one or both) not defined; cannot fetch stock';
