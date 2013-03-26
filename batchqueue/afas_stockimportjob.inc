@@ -99,7 +99,7 @@ abstract class AfasStockImportJob extends AfasImportJob {
 
       // Callers can set 'list_format' setting to 'raw' to retrieve unmodified
       // result from the AFAS query; this is not fit for processItem().
-      // If 'raw', we get getAfasItems() convert the SimpleXMLElement
+      // If 'raw', we get getAfasItems() to convert the SimpleXMLElement
       // to an array for us. Otherwise we do the conversion to a
       // (differently structured) array ourseleves.
       $raw = (!empty($this->settings['list_format'])
@@ -364,7 +364,7 @@ abstract class AfasStockImportJob extends AfasImportJob {
         $qstub = new EntityFieldQuery();
         $qstub->entityCondition('entity_type', $type)
           ->entityCondition('bundle', $this->bundle);
-        //->propertyCondition('status', 1) //no, this means that if unpublished products get published, their stock is not OK.
+        //->propertyCondition('status', 1) //no, this would mean that if unpublished products get published, their stock is not OK.
 
         // Get all the entities that have ANY of the fields non-zero.
         // EFQ has no 'OR', so use multiple queries.
