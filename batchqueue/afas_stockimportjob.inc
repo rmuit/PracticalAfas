@@ -16,16 +16,19 @@ abstract class AfasStockImportJob extends AfasImportJob {
 
   // Field containing warehouse values. If you have stock in only one place
   // (warehouse), you don't need to define this field.
-  // Note that in this case, only one item per 'destination entity' is
-  // processed. If there are more, not all stock will be counted / you will
-  // likely need to change the query to AFAS, so you get only the stock values
-  // you need. (e.g. by setting $this->extra_filter.)
   protected $warehouse_field;
+  //
+  // Note that only one stock value is processed for each source item/warehouse
+  // combination. If there are multiple rows per item/warehouse, you'll likely
+  // need to change the query to AFAS to get only the stock values you need.
+  // (e.g. by setting $this->extra_filter.)
 
   // Destination field(s) in entity, which should be filled _besides_ the
   // commerce_stock field. May be left empty.
   // If not empty:
   // If $warehouse_field is undefined, $stock_dest must be a string.
+  //    (providing an array will _currently_ not give an error, but only the
+  //    first array value == destination field is used.)
   // If $warehouse_field is defined, $stock_dest can be an array, where
   //   key = any value inside $warehouse_field in the AFAS data. (Values for
   //         warehouses not defined as keys in $stock_dest will be ignored!)
@@ -108,6 +111,9 @@ abstract class AfasStockImportJob extends AfasImportJob {
 
       if (!empty($afas_items) && !is_string($afas_items) && !$raw) {
 
+        // Construct an array of items, in a structure as expected by
+        // processitem(). (The structure differs depending on warehouse_field
+        // being filled - not on dest_id being an array.)
         $items = array();
         $i=0;
         foreach ($afas_items as $afas_item) {
@@ -132,9 +138,16 @@ abstract class AfasStockImportJob extends AfasImportJob {
                 // But since we want to prevent superfluous data being moved around in
                 // queue tables (and who knows what fields are defined by the connector)
                 // let's make an array with only sku + stock fields. Hardcoded keys.
-
-                $items[] = array('src_id' => $sku,
-                                 'stock'  => $stock >= 0 ? $stock: 0);
+                // The keys will not be used by the caller; we use them to warn about
+                // duplicate data rows.
+                if (isset($items[$sku])) {
+                  $this->log('Source-id value for item #@nr (@sku) already encountered in earlier item; skipping this item.',
+                    array('@nr' => $i, '@sku' => $sku), WATCHDOG_WARNING);
+                }
+                else {
+                  $items[$sku] = array('src_id' => $sku,
+                                       'stock'  => $stock >= 0 ? $stock: 0);
+                }
               }
               else {
 
@@ -142,15 +155,24 @@ abstract class AfasStockImportJob extends AfasImportJob {
                 // we have as separate rows. Build stock _array_ in one item.
                 $warehouse = (string)$afas_item->{$this->warehouse_field};
                 if (empty($warehouse)) {
-                  $this->log('Warehouse value for item @sku/part @part (@w) is empty; skipping.',
-                    array('@sku' => $sku, '@part' => $part_sku));
+                  $this->log('Warehouse value for item @sku is empty; skipping.',
+                    array('@sku' => $sku));
+                }
+                elseif (isset($items[$sku]['stock'][$warehouse])) {
+                  $this->log('Source-id/warehouse combination for item #@nr (@sku/@warehouse) already encountered in earlier item; skipping this item.',
+                    array('@nr' => $i, '@sku' => $sku, '@warehouse' => $warehouse), WATCHDOG_WARNING);
                 }
                 else {
                   if (!isset($items[$sku])) {
-                    $items[$sku] = array('src_id' => $sku,
-                                         'stock' => array());
+                    $items[$sku] = array('src_id' => $sku);
                   }
-                  $items[$sku]['stock'][$warehouse] = $stock >= 0 ? $stock: 0;
+                  if (!empty($this->settings['list_format'])) {
+                    // For display: make flat array.
+                    $items[$sku][$warehouse] = $stock >= 0 ? $stock: 0;
+                  }
+                  else {
+                    $items[$sku]['stock'][$warehouse] = $stock >= 0 ? $stock: 0;
+                  }
                 }
               }
             }
