@@ -11,18 +11,46 @@
  */
 abstract class AfasStockCombinationJob extends AfasStockImportJob {
 
-  // The fieldname containing the item (sku) numbers for individual parts.
+  // $this->connector will contain the item (sku) numbers for the combination
+  // products in $this->sku_field, and the item numbers for individual parts
+  // in $this->part_field, at least.
   protected $part_field;
+  //
+  // If the stock values (in $this->stock_field) can be in the same connector,
+  // this is best; $this-stock_connector can be left empty. It seems to be
+  // impossible to do this in AFAS 'product combination' connectors, however.
+  // Two things can be done:
+  // - recommended: get another connector to contain part numbers and their
+  //   stock values (plus warehouse if needed); this is the same data set
+  //   as $this->stock_connector would contain in a normal AfasStockImportJob.
+  // - get the stock values for individual parts from Drupal.  This is not
+  //   recommended, because it assumes that individual parts are also separate
+  //   Drupal entities, which is probably not the case.
+  //   (If there are several stock fields in the Drupal entities, that can be
+  //   noted by setting an array in $this->stock_dest, and unlike other cases,
+  //   $this->warehouse_field doesn't need to be filled. It, and the array
+  //   keys in stock_dest, will be overwritten.)
+  //
+  // $this->stock_connector should contain the connector name or '#drupal'.
+  protected $stock_connector;
+  // If defined, $this->stock_src_id_field is the item (sku) numer of
+  // the part in the stock connector. If empty, $this->src_id_field is taken.
+  protected $stock_src_id_field;
+  //
+  // If $this->warehouse_field is filled, it's assumed to be present in
+  // $this->stock_connector (if that's filled), not $this->connector.
 
-  // By filling $this->stock_field with '#drupal', stock values for the
-  // individual parts will be retrieved from Drupal. This is not a preferred
-  // solution, because it assumes that individual parts are also separate Drupal
-  // entities, which is probably not the case.
+  // 'extra filter' for stock connector
+  protected $stock_extra_filter;
 
-  // Note: there is also untested support for a 'warehouse' field (stock in
-  // multiple warehouses for each part, will produce an array
-  // (warehouse => [lowest stock for any part in this warehouse]), but I
-  // haven't actually seen how to include 'warehouse' in this connector --RM.
+  // Note RM: there is also untested support for a 'warehouse' in case of an
+  // empty stock_connector. Stock in multiple warehouses for each part, will
+  // produce an array (warehouse => [lowest stock for any part in this
+  // warehouse]). But I haven't actually seen how to include a warehouse field!
+
+  public function __construct($settings) {
+    parent::__construct($settings);
+  }
 
   /**
    * Extends AfasStockImportJob::init()
@@ -44,15 +72,19 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
 
       if (!empty($afas_items) && !is_string($afas_items) && !$raw) {
 
-
         if (empty($this->src_id_dest) && $this->entity_type != 'commerce_product') {
           return "'src_id_dest' property not set (necessary for resolving source->Drupal items).";
         }
 
         $items = array();
-        if ($this->stock_field == '#drupal') {
-          // Look up stock values for those parts.
-          $parts_stock = $this->drupalStock($afas_items);
+        if (!empty($this->stock_connector)) {
+          // Get stock values for parts.
+          if ($this->stock_connector == '#drupal') {
+            $parts_stock = $this->drupalStock($afas_items);
+          }
+          else {
+            $parts_stock = $this->getStock();
+          }
         }
 
         // Now construct array of items we need, just like in parent::init().
@@ -62,7 +94,7 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
           $i++;
           $sku = (string)$afas_item->{$this->src_id_field};
           $part_sku = (string)$afas_item->{$this->part_field};
-          if ($this->stock_field != '#drupal') {
+          if (empty($this->stock_connector)) {
             $stock = (string)$afas_item->{$this->stock_field};
           }
           if ($sku === '') {
@@ -73,14 +105,14 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
             $this->log('Part-id value for item @nr (id @sku) is empty; skipping.',
               array('@nr' => $i, '@sku' => $sku));
           }
-          elseif ($this->stock_field != '#drupal' && !is_numeric($stock)) {
+          elseif (empty($this->stock_connector) && !is_numeric($stock)) {
             $this->log('Stock value for item @sku/part @part (@stock) is not a number; skipping.',
               array('@sku' => $sku, '@part' => $part_sku, '@stock' => $stock));
           }
           // Implement 'single item' filter. (for #drupal: part 2/2, and also
           // silently skip setting any stock if the part-product is not present
           // in the website.)
-          elseif (($this->stock_field != '#drupal' ||
+          elseif ((empty($this->stock_connector) ||
                    isset($parts_stock[$part_sku])) &&
                   (empty($this->settings['single_item']) ||
                    $sku == $this->settings['single_item'])) {
@@ -102,14 +134,15 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
                 continue;
               }
 
-              if ($this->stock_field == '#drupal') {
-                // #1a Drupal is checked: stock in $parts_stock.
+              if (!empty($this->stock_connector)) {
+                // #1a: stock coming from another source, in $parts_stock, which
+                //      has one row per source-id.
 
                 $items[$sku] = array('src_id' => $sku);
-                if (!is_array($this->stock_dest)) {
+                if (empty($this->warehouse_field)) {
 
-                  // 'stock' is single value.  Value in
-                  // $parts_stock may be numeric or NULL (because of above left join).
+                  // 'stock' should be single value.  Value in
+                  // $parts_stock may be numeric or NULL (because of the left join).
                   $items[$sku] = array(
                     'src_id' => $sku,
                     'stock'  => !empty($parts_stock[$part_sku]['s_1']) ?
@@ -117,17 +150,18 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
                   );
                 }
                 else {
-                  // 'stock' is array, equal to DB row but then without 'sku'.
+                  // 'stock' is array, equal to $parts_stock row...
                   $items[$sku] = array('src_id' => $sku,
                                        'stock'  => $parts_stock[$part_sku]);
+                  // ...but without 'sku'. (Which may be set for #drupal)
                   unset($items[$sku]['stock']['sku']);
                 }
               }
               else {
-                // #2a stock field in this connector (the regular case),
-                // representing the stock of each part product. This means we need to
-                // remember the lowest stock value for each part product (possibly
-                // per warehouse) as the value for the combination (per warehouse).
+                // #2a stock field in this connector, representing the stock of
+                // each part product. This means we need to remember the lowest
+                // stock value for each part product (possibly per warehouse)
+                // as the value for the combination (per warehouse).
 
                 if (empty($this->warehouse_field)) {
 
@@ -154,31 +188,43 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
               }
             }
             else {
-              if ($this->stock_field == '#drupal') {
-                // #1b non-new item; Drupal is checked: stock in $parts_stock.
+              if (!empty($this->stock_connector)) {
+                // #1b non-new item; stock in $parts_stock
 
-                if (!is_array($this->stock_dest)) {
+                if (empty($this->warehouse_field)) {
                   // Update stock value if it's lower for this 'part'.
 
-                  if (empty($parts_stock[$part_sku]['stock'])
+                  if (empty($parts_stock[$part_sku]['s_1'])
                       || $parts_stock[$part_sku]['s_1'] < $items[$sku]['stock']) {
                     $items[$sku]['stock'] = !empty($parts_stock[$part_sku]['s_1']) ?
                       $parts_stock[$part_sku]['s_1'] : 0;
                   }
                 }
                 else {
-                  // Update stock values for all mentioned warehouses.
-                  foreach (array_keys($this->stock_dest) as $stock_field) {
-                    if (empty($parts_stock[$part_sku][$stock_field])
-                        || $parts_stock[$part_sku][$stock_field] < $items[$sku]['stock'][$stock_field]) {
-                      $items[$sku]['stock'][$stock_field] = !empty($parts_stock[$part_sku][$stock_field]) ?
-                        $parts_stock[$part_sku][$stock_field] : 0;
+                  // Update stock values for 'all warehouses', being:
+                  // - if $this->stock_dest is an array: all its keys; the other
+                  //   warehouses won't be updated by processItem() anyway.
+                  // - otherwise: all keys encountered either in previous
+                  //   part-items or in this part-item.
+                  foreach (array_keys((is_array($this->stock_dest)
+                      ? $this->stock_dest
+                      : $items[$sku]['stock'] + $parts_stock[$part_sku])
+                           ) as $stock_field) {
+
+                    if (empty($parts_stock[$part_sku][$stock_field]) ||
+                        empty($items[$sku]['stock'][$stock_field]) ||
+                        $parts_stock[$part_sku][$stock_field] < $items[$sku]['stock'][$stock_field]) {
+
+                      $items[$sku]['stock'][$stock_field] =
+                        (empty($parts_stock[$part_sku][$stock_field]) ||
+                         empty($items[$sku]['stock'][$stock_field])) ?
+                        0 : $parts_stock[$part_sku][$stock_field];
                     }
                   }
                 }
               }
               else {
-                // #2b non-new item; stock field in this connector (the regular case),
+                // #2b non-new item; stock field in this connector.
 
                 if (empty($this->warehouse_field)) {
                   // Update stock value if it's lower for this 'part'.
@@ -204,8 +250,14 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
           } // else (checks were ok)
         } // foreach
 
-        // Now, $items may or may not have alphanumeric keys. That's OK; the
-        // BatchQueue API module explicitly ignores/discards those.
+        // If used for display, 'flatten' the array.
+        if (!empty($this->settings['list_format']) &&
+            !empty($this->warehouse_field)) {
+          foreach ($items as &$item) {
+            $item = array_merge($item, $item['stock']);
+            unset($item['stock']);
+          }
+        }
         return $items;
       }
       else {
@@ -219,36 +271,85 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
   }
 
   /**
-   * Returns stock for entities in Drupal, as an array of arrays.
-   * Outer arrays are keyed by item-id (sku); inner arrays have
-   * keys 'sku' and then 's_1' - 's_N' for stock fields.
+   * Returns stock values from external connector, as array of arrays.
+   * Outer arrays are keyed by item-id (sku); inner arrays are stock values:
+   *
+   * - if warehouse_field is empty: key is 's_1' (for uniform-ness with
+   *   drupalStock())
+   * - otherwise, keys are warehouse values (just like the derived class)
+   */
+  protected function getStock() {
+
+    // Get stock data from separate connector.
+    $afas_data = afas_api_get_data($this->stock_connector, $this->stock_extra_filter, FALSE);
+
+    $sku_field = !empty($this->stock_src_id_field) ? $this->stock_src_id_field :
+      $this->src_id_field;
+    // Get all data into an array with one line per item.
+    $items = array();
+    $i=0;
+    foreach ($afas_data as $afas_item) {
+      $i++;
+      $sku = (string)$afas_item->$sku_field;
+      if (empty($this->settings['single_item']) ||
+        $sku == $this->settings['single_item']) {
+
+        $stock = (string)$afas_item->{$this->stock_field};
+        if (!is_numeric($stock)) {
+          $this->log('Stock value for item @sku (@stock) is not a number; skipping.',
+            array('@sku' => $sku, '@stock' => $stock));
+        }
+        else {
+          if (empty($this->warehouse_field)) {
+            if (isset($items[$sku])) {
+              $this->log('Part-source-id value for item #@nr (@sku) already encountered in earlier item; skipping this item.',
+                array('@nr' => $i, '@sku' => $sku), WATCHDOG_WARNING);
+            }
+            else {
+              $items[$sku] = array('s_1' => $stock >= 0 ? $stock: 0);
+            }
+          }
+          else {
+            $warehouse = (string)$afas_item->{$this->warehouse_field};
+            if (empty($warehouse)) {
+              $this->log('Warehouse value for item @sku is empty; skipping.',
+                array('@sku' => $sku));
+            }
+            elseif (isset($items[$sku]['stock'][$warehouse])) {
+              $this->log('Part-source-id/warehouse combination for item #@nr (@sku/@warehouse) already encountered in earlier item; skipping this item.',
+                array('@nr' => $i, '@sku' => $sku, '@warehouse' => $warehouse), WATCHDOG_WARNING);
+            }
+            else {
+              $items[$sku][$warehouse] = $stock >= 0 ? $stock: 0;
+            }
+          }
+        }
+      }
+    }
+    return $items;
+  }
+
+  /**
+   * Returns stock for entities in Drupal as array of arrays. Outer arrays are
+   * keyed by item-id (sku); inner arrays are stock values:
+   *
+   * - if stock_dest is a string: keys are 'sku' and 's_1'.
+   *   ('sku' value is not used but would be harder to filter out than keep.)
+   * - otherwise, keys are 'sku' and 's_1' - 's_N'. $this->stock_dest will be
+   *   changed accordingly (keys overwritten - and $this->warehouse_field too)
    */
   protected function drupalStock(&$afas_items) {
     // $afas_items only passed by reference because of less memory usage.
     // It isn't altered.
 
-    // We'll get all stock values for the individual parts in the 'init' phase,
-    // in one DB query. Two reasons:
-    // - though it's more processing on 'init', overall it's a lot less than if
-    //   we'd need to query stock values in every single processItem() call;
-    // - we don't need to modify processItem() to deal with product combinations.
-
+    // Collect SKUs of parts, without duplicates.
     $part_ids = array();
+    foreach ($afas_items as $afas_item) {
+      // Implement 'single item' filter (part 1/2; part 2 in caller).
+      if (empty($this->settings['single_item']) ||
+        (string)$afas_item->{$this->src_id_field} == $this->settings['single_item']) {
 
-    // Collect SKUs of parts, without duplicates
-    if (!empty($this->settings['single_item'])) {
-      $part_ids = array($this->settings['single_item'] => TRUE);
-    }
-    else {
-      $part_ids = array();
-      foreach ($afas_items as $afas_item) {
-        $sku = (string)$afas_item->{$this->part_field};
-        // Implement 'single item' filter (1/2)
-        if (empty($this->settings['single_item']) ||
-            $sku == $this->settings['single_item']) {
-
-          $part_ids[$sku] = TRUE;
-        }
+        $part_ids[ (string)$afas_item->{$this->part_field} ] = TRUE;
       }
     }
 
@@ -282,11 +383,13 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
         && $this->entity_type == 'commerce_product'
         && empty($this->ignore_commerce_stock)
         && module_exists('commerce_stock')) {
+
+      // We don't need to split things up into different figures for different
+      // destination fields, and commerce_stock holds the total. Get that.
       $query->leftJoin('field_data_commerce_stock', 's',
         'p.' . $join_field . " = s.entity_id AND s.language='" . LANGUAGE_NONE
         . "' AND s.delta=0 AND s.deleted=0");
       $query->addField('s', 'commerce_stock_value', 's_1');
-      $stock_fields = array('s_1' => 'commerce_stock');
     }
     else {
       if (is_array($this->stock_dest)) {
@@ -296,13 +399,17 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
         // alphanumeric / do not clash with 'sku'.
         $stock_fields = array();
         $i = 0;
-        foreach ($stock_fields as $dest_field) {
+        foreach ($this->stock_dest as $dest_field) {
           $stock_fields['s_' . ++$i] = $dest_field;
         }
         // for the caller and processItem():
         $this->stock_dest = $stock_fields;
+        // This makes sure an array of stock values is returned by the caller:
+        $this->warehouse_field = 'x';
       }
       else {
+        // Take fieldname s_1. (If warehouse_field is defined, it will
+        // be returned by the caller but not used anywhere.)
         $stock_fields = array('s_1' => $this->stock_dest);
       }
       foreach ($stock_fields as $alias => $dest_field) {
