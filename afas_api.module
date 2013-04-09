@@ -47,8 +47,9 @@ function afas_api_menu() {
  */
 function afas_api_libraries_info() {
   return array(
+    // Make sure the directory name libraries/nusoap is lowercased...
     'nusoap' => array(
-      'title' => 'NUSoap',
+      'name' => 'NuSOAP',
       'vendor url' => 'http://sourceforge.net/projects/nusoap/',
       'download url' => 'http://sourceforge.net/projects/nusoap/',
       'version arguments' => array(
