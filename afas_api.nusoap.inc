@@ -112,9 +112,11 @@ function afas_api_nusoap_connection($options) {
 
 /**
  * Prints or logs NuSOAP client errors.
+ * (This function is also hacked to set error strings that do not come from the
+ *  nuSOAP client; we don't know whether this will remain the case.)
  *
- * @param nusoap_client $client
- *   NuSOAP client object
+ * @param nusoap_client|string $client
+ *   NuSOAP client object, or error string.
  * @param bool $print_errors
  *   TRUE: print client errors and log more info via watchdog.
  *   FALSE: log errors via watchdog, do not print.
@@ -124,10 +126,23 @@ function afas_api_nusoap_connection($options) {
  *   TRUE if an error was detected, FALSE otherwise.
  */
 function afas_api_nusoap_handle_client_error($client, $print_errors = NULL) {
-  if ($error = $client->getError()) {
+
+  if (is_object($client)) {
+    $error = $client->getError();
+  }
+  else {
+    $error = $client;
+  }
+  if ($error) {
     $store_error = &drupal_static('afas_api_last_call_info', array());
     $store_error['error'] =  $error;
-    $store_error['debug'] = $client->getDebug();
+    if (is_object($client)) {
+      $store_error['debug'] = $client->getDebug();
+    }
+    else {
+      // Fill default empty value. $client->getDebug() returns array, right?
+      $store_error['debug'] = array();
+    }
     $store_error['time'] = date('r', time());
     // 'function' and 'arguments' are already present in the static var.
 

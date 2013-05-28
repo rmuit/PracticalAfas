@@ -116,9 +116,9 @@ function afas_api_error_printing($print = NULL) {
  *   If left empty, it returns an array with all these five elements.
  *
  * @return mixed
- *  The requested info. 'error, 'function' and 'time' return strings.
+ *  The requested info. 'error', 'function' and 'time' return strings.
  *  'argument' and 'debug'(?) return arrays.
- *  (empty) returns all these in an encompassing array.
+ *  If $type is empty, all these values are returned in an encompassing array.
  */
 function afas_api_last_call_info($type = '') {
   $last_call = &drupal_static('afas_api_last_call_info', array());
@@ -134,8 +134,7 @@ function afas_api_last_call_info($type = '') {
  * @param string $function
  *   Function name to call.
  * @param array $arguments
- *   Function arguments. (Some arguments will be preprocessed, e.g.
- *   'options' and 'filters'.)
+ *   Function arguments.
  * @param array $connection_options
  *   Options for the connection/client object. Keys used:
  *     print_errors: if TRUE, print errors on screen. If FALSE, to watchdog.
@@ -283,6 +282,22 @@ function afas_api_get_data($data_id, $filters = array(), $data_type = TRUE, $ext
   if ($function) {
     $data = afas_api_call_function($function, $extra_arguments, $connection_options);
     if (isset($data[$function . 'Result'])) {
+
+      // Check the (normalized) options which influence the output format.
+      // See _afas_api_normalize_arguments() for default option values
+      // which were set in $extra_arguments.
+      if ($function = 'GetDataWithOptions') {
+        $extra_arguments = afas_api_last_call_info('arguments');
+        if ($extra_arguments['options_array']['Outputmode'] == 2) {
+          // We don't support text output.
+          // We've made the SOAP call for nothing. On the other hand, this will
+          // almost never happen - and now we know no hook_afas_api_call_alter()
+          // has fixed the options before we made the call.
+          afas_api_nusoap_handle_client_error('The afas_api_get_data() function cannot handle text output!',
+            isset($connection_options['print_errors']) ? $connection_options['print_errors'] : NULL);
+          return FALSE;
+        }
+      }
 
       // What to return?
       if ($data_type === TRUE) {
