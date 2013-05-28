@@ -152,6 +152,19 @@ function afas_api_nusoap_handle_client_error($client, $print_errors = NULL) {
 /**
  * 'normalizes' arguments for a certain AFAS SOAP function call.
  * (Not NuSOAP specific.)
+ * After calling this function, the arguments will be complete, and there will
+ * be two arguments which should not be passed to the function, but which are
+ * only useful for inspection to see what's been done:
+ * - 'filters': a normalized / expanded array of filters;
+ * - 'options_array': all options for the GetDataWithOptions function, as an
+ *    array. ('options' now contains a corresponding XML string.)
+ *
+ * @param array $arguments
+ *   Arguments for function name; will be added to / normalized.
+ * @param string $function
+ *   SOAP function name to call.
+ * @param string $connector_type
+ *   Connector type.
  */
 function _afas_api_normalize_arguments(&$arguments, $function, $connector_type) {
 
@@ -193,6 +206,7 @@ function _afas_api_normalize_arguments(&$arguments, $function, $connector_type) 
     foreach ($options as $option => $value) {
       $options_str .= "<$option>$value</$option>";
     }
+    $arguments['options_array'] = $options;
     $arguments['options'] = "<options>$options_str</options>";
   }
 
@@ -265,8 +279,8 @@ function _afas_api_normalize_arguments(&$arguments, $function, $connector_type) 
       /* Different syntaxes for $filters have been introduced over time:
        *
        * 1) array(FIELD1 => VALUE1, ...) - to filter on one or several values.
-       *     The simplest one, with a lot of use cases - and one which is
-       *     too 'natural' for coders, to stop supporting it.
+       *     This is the simplest one, with a lot of use cases - and one which
+       *     is too 'natural' for coders, to stop supporting it.
        *
        * 2) the same, but get the 'operator' from $arguments['filter_operator'].
        *     Is ok, but only allows one and the same operator for all filters.
@@ -275,7 +289,7 @@ function _afas_api_normalize_arguments(&$arguments, $function, $connector_type) 
        *     array(FIELD1 => VALUE1, ..., [ '#op' => operator1  ]),
        *     array(FIELD3 => VALUE3, ..., [ '#op' => operator2  ]),
        *    )
-       *    This supports multiple operators but is harder to write/read.
+       *     This supports multiple operators but is harder to write/read.
        *
        * We want to keep supporting 1 for easier readability (and 2 for backward
        * compatibility), but to prevent strange errors, we'll also support '#op'
@@ -291,26 +305,39 @@ function _afas_api_normalize_arguments(&$arguments, $function, $connector_type) 
       if (!is_numeric($operator)) {
         $operator = !empty($operators[$operator]) ? $operators[$operator] : 1;
       }
-      foreach ($filters as $outerfield => $filter) {
-        if ($outerfield !== '#op') {
+      foreach ($filters as $outerfield => &$filter) {
+        if (is_array($filter)) {
+          // Process extra layer
 
-          if (is_array($filter)) {
-            // Process extra layer
-            $op = (!empty($filter['#op'])) ? $filter['#op'] : $operator;
-            if (!is_numeric($op)) {
-              $op = !empty($operators[$op]) ? $operators[$op] : 1;
-            }
-            foreach ($filter as $key => $value) {
-              if ($key != '#op') {
-                $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . check_plain($value) . '</Field>';
-              }
-            }
+          // Get operator; normalize $filters for reference by callers.
+          $op = (!empty($filter['#op'])) ? $filter['#op'] : $operator;
+          if (!is_numeric($op)) {
+            $op = !empty($operators[$op]) ? $operators[$op] : 1;
           }
-          else {
-            $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . check_plain($filter) . '</Field>';
+          $filter['#op'] = $op;
+
+          // Construct filter(s) in this sections
+          foreach ($filter as $key => $value) {
+            if ($key != '#op') {
+              $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . check_plain($value) . '</Field>';
+            }
           }
         }
+        else {
+          // Construct 1 filter in this section, with standard operator.
+          $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . check_plain($filter) . '</Field>';
+
+          // Normalize $filters for reference by callers.
+          $filter = array(
+            $outerfield => $filter,
+            '#op' => $operator,
+          );
+        }
       }
+      unset($filters['#op']);
+      unset($filters['filter_operator']);
+      $arguments['filters'] = $filters;
+
       // There can be multiple 'Filter' tags with FilterID. We only need to use
       // one, it can contain all our filtered fields...
       $arguments['filtersXml'] = '<Filters><Filter FilterId="Filter1">' . $filters_str . '</Filter></Filters>';

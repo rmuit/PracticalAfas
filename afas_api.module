@@ -164,9 +164,11 @@ function afas_api_call_function($function, $arguments, $connection_options = arr
       empty($connection_options['connector_type']) ? 'get' :
         strtolower($connection_options['connector_type']));
 
-    // Clear error, remember current function + arguments
+    // Clear error, remember current function and normalized arguments.
     $last_call = &drupal_static('afas_api_last_call_info');
     $last_call = array('function' => $function, 'arguments' => $arguments);
+    unset($arguments['options_array']);
+    unset($arguments['filters']);
 
     if (variable_get('afas_api_use_wsdl', TRUE)) {
       $response = $client->Call($function, $arguments);
