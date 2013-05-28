@@ -47,28 +47,39 @@ abstract class AfasGetConnector extends BatchQueueJob {
    *
    * @param bool $return_array
    *   If FALSE, returns a SimpleXMLElement object, otherwise an array of items.
+   * @param array $extra_arguments
+   *   Extra parameters to pass to the AFAS SOAP call (GetDataWithOptions). This is
+   *   only very occasionally useful. Known parameters:
+   *   'Metadata' and 'OutputOptions'; see _afas_api_normalize_arguments().
    *
    * @return array|string
    *   Items from AFAS, or error message.
    */
-  protected function getAfasItems($return_array = TRUE) {
+  protected function getAfasItems($return_array = TRUE, $extra_arguments = array()) {
 
+    $items = array();
     // Check if we need to use cached items.
-    $items = $this->checkCache();
+    // SimpleXMLElement cannot be cached, so if we're supposed to get one,
+    // we'll silently ignore cache settings.
+    if ($return_array) {
+      $items = $this->checkCache();
+    }
     if (!$items) {
 
       $items = FALSE;
       $tries_left = !empty($this->settings['tries']) ? $this->settings['tries'] : 1;
       while ($items === FALSE && --$tries_left >= 0) {
-        if (empty($this->settings['response_timeout'])
-            || !is_numeric($this->settings['response_timeout'])) {
-          $items = afas_api_get_data($this->connector, $this->inputFilter(),
-            $return_array);
+
+        $connection_options = array();
+        if (!empty($this->settings['response_timeout'])
+            && is_numeric($this->settings['response_timeout'])) {
+          $connection_options =
+            array('response_timeout' => $this->settings['response_timeout']);
         }
-        else {
-          $items = afas_api_get_data($this->connector, $this->inputFilter(),
-            $return_array, array(), array('response_timeout' => $this->settings['response_timeout']));
-        }
+
+        $items = afas_api_get_data($this->connector, $this->inputFilter(),
+          $return_array, $extra_arguments, $connection_options);
+
         if ($items === FALSE) {
           // Retry if timeout
           $error = afas_api_last_call_info('error');
@@ -92,7 +103,7 @@ abstract class AfasGetConnector extends BatchQueueJob {
         // More details are always logged to watchdog.
         $items = afas_api_last_call_info('error') . ' (See Recent Log Messages for more details.)';
       }
-      else {
+      elseif ($return_array) {
         // Check if we need to cache items.
         $this->checkCacheSet($items);
       }
@@ -139,8 +150,9 @@ abstract class AfasGetConnector extends BatchQueueJob {
     parent::__construct($settings);
 
     // In case an extending class sets $this->opt_list, we also pass the
-    // 'filters' setting as an URL argument; see settingsForm()
+    // following settings as an URL argument; see settingsForm().
     $this->form_settings_display_filter[] = 'filters';
+    $this->form_settings_display_filter[] = 'all_fields';
   }
 
   /**
@@ -157,7 +169,7 @@ abstract class AfasGetConnector extends BatchQueueJob {
         '#title'         => 'Filter',
         '#description'   => "Fill a comma separated set of array definitions if you want to apply other filters.<br/>
 One example, to get only products that changed in the past week:<br/><em>array(<br/>
-'SOME-CHANGED-DATE' => " . date('Y-m-d\TH:i:s', time() - 7 * 86400) . ",<br/>
+'SOME-CHANGED-DATE' => '" . date('Y-m-d\TH:i:s', time() - 7 * 86400) . "',<br/>
 '#op' => '>',<br/>
 ),</em>",
         '#default_value' => "array(

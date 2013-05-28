@@ -301,11 +301,27 @@ function afas_api_get_data($data_id, $filters = array(), $data_type = TRUE, $ext
 
       // What to return?
       if ($data_type === TRUE) {
-        // Walk through the SimpleXMLElement to create array.
-        $element = new SimpleXMLElement($data[$function . 'Result']);
+        // Walk through the SimpleXMLElement to create array of arrays (items)
+        // of string values (fields). We assume each first-level XML element
+        // is a row containing fields without any further nested tags.
+        $doc_element = new SimpleXMLElement($data[$function . 'Result']);
         $items = array();
-        foreach ($element as $data) {
-          $items[] = (array) $data;
+
+        if ($function == 'GetDataWithOptions' &&
+            $extra_arguments['options_array']['Outputoptions'] == 3) {
+
+          foreach ($doc_element as $row_element) {
+            // The XML may contain empty tags. These are empty SimpleXMLElements,
+            // but we want to convert them to empty strings.
+            $items[] = array_map('strval', (array) $row_element);
+          }
+        }
+        else {
+          foreach ($doc_element as $row_element) {
+            // All fields inside an 'item' are strings; we just need to
+            // convert the item (SimpleXMLElement) itself.
+            $items[] = (array) $row_element;
+          }
         }
         return $items;
       }

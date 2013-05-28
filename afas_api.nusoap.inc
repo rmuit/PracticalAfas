@@ -215,7 +215,7 @@ function _afas_api_normalize_arguments(&$arguments, $function, $connector_type) 
         4 = Tab       (datums en getallen in vast formaat)
         Vast formaat betekent: dd-mm-yy voor datums en punt als decimaal scheidingteken voor getallen."
       */
-      'OutputOptions' => 2,
+      'Outputoptions' => 2,
     );
     $options_str = '';
     foreach ($options as $option => $value) {
