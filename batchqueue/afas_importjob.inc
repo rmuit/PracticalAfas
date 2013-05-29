@@ -268,36 +268,48 @@ One example, to get only products that changed in the past week:<br/><em>array(<
   /// Extending non-interface functions
 
   /**
-   * Extends BatchQueueImportJob::transformApiFieldValue().
+   * Extends BatchQueueImportJob::addApiFieldValue().
    */
-  protected function transformApiFieldValue($value, $dest_field, $fieldmapping, &$modifier) {
+  protected function addApiFieldValue(&$added_values, $value, $source_field) {
 
     // We handle type 'image' here, and refer to the parent for other types.
 
-    $field_info = $this->field_info[$dest_field];
+    $dst = $this->current_dst;
+    $field_info = $this->field_info[$dst];
+    $dst_mapping = $this->dest_field_mapping[$dst];
+    if (isset($dst_mapping["process:$source_field"])) {
+      $process = $dst_mapping["process:$source_field"];
+    }
+    else {
+      // This will only happen if $source_field = '', for default values.
+      $process = array();
+    }
+
     switch ($field_info['type']) {
 
       case 'image':
         $file = FALSE;
-        if (empty($fieldmapping['folder'])) {
-          return "No 'folder' property defined in mapping for source field %source_field.";
+        if (empty($process['folder'])) {
+          $this->log("No 'folder' property defined in mapping for the %dst destination field. (source field: %src)",
+            array('%dst' => $dst, '%src' => $source_field), WATCHDOG_ERROR);
         }
-        elseif (empty($fieldmapping['data_field'])) {
-          return "No 'data_field' property defined in mapping for source field %source_field.";
+        elseif (empty($process['data_src'])) {
+          $this->log("No 'data_src' property defined in mapping for the %dst destination field. (source field: %src)",
+            array('%dst' => $dst, '%src' => $source_field), WATCHDOG_ERROR);
         }
         else {
-          // We need an index to make the filename unique. 'knowing where our
-          // value will end up' may need to be generalized at some point, but
-          // for now we'll just trick our way through.
+          // We need an index to make the filename unique, because the source
+          // filenames may be duplicate, and there are multiple source fields.
+          // We'll turn FILENAME into SRC-ID_sourcefieldindex_FILENAME.
           $index = 1;
-          foreach ($this->dest_field_mapping[$dest_field] as $fmap) {
-            if ($fieldmapping == $fmap) {
+          foreach ($this->dest_field_mapping[$dst]['src'] as $s) {
+            if ($source_field == $s) {
               break;
             }
             $index++;
           }
 
-          $dest_uri = file_default_scheme() . '://' . $fieldmapping['folder'] . '/'
+          $dest_uri = file_default_scheme() . '://' . $process['folder'] . '/'
                       . $this->src_item[$this->src_id_field] . '_' . $index . '_'
                       . $value;
           // If a file with a certain name already exists on disk, it is not written again.
@@ -306,51 +318,60 @@ One example, to get only products that changed in the past week:<br/><em>array(<
               || !$file = $this->checkFile($dest_uri)) {
             // We need to save the file.
 
-            // 'data_field' represents a field in either this, or a separate,
-            // data set. Fetch data with separate connector if not done yet.
-            $data = FALSE;
-            if (empty($fieldmapping['data_connector'])) {
+            // 'data_src' represents a field in either this, or a separate,
+            //  data set. Fetch data with separate connector if not done yet.
+            if (empty($process['data_connector'])) {
               // File data should come from this same get connector.
               // If it's not here, that's an error (since the filename _is_
               // defined.)
-              if (!isset($this->src_item[$fieldmapping['data_field']])) {
-                $modifier = array('%datafield' => $fieldmapping['data_field'],
-                                  '%item' => $this->src_item[$this->src_id_field]);
-                return "Image data field %datafield not found (for item %item), and no 'data_connector' property defined in mapping for source field %source_field.";
+              if (!isset($this->src_item[$process['data_src']])) {
+                $this->log("Image data field %datafield not found (for item %item), and no 'data_connector' property defined in mapping for %dst destination field. (source field: %src)",
+                  array(
+                    '%datafield' => $process['data_src'],
+                    '%item' => $this->src_item[$this->src_id_field],
+                    '%dst' => $dst,
+                    '%src' => $source_field
+                  ), WATCHDOG_ERROR);
               }
-              $data = $this->src_item[$fieldmapping['data_field']];
+              $data = $this->src_item[$process['data_src']];
             }
             else {
               // File data should come from different get connector.
 
-              if (!isset($this->imgcache[$fieldmapping['data_connector']])) {
+              if (!isset($this->imgcache[$process['data_connector']])) {
                 // Image data for this item is not cached yet; get it.
-                if ($items = afas_api_get_data($fieldmapping['data_connector'],
+                if ($items = afas_api_get_data($process['data_connector'],
                   array('Itemcode' => $this->src_item[$this->src_id_field]),
                   FALSE)) {
                   // Assume you're receiving only one item (from SimpleXMLElement
                   // with unknown key). Cast this item (which is also Element)
                   // to array so we don't need to cast to strings later.
-                  $this->imgcache[$fieldmapping['data_connector']] = (array) reset($items);
+                  $this->imgcache[$process['data_connector']] = (array) reset($items);
                 }
                 else {
                   // AFAS error was already logged (probably to watchdog; we
                   // do not change print_error settings), but we don't know
                   // for which image.
-                  $modifier = array('%file' => $value,
-                                    '%item' => $this->src_item[$this->src_id_field]);
-                  return 'Error while fetching image data for file %file (for item %item, field %source_field); see system log for details.';
+                  $this->log('Error while fetching image data for file %file (for item %item, field %src); see system log for details.',
+                    array(
+                      '%file' => $value,
+                      '%item' => $this->src_item[$this->src_id_field],
+                      '%src' => $source_field
+                    ), WATCHDOG_ERROR);
                   // The connection to AFAS will be retried for every single
                   // image & item.
                 }
               }
-              if (!isset($this->imgcache[$fieldmapping['data_connector']][$fieldmapping['data_field']])) {
-                $modifier = array('%datafield' => $fieldmapping['data_field'],
-                                  '%con' => $fieldmapping['data_connector'],
-                                  '%item' => $this->src_item[$this->src_id_field]);
-                return "Image data field %datafield not found in connector %con (for item %item, field %source_field).";
+              if (!isset($this->imgcache[$process['data_connector']][$process['data_src']])) {
+                $this->log('Image data field %datafield not found in connector %con (for item %item, field %src)',
+                  array(
+                    '%datafield' => $process['data_src'],
+                    '%con' => $process['data_connector'],
+                    '%item' => $this->src_item[$this->src_id_field],
+                    '%src' => $source_field
+                  ), WATCHDOG_ERROR);
               }
-              $data = $this->imgcache[$fieldmapping['data_connector']][$fieldmapping['data_field']];
+              $data = $this->imgcache[$process['data_connector']][$process['data_src']];
             }
 
             if ($data) {
@@ -358,12 +379,14 @@ One example, to get only products that changed in the past week:<br/><em>array(<
               // does not create the directory by default.
               $dirname = drupal_dirname($dest_uri);
               if (!file_prepare_directory($dirname, FILE_MODIFY_PERMISSIONS + FILE_CREATE_DIRECTORY)) {
-                $modifier = array(
-                  '%dir'  => $dirname,
-                  '%item' => $this->src_item[$this->src_id_field],
-                  '%file' => $value,
-                  '%dest' => $dest_uri);
-                return 'Directory %dir could not be created; file %file (from Item %item, field %source_field) could not be saved to destination %dest.';
+                $this->log('Directory %dir could not be created; file %file (from Item %item, field %src) could not be saved to destination %dest.',
+                  array(
+                    '%dir'  => $dirname,
+                    '%item' => $this->src_item[$this->src_id_field],
+                    '%file' => $value,
+                    '%dest' => $dest_uri,
+                    '%src' => $source_field
+                  ), WATCHDOG_ERROR);
               }
               else {
                 // FILE_EXISTS_REPLACE, because the file might exist even
@@ -378,11 +401,13 @@ One example, to get only products that changed in the past week:<br/><em>array(<
                   image_path_flush($file->uri);
                 }
                 else {
-                  $modifier = array(
-                    '%item' => $this->src_item[$this->src_id_field],
-                    '%file' => $value,
-                    '%dest' => $dest_uri);
-                  return 'File %file (from Item %item, field %source_field) could not be saved to destination %dest. See other errors for details.';
+                  $this->log('File %file (from Item %item, field %source_field) could not be saved to destination %dest. See other errors for details.',
+                    array(
+                      '%item' => $this->src_item[$this->src_id_field],
+                      '%file' => $value,
+                      '%dest' => $dest_uri,
+                      '%src' => $source_field
+                    ), WATCHDOG_ERROR);
                 }
                 // From previous version. Why would we need a full cache clear every time?
                 // entity_get_controller('file')->resetCache();
@@ -393,27 +418,25 @@ One example, to get only products that changed in the past week:<br/><em>array(<
         } // endif 'folder' defined (else fall through)
 
         if ($file) {
-          $field_value = array(
+          $added_values[] = array(
             'fid'   => $file->fid,
             // alt & title attributes are apparently '' by default, even though the fields are nullable.
             // So always fill them.
-            'alt'   => !empty($fieldmapping['alt_field']) && isset($this->src_item[$fieldmapping['alt_field']])
-              ? $this->src_item[$fieldmapping['alt_field']] : '',
-            'title' => !empty($fieldmapping['title_field']) && isset($this->src_item[$fieldmapping['title_field']])
-              ? $this->src_item[$fieldmapping['title_field']] : '',
+            // TODO if fid already exists, then the default value should not be <empty>, but
+            // <the value currently in Drupal>
+            'alt'   => !empty($process['alt_field']) && isset($this->src_item[$process['alt_field']])
+              ? $this->src_item[$process['alt_field']] : '',
+            'title' => !empty($process['title_field']) && isset($this->src_item[$process['title_field']])
+              ? $this->src_item[$process['title_field']] : '',
           );
-        }
-        else {
-          $field_value = NULL;
         }
         break;
 
       default:
 
-        $field_value = parent::transformApiFieldValue($value, $dest_field, $fieldmapping, $modifier);
+        parent::addApiFieldValue($added_values, $value, $source_field);
 
     }
-    return $field_value;
   }
 
   /// Private helper functions.
