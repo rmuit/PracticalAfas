@@ -275,8 +275,27 @@ One example, to get only products that changed in the past week:<br/><em>array(<
     // We handle type 'image' here, and refer to the parent for other types.
 
     $dst = $this->current_dst;
+    if (!isset($this->field_info[$dst])) {
+      // The caller is responsible for making sure we never end up here!
+      $this->log('addApiValue() was called for destination field %dst, which is not an API-Field for entity type %t. Skipping. (source field: %src)',
+        array('%t' => $this->entity_type, '%dst' => $dst, '%src' => $source_field), WATCHDOG_ERROR);
+      return;
+    }
     $field_info = $this->field_info[$dst];
-    $dst_mapping = $this->dest_field_mapping[$dst];
+
+    // Mapping may not be present for 'unknown source' (e.g. default) values.
+    if (isset($this->dest_field_mapping[$dst])) {
+      $dst_mapping = $this->dest_field_mapping[$dst];
+    }
+    else {
+      $dst_mapping = array();
+      if ($source_field) {
+        // The caller is responsible for making sure we never end up here!
+        $this->log('addApiValue() was called for destination field %dst, which has no field mapping defined. Continuing because the value is already known, but this may be an error in your code. (values passed: source field: %src; value %val)',
+          array('%val' => $value, '%dst' => $dst, '%src' => $source_field), WATCHDOG_WARNING);
+      }
+    }
+
     if (isset($dst_mapping["process:$source_field"])) {
       $process = $dst_mapping["process:$source_field"];
     }
@@ -284,6 +303,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
       // This will only happen if $source_field = '', for default values.
       $process = array();
     }
+    $src = $source_field ? $source_field : '<none>';
 
     switch ($field_info['type']) {
 
@@ -291,11 +311,11 @@ One example, to get only products that changed in the past week:<br/><em>array(<
         $file = FALSE;
         if (empty($process['folder'])) {
           $this->log("No 'folder' property defined in mapping for the %dst destination field. (source field: %src)",
-            array('%dst' => $dst, '%src' => $source_field), WATCHDOG_ERROR);
+            array('%dst' => $dst, '%src' => $src), WATCHDOG_ERROR);
         }
         elseif (empty($process['data_src'])) {
           $this->log("No 'data_src' property defined in mapping for the %dst destination field. (source field: %src)",
-            array('%dst' => $dst, '%src' => $source_field), WATCHDOG_ERROR);
+            array('%dst' => $dst, '%src' => $src), WATCHDOG_ERROR);
         }
         else {
           // We need an index to make the filename unique, because the source
@@ -310,12 +330,14 @@ One example, to get only products that changed in the past week:<br/><em>array(<
           }
 
           $dest_uri = file_default_scheme() . '://' . $process['folder'] . '/'
-                      . $this->src_item[$this->src_id_field] . '_' . $index . '_'
-                      . $value;
-          // If a file with a certain name already exists on disk, it is not written again.
-          // But then its data does not need to be retrieved either!
-          if ((isset($this->settings['skip_images']) && empty($this->settings['skip_images']))
-              || !$file = $this->checkFile($dest_uri)) {
+                      . $this->src_item[$this->src_id_field] . '_' . $index
+                      . '_' . $value;
+          // If a file with a certain name already exists on disk, it is not
+          // written again. But then its data does not need to be retrieved.
+          if ((isset($this->settings['skip_images'])
+               && empty($this->settings['skip_images']))
+              || !$file = $this->checkFile($dest_uri)
+          ) {
             // We need to save the file.
 
             // 'data_src' represents a field in either this, or a separate,
@@ -330,8 +352,9 @@ One example, to get only products that changed in the past week:<br/><em>array(<
                     '%datafield' => $process['data_src'],
                     '%item' => $this->src_item[$this->src_id_field],
                     '%dst' => $dst,
-                    '%src' => $source_field
+                    '%src' => $src
                   ), WATCHDOG_ERROR);
+                return;
               }
               $data = $this->src_item[$process['data_src']];
             }
@@ -340,15 +363,11 @@ One example, to get only products that changed in the past week:<br/><em>array(<
 
               if (!isset($this->imgcache[$process['data_connector']])) {
                 // Image data for this item is not cached yet; get it.
-                if ($items = afas_api_get_data($process['data_connector'],
+
+                if (!$items = afas_api_get_data($process['data_connector'],
                   array('Itemcode' => $this->src_item[$this->src_id_field]),
-                  FALSE)) {
-                  // Assume you're receiving only one item (from SimpleXMLElement
-                  // with unknown key). Cast this item (which is also Element)
-                  // to array so we don't need to cast to strings later.
-                  $this->imgcache[$process['data_connector']] = (array) reset($items);
-                }
-                else {
+                  FALSE)
+                ) {
                   // AFAS error was already logged (probably to watchdog; we
                   // do not change print_error settings), but we don't know
                   // for which image.
@@ -356,11 +375,22 @@ One example, to get only products that changed in the past week:<br/><em>array(<
                     array(
                       '%file' => $value,
                       '%item' => $this->src_item[$this->src_id_field],
-                      '%src' => $source_field
+                      '%src' => $src
                     ), WATCHDOG_ERROR);
-                  // The connection to AFAS will be retried for every single
-                  // image & item.
+                  // Perform 'negative caching' (see below).
+                  $this->imgcache[$process['data_connector']] = FALSE;
+                  return;
                 }
+                // Assume you're receiving only one item (from SimpleXMLElement
+                // with unknown key). Cast this item (which is also Element)
+                // to array so we don't need to cast to strings later.
+                $this->imgcache[$process['data_connector']] =
+                  (array) reset($items);
+              }
+
+              if ($this->imgcache[$process['data_connector']] === FALSE) {
+                // afas_api_get_data() failed earlier; don't try again.
+                return;
               }
               if (!isset($this->imgcache[$process['data_connector']][$process['data_src']])) {
                 $this->log('Image data field %datafield not found in connector %con (for item %item, field %src)',
@@ -368,8 +398,9 @@ One example, to get only products that changed in the past week:<br/><em>array(<
                     '%datafield' => $process['data_src'],
                     '%con' => $process['data_connector'],
                     '%item' => $this->src_item[$this->src_id_field],
-                    '%src' => $source_field
+                    '%src' => $src
                   ), WATCHDOG_ERROR);
+                return;
               }
               $data = $this->imgcache[$process['data_connector']][$process['data_src']];
             }
@@ -385,7 +416,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
                     '%item' => $this->src_item[$this->src_id_field],
                     '%file' => $value,
                     '%dest' => $dest_uri,
-                    '%src' => $source_field
+                    '%src' => $src
                   ), WATCHDOG_ERROR);
               }
               else {
@@ -406,11 +437,9 @@ One example, to get only products that changed in the past week:<br/><em>array(<
                       '%item' => $this->src_item[$this->src_id_field],
                       '%file' => $value,
                       '%dest' => $dest_uri,
-                      '%src' => $source_field
+                      '%src' => $src
                     ), WATCHDOG_ERROR);
                 }
-                // From previous version. Why would we need a full cache clear every time?
-                // entity_get_controller('file')->resetCache();
               }
             }
 
@@ -443,7 +472,10 @@ One example, to get only products that changed in the past week:<br/><em>array(<
 
   /**
    * Checks if a file in a certain folder exists; return file object.
+   *
    * @param string $dest_uri
+   *   Destination uri (file name as per Drupal's scheme/naming convention).
+   *
    * @return bool|object
    *   Drupal file object (from database table), or false.
    */
@@ -486,7 +518,8 @@ One example, to get only products that changed in the past week:<br/><em>array(<
    * $this->settings['filters'].
    * This is used for the 'Filter' textarea value in the batch form.
    *
-   * @return Array of filters, or empty array.
+   * @return array
+   *   Array of filters, or empty array.
    */
   private function evalFilterInput() {
     static $filters;
