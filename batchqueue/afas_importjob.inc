@@ -189,6 +189,13 @@ abstract class AfasImportJob extends BatchQueueImportJob {
   public function __construct($settings = array()) {
     parent::__construct($settings);
 
+    // AFAS is typically a system where
+    // - you are bound to input data with trailing spaces (apparently
+    //   at least the 'predefined lists' do not protect against this);
+    // - all your data are strings (XML input stream)
+    // so trim data to prevent obscure bugs.
+    $this->trim_item_values = TRUE;
+
     // In case an extending class sets $this->opt_list, we also pass the
     // following settings as an URL argument; see settingsForm().
     $this->form_settings_display_filter[] = 'filters';
@@ -453,10 +460,10 @@ One example, to get only products that changed in the past week:<br/><em>array(<
             // So always fill them.
             // TODO if fid already exists, then the default value should not be <empty>, but
             // <the value currently in Drupal>
-            'alt'   => !empty($process['alt_field']) && isset($this->src_item[$process['alt_field']])
-              ? $this->src_item[$process['alt_field']] : '',
-            'title' => !empty($process['title_field']) && isset($this->src_item[$process['title_field']])
-              ? $this->src_item[$process['title_field']] : '',
+            'alt'   => !empty($process['alt_src']) && isset($this->src_item[$process['alt_src']])
+              ? $this->src_item[$process['alt_src']] : '',
+            'title' => !empty($process['title_src']) && isset($this->src_item[$process['title_src']])
+              ? $this->src_item[$process['title_src']] : '',
           );
         }
         break;
