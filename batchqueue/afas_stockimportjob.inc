@@ -8,6 +8,10 @@
  * stock inside AFAS) is initialization of all variables (connector, source and
  * destination fields) by the constructor.
  * TODO: if we implement a configForm, this can be a non-abstract class.
+ *
+ * TODO: if we implement the 'fetch' part of imports into a different class:
+ *       reevaluate whether this needs depencency on AfasImportJob. We only use
+ *       __construct(), (part of) settingsForm(), and a few properties.
  */
 abstract class AfasStockImportJob extends AfasImportJob {
 
@@ -36,9 +40,6 @@ abstract class AfasStockImportJob extends AfasImportJob {
   // If $warehouse_field is defined and $stock_dest is a string, all stock
   //   amounts will be added up and filled in this field.
   protected $stock_dest;
-
-  // Usually 'sku'. Document better; see initContext().
-  protected $src_id_dest;
 
   // If the commerce_stock module is enabled AND $this->entity_type is
   // 'commerce_product', then the stock amounts (added up if there are multiple
@@ -84,8 +85,8 @@ abstract class AfasStockImportJob extends AfasImportJob {
     if (empty($this->stock_dest) && !module_exists('commerce_stock')) {
       drupal_set_message("'Destination field' is not defined in the AFASStockConnector class (and commerce_stock module is not enabled). The process will not run until this is fixed!", 'warning');
     }
-    if (empty($this->src_id_dest) && $this->entity_type != 'commerce_product') {
-      drupal_set_message("'src_id_dest' property not set (necessary for resolving source->Drupal items). The process will not run until this is fixed!", 'warning');
+    if (empty($this->src_id_dest_field) && $this->entity_type != 'commerce_product') {
+      drupal_set_message("'src_id_dest_field' property not set (necessary for resolving source->Drupal items). The process will not run until this is fixed!", 'warning');
     }
 
     return $form;
@@ -200,7 +201,7 @@ abstract class AfasStockImportJob extends AfasImportJob {
   }
 
   /**
-   * Implements BatchQueueJobInterface::processItem()
+   * Overrides AfasImportJob::processItem()
    */
   public function initContext(&$items, &$context) {
 
@@ -215,21 +216,17 @@ abstract class AfasStockImportJob extends AfasImportJob {
       )
     );
 
+    // Note: no call to parent. (Mainly because we have no 'mapping'.)
 
-    // We need the 'destination field for the source id', in order to resolve
-    // items to Drupal entities. (in processItem().)
-    // Other connectors have mappings for that, but we don't... so we made src_id_dest.
-    // For entity type 'commerce_product' we can assume it's "sku". Otherwise we must fill it.
-    // Check it here so we can still abort.
-    if (empty($this->src_id_dest) && $this->entity_type != 'commerce_product') {
-      $this->log("'src_id_dest' property not set (necessary for resolving source->Drupal items)!", array(), WATCHDOG_WARNING);
+    // This is why we need to check the following explicitly:
+    if (empty($this->src_id_dest_field) && $this->entity_type != 'commerce_product') {
+      $this->log("'src_id_dest_field' property not set (necessary for resolving source->Drupal items)!", array(), WATCHDOG_WARNING);
       $items = array();
     }
-
   }
 
   /**
-   * Implements BatchQueueJobInterface::processItem()
+   * Overrides AfasImportJob::processItem()
    */
   public function processItem($item, &$context) {
 
@@ -237,19 +234,14 @@ abstract class AfasStockImportJob extends AfasImportJob {
     if ((!empty($this->stock_dest) || module_exists('commerce_stock'))
         && !empty($this->entity_type)) {
 
-      if (empty($this->src_id_dest)) {
+      if (empty($this->src_id_dest_field)) {
         if ($this->entity_type == 'commerce_product') {
-          $this->src_id_dest = 'sku';
+          $this->src_id_dest_field = 'sku';
         }
         else {
           return;
         }
       }
-
-      // parent::resolveDestIds() gets this value from a mapping. We'll create
-      // a fake mapping so we don't have to duplicate that code.
-      // TODO: if field_mapping is deprecated in favor of dest_field_mapping, change this too.
-      $this->field_mapping = array($this->src_id_field => array('dest' => $this->src_id_dest));
 
       $dest_ids = $this->resolveDestIds(array($item['src_id']));
 
@@ -361,7 +353,7 @@ abstract class AfasStockImportJob extends AfasImportJob {
   }
 
   /**
-   * Implements BatchQueueJobInterface::finish()
+   * Overrides AfasImportJob::finish()
    */
   public function finish($results) {
 

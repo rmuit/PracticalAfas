@@ -72,8 +72,8 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
 
       if (!empty($afas_items) && !is_string($afas_items) && !$raw) {
 
-        if (empty($this->src_id_dest) && $this->entity_type != 'commerce_product') {
-          return "'src_id_dest' property not set (necessary for resolving source->Drupal items).";
+        if (empty($this->src_id_dest_field) && $this->entity_type != 'commerce_product') {
+          return "'src_id_dest_field' property not set (necessary for resolving source->Drupal items).";
         }
 
         $items = array();
@@ -358,7 +358,7 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
 
     // For the 'source/SKU fields in Drupal'...
     // (which are the product.sku or a FieldAPI field)
-    if (empty($this->src_id_dest)) {
+    if (empty($this->src_id_dest_field)) {
       $query = db_select($this->entity_type, 'p');
       $query->condition('p.sku', array_keys($part_ids), 'IN');
       $query->addField('p', 'sku');
@@ -367,13 +367,13 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
     else {
       // We don't need the 'entity table'; we can link against the
       // src_id_field table.
-      $query = db_select('field_data_' . $this->src_id_dest, 'p');
-      $query->condition('p.' . $this->src_id_dest . '_value',
+      $query = db_select('field_data_' . $this->src_id_dest_field, 'p');
+      $query->condition('p.' . $this->src_id_dest_field . '_value',
         array_keys($part_ids), 'IN');
       $query->condition('p.language', LANGUAGE_NONE);
       $query->condition('p.deleted', 0);
       $query->condition('p.delta', 0);
-      $query->addField('p', $this->src_id_dest . '_value', 'sku');
+      $query->addField('p', $this->src_id_dest_field . '_value', 'sku');
       $join_field = 'entity_id';
     }
     // ...look up the stock values (can be multiple)...
