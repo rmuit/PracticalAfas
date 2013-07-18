@@ -148,6 +148,13 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
                     'stock'  => !empty($parts_stock[$part_sku]['s_1']) ?
                       $parts_stock[$part_sku]['s_1'] : 0
                   );
+
+                  if (!empty($this->settings['list_format'])) {
+                    // Add another field with per-part stock details.
+                    $items[$sku]['stock_details'] = $part_sku . ': '
+                      . (!empty($parts_stock[$part_sku]['s_1']) ?
+                        $parts_stock[$part_sku]['s_1'] : '-');
+                  }
                 }
                 else {
                   // 'stock' is array, equal to $parts_stock row...
@@ -158,6 +165,13 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
                   );
                   // ...but without 'sku'. (Which may be set for #drupal)
                   unset($items[$sku]['stock']['sku']);
+
+                  if (!empty($this->settings['list_format'])) {
+                    // Add another field with per-part stock details;
+                    // warehouse names are not displayed (for now?)
+                    $items[$sku]['stock_details'] = $part_sku . ': '
+                      . implode('+', $items[$sku]['stock']);
+                  }
                 }
               }
               else {
@@ -188,6 +202,11 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
                       ));
                   }
                 }
+
+                if (!empty($this->settings['list_format'])) {
+                  // Add another field with per-part stock details.
+                  $items[$sku]['stock_details'] = $part_sku . ': ' . $stock;
+                }
               }
             }
             else {
@@ -201,6 +220,13 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
                       || $parts_stock[$part_sku]['s_1'] < $items[$sku]['stock']) {
                     $items[$sku]['stock'] = !empty($parts_stock[$part_sku]['s_1']) ?
                       $parts_stock[$part_sku]['s_1'] : 0;
+                  }
+
+                  if (!empty($this->settings['list_format'])) {
+                    // Add another field with per-part stock details.
+                    $items[$sku]['stock_details'] .= '; ' . $part_sku . ': '
+                      . (!empty($parts_stock[$part_sku]['s_1']) ?
+                        $parts_stock[$part_sku]['s_1'] : '-');
                   }
                 }
                 else {
@@ -224,6 +250,13 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
                         0 : $parts_stock[$part_sku][$stock_field];
                     }
                   }
+
+                  if (!empty($this->settings['list_format'])) {
+                    // Add another field with per-part stock details;
+                    // warehouse names are not displayed (for now?)
+                    $items[$sku]['stock_details'] .= '; ' . $part_sku . ': '
+                      . implode('+', $items[$sku]['stock']);
+                  }
                 }
               }
               else {
@@ -246,6 +279,11 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
                           $stock < $items[$sku]['stock'][$warehouse]) {
                     $items[$sku]['stock'][$warehouse] = $stock >= 0 ? $stock: 0;
                   }
+                }
+
+                if (!empty($this->settings['list_format'])) {
+                  // Add another field with per-part stock details.
+                  $items[$sku]['stock_details'] .= '; ' . $part_sku . ': ' . $stock;
                 }
               }
 
