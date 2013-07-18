@@ -112,10 +112,11 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
           // Implement 'single item' filter. (for #drupal: part 2/2, and also
           // silently skip setting any stock if the part-product is not present
           // in the website.)
-          elseif ((empty($this->stock_connector) ||
-                   isset($parts_stock[$part_sku])) &&
-                  (empty($this->settings['single_item']) ||
-                   $sku == $this->settings['single_item'])) {
+          elseif ((empty($this->stock_connector)
+                   || $this->stock_connector != '#drupal'
+                   || isset($parts_stock[$part_sku]))
+                  && (empty($this->settings['single_item'])
+                      || $sku == $this->settings['single_item'])) {
 
             // OK, we're done checking inputs...
             // Construct array of objects with src_id_field & stock values, which is
@@ -138,7 +139,6 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
                 // #1a: stock coming from another source, in $parts_stock, which
                 //      has one row per source-id.
 
-                $items[$sku] = array('src_id' => $sku);
                 if (empty($this->warehouse_field)) {
 
                   // 'stock' should be single value.  Value in
@@ -151,8 +151,11 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
                 }
                 else {
                   // 'stock' is array, equal to $parts_stock row...
-                  $items[$sku] = array('src_id' => $sku,
-                                       'stock'  => $parts_stock[$part_sku]);
+                  $items[$sku] = array(
+                    'src_id' => $sku,
+                    'stock'  => isset($parts_stock[$part_sku]) ?
+                      $parts_stock[$part_sku] : array(),
+                  );
                   // ...but without 'sku'. (Which may be set for #drupal)
                   unset($items[$sku]['stock']['sku']);
                 }
