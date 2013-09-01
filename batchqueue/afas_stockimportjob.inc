@@ -201,7 +201,7 @@ abstract class AfasStockImportJob extends AfasImportJob {
   }
 
   /**
-   * Overrides AfasImportJob::processItem()
+   * Overrides AfasImportJob::initContext()
    */
   public function initContext(&$items, &$context) {
 
@@ -246,8 +246,21 @@ abstract class AfasStockImportJob extends AfasImportJob {
       $dest_ids = $this->resolveDestIds(array($item['src_id']));
 
       if ($dest_ids) {
-        // remember encountered entities for finish()
-        $context['results']['dest_ids'] = array_merge($context['results']['dest_ids'], $dest_ids);
+        // Remember encountered entities for finish().
+        // Note resolveDestIDs does not cache things by itself, since we did not
+        // set $this->results. We won't use that caching because:
+        // - we never re-query the same ID again anyway;
+        // - we need a simpler structure in finish (a flat array, not a two-
+        //   dimensional array keyed by source ID)
+        // - minor: the called code inside resolveDestIDs needs to do more work
+        //   to cache the less-simple structure, and then convert to the simple
+        //   structure for its return value.
+        // A subclass can set $this->results to activate caching, but then needs
+        // to rewrite the use of dest_ids in finish().
+        foreach ($dest_ids as $id) {
+          // This is faster than an array_merge, because $dest_ids is small.
+          $context['results']['dest_ids'][] = $id;
+        }
 
         $entities = entity_load($this->entity_type, $dest_ids);
         if ($entities) {
@@ -358,7 +371,8 @@ abstract class AfasStockImportJob extends AfasImportJob {
   public function finish($results) {
 
     $updated_to_0 = 0;
-    if (!empty($results['dest_ids'])) {
+    if (!empty($results['dest_ids']) && empty($this->settings['single_item'])
+        && empty($this->settings['limit'])) {
 
       if (empty($this->bundle)) {
         $this->log("'bundle' property not set; the stock for items missing in the AFAS feed cannot be updated to 0.", array(), WATCHDOG_WARNING);
@@ -385,7 +399,8 @@ abstract class AfasStockImportJob extends AfasImportJob {
         $qstub = new EntityFieldQuery();
         $qstub->entityCondition('entity_type', $type)
           ->entityCondition('bundle', $this->bundle);
-        //->propertyCondition('status', 1) //no, this would mean that if unpublished products get published, their stock is not OK.
+        //->propertyCondition('status', 1)
+        //No, this would mean that stock of re-published products is not OK.
 
         // Get all the entities that have ANY of the fields non-zero.
         // EFQ has no 'OR', so use multiple queries.
