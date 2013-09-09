@@ -248,7 +248,7 @@ abstract class AfasStockImportJob extends AfasImportJob {
       if ($dest_ids) {
         // Remember encountered entities for finish().
         // Note resolveDestIDs does not cache things by itself, since we did not
-        // set $this->results. We won't use that caching because:
+        // set $this->destIds. We won't use that caching because:
         // - we never re-query the same ID again anyway;
         // - we need a simpler structure in finish (a flat array, not a two-
         //   dimensional array keyed by source ID)
@@ -368,7 +368,7 @@ abstract class AfasStockImportJob extends AfasImportJob {
   /**
    * Overrides AfasImportJob::finish()
    */
-  public function finish($results) {
+  public function finish(&$results) {
 
     $updated_to_0 = 0;
     if (!empty($results['dest_ids']) && empty($this->settings['single_item'])

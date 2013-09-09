@@ -64,7 +64,7 @@ class AfasGetConnectorDisplay extends AfasGetConnector {
   /**
    * Implements BatchQueueJobInterface::finish()
    */
-  public function finish($results) {
+  public function finish(&$results) {
     return format_plural($results['counter'],
       '1 item was not processed.', '@count items were not processed.');
   }

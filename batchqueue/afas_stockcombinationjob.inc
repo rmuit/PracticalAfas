@@ -466,7 +466,7 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
   /**
    * Overrides AfasStockImportJob::finish().
    */
-  public function finish($results) {
+  public function finish(&$results) {
     // Do not update any products to 0.
     // What should really be done is updating all product combinations which
     // were not encountered in the connector, to 0 here. And then
