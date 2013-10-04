@@ -80,7 +80,7 @@ abstract class AfasStockImportJob extends AfasImportJob {
     // in watchdog.
     // BatchQueueImportJob checks for entity_type / bundle / src_id_field already.
     if (empty($this->src_id_field)) {
-      drupal_set_message("'Stock field' property is not defined in the AFASStockConnector class! The process will not run until this is fixed!", 'warning');
+      drupal_set_message("'Source ID field' property is not defined in the AFASStockConnector class! The process will not run until this is fixed!", 'warning');
     }
     if (empty($this->stock_dest) && !module_exists('commerce_stock')) {
       drupal_set_message("'Destination field' is not defined in the AFASStockConnector class (and commerce_stock module is not enabled). The process will not run until this is fixed!", 'warning');
@@ -99,7 +99,8 @@ abstract class AfasStockImportJob extends AfasImportJob {
 
     // Don't check _everything_ here so the class is still useful for
     // list_format = raw. More checks in processItem().
-    if (!empty($this->src_id_field) && !empty($this->stock_field)) {
+    if (!empty($this->connector)
+        && !empty($this->src_id_field) && !empty($this->stock_field)) {
 
       // Callers can set 'list_format' setting to 'raw' to retrieve unmodified
       // result from the AFAS query; this is not fit for processItem().
@@ -196,7 +197,7 @@ abstract class AfasStockImportJob extends AfasImportJob {
       }
     }
     else {
-      return 'src_id_field / stock_field properties (one or both) not defined; cannot fetch stock';
+      return 'At least one of connector / src_id_field / stock_field properties are not defined; cannot fetch stock';
     }
   }
 

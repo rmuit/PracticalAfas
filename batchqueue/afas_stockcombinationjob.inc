@@ -80,10 +80,10 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
         if (!empty($this->stock_connector)) {
           // Get stock values for parts.
           if ($this->stock_connector == '#drupal') {
-            $parts_stock = $this->drupalStock($afas_items);
+            $parts_stock = $this->getDrupalStock($afas_items);
           }
           else {
-            $parts_stock = $this->getStock();
+            $parts_stock = $this->getAfasStock();
           }
         }
 
@@ -319,7 +319,7 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
    *   drupalStock())
    * - otherwise, keys are warehouse values (just like the derived class)
    */
-  protected function getStock() {
+  protected function getAfasStock() {
 
     // Get stock data from separate connector.
     $afas_data = afas_api_get_data($this->stock_connector, $this->stock_extra_filter, FALSE);
@@ -379,7 +379,7 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
    * - otherwise, keys are 'sku' and 's_1' - 's_N'. $this->stock_dest will be
    *   changed accordingly (keys overwritten - and $this->warehouse_field too)
    */
-  protected function drupalStock(&$afas_items) {
+  protected function getDrupalStock(&$afas_items) {
     // $afas_items only passed by reference because of less memory usage.
     // It isn't altered.
 
@@ -398,28 +398,35 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
     // just to get the stock, seems too much overhead - especially on cron.)
 
     // For the 'source/SKU fields in Drupal'...
-    // (which are the product.sku or a FieldAPI field)
-    if (empty($this->src_id_dest_field)) {
+    $sku_field = $this->src_id_dest_field;
+    if (empty($sku_field) && $this->entity_type == 'commerce_product') {
+      $sku_field = 'sku';
+    }
+    $field_info = field_info_field($this->part_field);
+
+    if (!isset($field_info[$sku_field])) {
       $query = db_select($this->entity_type, 'p');
       $query->condition('p.sku', array_keys($part_ids), 'IN');
       $query->addField('p', 'sku');
-      $join_field = 'product_id';
+      $info = entity_get_info($this->entity_type);
+      $join_field = $info['entity keys']['id'];
     }
     else {
       // We don't need the 'entity table'; we can link against the
       // src_id_field table.
-      $query = db_select('field_data_' . $this->src_id_dest_field, 'p');
-      $query->condition('p.' . $this->src_id_dest_field . '_value',
+      $query = db_select('field_data_' . $sku_field, 'p');
+      $query->condition('p.' . $sku_field . '_value',
         array_keys($part_ids), 'IN');
       $query->condition('p.language', LANGUAGE_NONE);
       $query->condition('p.deleted', 0);
       $query->condition('p.delta', 0);
-      $query->addField('p', $this->src_id_dest_field . '_value', 'sku');
+      $query->addField('p', $sku_field . '_value', 'sku');
       $join_field = 'entity_id';
     }
+
     // ...look up the stock values (can be multiple)...
-    // (which are commerce_stock_value or a FieldAPI field)
-    // NOTE: assumption we need delta=0 and language=und
+    //   (which are commerce_stock_value or a FieldAPI field)
+    //   NOTE: assumption we need delta=0 and language=und
     if (!is_array($this->stock_dest)
         && $this->entity_type == 'commerce_product'
         && empty($this->ignore_commerce_stock)
@@ -457,7 +464,7 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
         $query->leftJoin('field_data_' . $dest_field, $alias,
           'p.' . $join_field . " = $alias.entity_id AND $alias.language='"
           . LANGUAGE_NONE . "' AND $alias.delta=0 AND $alias.deleted=0");
-        $query->addField('s', $dest_field . '_value', $alias);
+        $query->addField($alias, $dest_field . '_value', $alias);
       }
     }
     return $query->execute()->fetchAllAssoc('sku', PDO::FETCH_ASSOC);
