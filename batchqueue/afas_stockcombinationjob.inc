@@ -2,11 +2,15 @@
 /**
  * @file
  * Class providing a job that sets stock values for products that are a
- * combination of other products. The connector contains fields for the item nr
- * and part-nr (with multiple rows per item), and no stock data.
- * Stock data is retrieved from Drupal --i.e. a regular stock import job should
- * ideally have run just before this job-- and all parts are assumed to be
- * present in the website as individual products.
+ * combination of other products. The 'main connector' contains fields for the
+ * item nr and part-nr (with multiple rows per item), and no stock data.
+ * Stock data is retrieved either from a second connector, or from Drupal,
+ * depending on use case, e.g.:
+ * - Update 'product combination' type products from AFAS. These do not have
+ *   stock values in AFAS; only their individual parts do.
+ * - Update your own custom 'combination products', consisting of individual
+ *   part products.
+ *
  * TODO: if we implement a configForm, this can be a non-abstract class.
  */
 abstract class AfasStockCombinationJob extends AfasStockImportJob {
@@ -14,33 +18,41 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
   // $this->connector will contain the item (sku) numbers for the combination
   // products in $this->sku_field, and the item numbers for individual parts
   // in $this->part_field, at least.
+  //
+  // Defining $this->connector as '#drupal' will get items to be updated from
+  // Drupal instead of AFAS; all entities of $this->entity_type, (optionally)
+  // restricted by $this->bundle, will be processed.
+  // In this case, $this->part_field and $this-stock_connector must be nonempty,
+  // as this is where the parts & stock data must come from.
   protected $part_field;
-  //
+
   // If the stock values (in $this->stock_field) can be in the same connector,
-  // this is best; $this-stock_connector can be left empty. It seems to be
-  // impossible to do this in AFAS 'product combination' connectors, however.
-  // Two things can be done:
-  // - recommended: get another connector to contain part numbers and their
-  //   stock values (plus warehouse if needed); this is the same data set
+  // this is best; $this-stock_connector can be left empty. Otherwise, two
+  // things can be done:
+  // - Get a second AFAS connector to contain part numbers and their stock
+  //   values (plus warehouse if needed); this is the same data set
   //   as $this->stock_connector would contain in a normal AfasStockImportJob.
-  // - get the stock values for individual parts from Drupal.  This is not
-  //   recommended, because it assumes that individual parts are also separate
-  //   Drupal entities, which is probably not the case.
-  //   (If there are several stock fields in the Drupal entities, that can be
-  //   noted by setting an array in $this->stock_dest, and unlike other cases,
-  //   $this->warehouse_field doesn't need to be filled. It, and the array
-  //   keys in stock_dest, will be overwritten.)
+  // - get the stock values for individual parts from Drupal.
   //
-  // $this->stock_connector should contain the connector name or '#drupal'.
+  // The second thing is OK when you're sure all individual parts are also
+  // separate Drupal entities, with stored stock values. (For AFAS
+  // 'product combination' type products, this is probably not the case.)
+  // A regular stock import job should ideally have run just before this job.
+  //
+  // $this->stock_connector should contain the connector name, or '#drupal'
+  // for retrieving stock values from Drupal entities. If those entities contain
+  // several stock fields, this can be noted by setting $this->stock_dest to an
+  // array, and unlike other cases, $this->warehouse_field doesn't need to be
+  // filled. It, and the array keys in stock_dest, will be overwritten.)
   protected $stock_connector;
-  // If defined, $this->stock_src_id_field is the item (sku) numer of
+  // If defined, $this->stock_src_id_field is the item number (sku) of
   // the part in the stock connector. If empty, $this->src_id_field is taken.
   protected $stock_src_id_field;
   //
   // If $this->warehouse_field is filled, it's assumed to be present in
   // $this->stock_connector (if that's filled), not $this->connector.
 
-  // 'extra filter' for stock connector
+  // 'extra filter' for stock connector.
   protected $stock_extra_filter;
 
   // Note RM: there is also untested support for a 'warehouse' in case of an
@@ -53,22 +65,49 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
   }
 
   /**
+   * Extends AfasStockImportJob::settingsForm()
+   */
+  public function settingsForm() {
+    // For connector '#drupal', 'src_id_field'; doesn't need to be defined by
+    // the implementing class, because its value doesn't matter. We just set it
+    // because it's needed for the code in init() (as a 'field alias').
+    if (empty($this->src_id_field) || $this->connector == '#drupal') {
+      $this->src_id_field = 'src_id';
+    }
+
+  }
+
+  /**
    * Extends AfasStockImportJob::init()
    */
   public function init() {
 
     // Don't check _everything_ immediately so the class is still useful for
     // list_format = raw. More checks in processItem().
-    if (!empty($this->src_id_field)) {
+    if (!empty($this->connector)
+        && !empty($this->part_field)
+        && (!empty($this->src_id_field) || $this->connector == '#drupal')) {
 
       // Callers can set 'list_format' setting to 'raw' to retrieve unmodified
       // result from the AFAS query; this is not fit for processItem().
-      // If 'raw', we get getAfasItems() convert the SimpleXMLElement
+      // If 'raw', we let getAfasItems() convert the SimpleXMLElement
       // to an array for us. Otherwise we do the conversion to a
       // (differently structured) array ourselves.
       $raw = (!empty($this->settings['list_format'])
               && $this->settings['list_format'] == 'raw');
-      $afas_items = $this->getAfasItems($raw);
+      if ($this->connector == '#drupal' && !empty($this->stock_connector)) {
+
+        // Hardcode optional properties as needed:
+        if (empty($this->src_id_field) && $this->connector == '#drupal') {
+          $this->src_id_field = 'src_id';
+        }
+        $afas_items = $this->getDrupalItems();
+        // $afas_items is an array of arrays, or a PDO query result set.
+      }
+      else {
+        $afas_items = $this->getAfasItems($raw);
+        // $afas_items is an array of arrays, or a SimpleXMLElement
+      }
 
       if (!empty($afas_items) && !is_string($afas_items) && !$raw) {
 
@@ -307,7 +346,7 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
       }
     }
     else {
-      return 'src_id_field not defined; cannot fetch stock';
+      return 'At least one of connector / src_id_field / part_field properties are not defined; cannot fetch stock';
     }
   }
 
@@ -468,6 +507,94 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
       }
     }
     return $query->execute()->fetchAllAssoc('sku', PDO::FETCH_ASSOC);
+  }
+
+  /**
+   * Return mapping of item-id (sku) of main product -> item-id of product parts
+   * assuming all that info is present in Drupal.
+   */
+  protected function getDrupalItems() {
+
+    // Use direct SQL, as in getDrupalStock().
+
+    $info = entity_get_info($this->entity_type);
+
+    // Add field for item SKU. (With alias: $this->src_id_field.)
+    $sku_field = $this->src_id_dest_field;
+    if (empty($sku_field) && $this->entity_type == 'commerce_product') {
+      $sku_field = 'sku';
+    }
+    $sku_field_info = field_info_field($this->part_field);
+
+    if (!isset($sku_field_info[$sku_field])) {
+      $query = db_select($this->entity_type, 'p');
+      $query->addField('p', $sku_field, $this->src_id_field);
+      $join_field = $info['entity keys']['id'];;
+    }
+    else {
+      // We don't need the 'entity table'; we can link against the
+      // src_id_field table.
+      $query = db_select('field_data_' . $sku_field, 'p');
+      $query->condition('p.language', LANGUAGE_NONE);
+      $query->condition('p.deleted', 0);
+      $query->condition('p.delta', 0);
+      $query->addField('p', $sku_field . '_value', $this->src_id_field);
+      $join_field = 'entity_id';
+    }
+    if (!empty($this->bundle)) {
+      $query->condition('p.' . $info['entity keys']['bundle'], $this->bundle);
+    }
+
+    // Add field for part SKUs. (With alias: $this->part_field.)
+    // We support the data being in Drupal text fields and product references.
+    // Add a left join so we also catch products consisting of 0 parts; the
+    // caller does nothing with them except generate a warning.
+
+    $query->leftJoin('field_data_' . $this->part_field, 'pp',
+      'p.' . $join_field . " = pp.entity_id AND pp.language='"
+      . LANGUAGE_NONE . "' AND pp.delta=0 AND pp.deleted=0");
+    $field_info = field_info_field($this->part_field);
+    if (!isset($field_info['type'])) {
+      $this->log('part_field property (%pf) is not a proper Drupal field.',
+        array('%pf' => $this->part_field), WATCHDOG_ERROR);
+      return array();
+    }
+    elseif ($field_info['type'] == 'text') {
+
+      $query->addField('s', $this->part_field . '_value', $this->part_field);
+    }
+    elseif ($field_info['type'] == 'commerce_product_reference') {
+
+      // Join either the entity table or the field table (see 'Add field for
+      // item SKU' above) to the product_id.
+      if (!isset($sku_field_info[$sku_field])) {
+        $query->leftJoin($this->entity_type, 'ppf',
+          'pp.' . $this->part_field . '_product_id = ppf.' . $join_field);
+        $query->addField('ppf', $sku_field, $this->part_field);
+      }
+      else {
+        $query->leftJoin('field_data_' . $sku_field, 'ppf',
+        'pp.' . $this->part_field . "_product_id = ppf.entity_id AND ppf.language='"
+        . LANGUAGE_NONE . "' AND ppf.delta=0 AND pp.deleted=0");
+        $query->addField('p', $sku_field . '_value', $this->part_field);
+      }
+    }
+    else {
+      $this->log('part_field property (%pf) has unrecognized field type (%type); maybe the code should be extended.',
+        array('%pf' => $this->part_field, '%type' => $field_info['type']), WATCHDOG_ERROR);
+      return array();
+    }
+
+    if ($this->stock_connector == '#drupal') {
+      // We need to loop over the query results twice; once in getDrupalStock()
+      // and once in the caller. So turn the query result into an array.
+      $rows = array();
+      foreach ($query->execute() as $row) {
+        $rows[] = $row;
+      }
+      return $rows;
+    }
+    return $query->execute();
   }
 
   /**
