@@ -29,7 +29,7 @@ abstract class AfasImportJob extends BatchQueueImportJob {
   // Optional extra filter. (Added for convenience; it's perfectly possible for
   // classes to do their own filtering - but this way they can 'hardcode' an
   // extra filter for their connector in their __construct function.)
-  // Needs to be a single-level array (i.e. can contain multiple fields but only
+  // Must be a single-level array (i.e. can contain multiple fields but only
   // one operator).
   protected $extra_filter;
 
@@ -226,7 +226,7 @@ abstract class AfasImportJob extends BatchQueueImportJob {
       $form['selection']['filters'] = array(
         '#type'          => 'textarea',
         '#rows'          => 5,
-        '#title'         => 'Filter',
+        '#title'         => t('Filter'),
         '#description'   => "Fill a comma separated set of array definitions if you want to apply other filters.<br/>
 One example, to get only products that changed in the past week:<br/><em>array(<br/>
 '$field' => '" . date('Y-m-d\TH:i:s', time() - 7 * 86400) . "',<br/>
@@ -240,7 +240,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
 
     $form['tries'] = array(
       '#type'          => 'textfield',
-      '#title'         => 'Tries',
+      '#title'         => t('Tries'),
       '#description'   => 'The number of times to repeatedly try fetching data, in case of timeouts',
       '#default_value' => 1,
       '#size'          => 3,
@@ -282,13 +282,13 @@ One example, to get only products that changed in the past week:<br/><em>array(<
     // We handle type 'image' here, and refer to the parent for other types.
 
     $dst = $this->current_dst;
-    if (!isset($this->field_info[$dst])) {
+    $field_info = field_info_field($dst);
+    if (!isset($field_info)) {
       // The caller is responsible for making sure we never end up here!
       $this->log('addApiValue() was called for destination field %dst, which is not an API-Field for entity type %t. Skipping. (source field: %src)',
         array('%t' => $this->entity_type, '%dst' => $dst, '%src' => $source_field), WATCHDOG_ERROR);
       return;
     }
-    $field_info = $this->field_info[$dst];
 
     // Mapping may not be present for 'unknown source' (e.g. default) values.
     if (isset($this->dest_field_mapping[$dst])) {

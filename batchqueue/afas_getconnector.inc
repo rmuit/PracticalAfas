@@ -166,7 +166,7 @@ abstract class AfasGetConnector extends BatchQueueJob {
       $form['filters'] = array(
         '#type'          => 'textarea',
         '#rows'          => 5,
-        '#title'         => 'Filter',
+        '#title'         => t('Filter'),
         '#description'   => "Fill a comma separated set of array definitions if you want to apply other filters.<br/>
 One example, to get only products that changed in the past week:<br/><em>array(<br/>
 'SOME-CHANGED-DATE' => '" . date('Y-m-d\TH:i:s', time() - 7 * 86400) . "',<br/>
@@ -180,7 +180,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
 
     $form['tries'] = array(
       '#type'          => 'textfield',
-      '#title'         => 'Tries',
+      '#title'         => t('Tries'),
       '#description'   => 'The number of times to repeatedly try fetching data, in case of timeouts',
       '#default_value' => 1,
       '#size'          => 3,
