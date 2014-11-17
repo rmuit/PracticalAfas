@@ -59,7 +59,20 @@ function afas_api_settings_form($form, &$form_state) {
     $form['afas_api_pw']['#description'] = t('To change the password, enter the new password here.');
   }
 
+  $form['#validate'][] = 'afas_api_settings_form_validate';
+
   return system_settings_form($form);
+}
+
+/**
+ * Validate function for our global settings form.
+ */
+function afas_api_settings_form_validate($form, &$form_state) {
+
+  if (empty($form_state['values']['afas_api_pw'])) {
+    // Do not let an empty password overwrite an already existing one.
+    unset($form_state['values']['afas_api_pw']);
+  }
 }
 
 /**
