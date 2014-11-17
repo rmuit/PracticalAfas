@@ -286,7 +286,7 @@ function afas_api_get_data($data_id, $filters = array(), $data_type = TRUE, $ext
       // Check the (normalized) options which influence the output format.
       // See _afas_api_normalize_arguments() for default option values
       // which were set in $extra_arguments.
-      if ($function = 'GetDataWithOptions') {
+      if ($function == 'GetDataWithOptions') {
         $extra_arguments = afas_api_last_call_info('arguments');
         if ($extra_arguments['options_array']['Outputmode'] == 2) {
           // We don't support text output.
