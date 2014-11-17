@@ -76,43 +76,96 @@ function afas_api_settings_form_validate($form, &$form_state) {
 }
 
 /**
- * Form definition for global settings.
+ * Form definition for schema retriever form.
  */
 function afas_api_schema_form($form, &$form_state) {
 
-  // This simple form does not have a submit function defined. It does its
-  // actions inside this form definition.
+  // This help text is not needed if we are submitting data.
+  // Note if the submission generates an error, the form will redirect back
+  // to itself and you will see the text.
   if (empty($form_state['input'])) {
-    // No action.
     $form['desc'] = array(
-      '#markup' => t('<p>This screen retrieves information about the XML which should be sent to AFAS as a parameter to UpdateConnector and ReportConnector functions. (See afas_api_send_data().)</p><p>This does not have anything directly to do with existing AFAS functionality that can be used through this Drupal site, but it can provide useful information for developers writing their own Update Connectors.</p>'),
+      '#markup' => t('<p>This screen retrieves information about the XML which should be sent to AFAS as a parameter to UpdateConnector and ReportConnector functions. (See afas_api_send_data().)</p><p>This can provide useful information for developers writing their own Update Connectors.</p>'),
+      '#weight' => 1,
     );
     $form['desc2'] = array(
       '#markup' => '<div class="description">' . t('(Information about all possible SOAP functions to call, with their call parameters, can be retrieved from '
                      . check_plain(variable_get('afas_api_url')) . '/XXXconnector.asmx - with XXX being update/report/get/data. But you probably don\'t need that and can just call <em>afas_api_send_data(function_name, XML)</em> instead of calling the lower level SOAP functions.)') . '</div>',
+      '#weight' => 2,
     );
-  }
-  else {
-    // Retrieve / display XSD.
-    // There's no validate/submit function, which apparently makes 'values' be not present. We don't care.
-
-    $ret = afas_api_get_data($form_state['input']['function'], array(), 'data', array(), array('print_errors' => TRUE));
-    if ($ret) {
-      $form['result'] = array(
-        '#markup' => check_plain($ret),
-      );
-    }
   }
 
   $form['function'] = array(
     '#type' => 'textfield',
-    '#title' => 'UpdateConnector / Function name',
+    '#title' => 'UpdateConnector name',
     '#required' => TRUE,
+    '#weight' => 9,
   );
   $form['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Get XSD'),
+    '#weight' => 10,
   );
 
   return $form;
+}
+
+/**
+ * Form submit callback for schema retriever form.
+ */
+function afas_api_schema_form_submit(&$form, &$form_state) {
+  // Retrieve / display XSD.
+  $ret = afas_api_get_data($form_state['input']['function'], array(), 'data', array(), array('print_errors' => TRUE));
+  if ($ret) {
+
+    /* We got an XML string returned, with the XSD encoded into one of the
+     * attributes. This is an example string we got back:
+<AfasDataConnector>
+  <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+    <xs:element name="AfasDataConnector">
+      <xs:complexType>
+        <xs:choice maxOccurs="unbounded">
+          <xs:element name="ConnectorData">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element name="Id" type="xs:string" minOccurs="0"/>
+                <xs:element name="Schema" type="xs:string" minOccurs="0"/>
+              </xs:sequence>
+            </xs:complexType>
+          </xs:element>
+        </xs:choice>
+      </xs:complexType>
+    </xs:element>
+  </xs:schema>
+  <ConnectorData>
+    <Id>knOrganisation</Id>
+    <Schema> [ THE SCHEMA DATA ] </Schema>
+  </ConnectorData>
+</AfasDataConnector>
+     * Let's decode that. If we find the schema, we will only print that and
+     * silently ignore the rest.
+     */
+    $ok = FALSE;
+    $doc_element = new SimpleXMLElement($ret);
+    if (isset($doc_element->ConnectorData->Schema)) {
+      $ret = strval($doc_element->ConnectorData->Schema);
+      // This value was not already interpreted as XML. So to pretty print it,
+      // we need to make a document from it.
+      $doc_element = new DomDocument('1,0');
+      if ($doc_element->loadXML($ret)) {
+        $doc_element->formatOutput = TRUE;
+        $ret = $doc_element->saveXML();
+        $ok = TRUE;
+      }
+    }
+    $form['result'] = array(
+      '#markup' => $ok ? '<pre>' . check_plain($ret) . '</pre>' : check_plain($ret),
+      '#weight' => -99,
+    );
+    // Do not redirect; print the value directly into the form.
+    $form_state['redirect'] = FALSE;
+  }
+  elseif ($error = afas_api_last_call_info('error')) {
+    drupal_set_message(filter_xss($error), 'error');
+  }
 }

@@ -188,7 +188,9 @@ function afas_api_call_function($function, $arguments, $connection_options = arr
  * Call AFAS 'Update connector' with an XML string and standard arguments.
  *
  * @param $connector_name
+ *   Name of the UpdateConnector
  * @param $xml
+ *   XML string as specified by AFAS. (See their XSD Schemas.)
  *
  * @return bool|mixed
  *   Response object from NuSOAP call, or FALSE for error. In the last case,
@@ -224,7 +226,9 @@ function afas_api_send_data($connector_name, $xml) {
  *   FALSE:        $data_id is a get connector; return data as SimpleXMLElement.
  *   'report':     $data_id is the report ID for a report connector.
  *   'attachment': $data_id is the 'subject ID' (int) for a subject connector.
- *   'data':       $data_id is the ID for a data connector.
+ *   'data':       $data_id is the function name for which to retrieve the XSD
+ *                 schema. (This used to be called "DataConnector", but in 2014
+ *                 that term has disappeared from the online documentation.)
  * @param array $extra_arguments
  *   Other arguments (except connectorID and filters) to pass.
  *   See _afas_api_normalize_arguments(). Usually unnecessary.
@@ -262,8 +266,17 @@ function afas_api_get_data($data_id, $filters = array(), $data_type = TRUE, $ext
         break;
 
       case 'data':
-        $extra_arguments['dataID'] = $data_id;
-        // TODO convert $filters into parametersXML! (when we know its definition!)
+        // Oct 2014: I finally saw the first example of a 'DataConnector' in the
+        // latest version of the online documentation, at
+        // http://profitdownload.afas.nl/download/Connector-XML/DataConnector_SOAP.xml
+        // (on: Connectors > Call a Connector > SOAP call > UpdateConnector,
+        //  which is https://static-kb.afas.nl/datafiles/help/2_9_5/SE/EN/index.htm#App_Cnnctr_Call_SOAP_Update.htm)
+        // Funny thing is: there is NO reference of "DataConnector" in the
+        // documentation anymore!
+        // dataID is apparently hardcoded (as far as we know there is no other
+        // function for the so-called 'DataConnector' that getting XML schema):
+        $extra_arguments['dataID'] = 'GetXmlSchema';
+        $extra_arguments['parametersXml'] = "<DataConnector><UpdateConnectorId>$data_id</UpdateConnectorId><EncodeBase64>false</EncodeBase64></DataConnector>";
         $connection_options['connector_type'] = 'data';
         $function = 'Execute';
     }
