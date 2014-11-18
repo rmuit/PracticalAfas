@@ -155,9 +155,21 @@ function afas_api_nusoap_handle_client_error($client, $print_errors = NULL) {
       drupal_static('afas_api_nusoap_print_errors', FALSE);
     if ($print) {
       // You can't just print arguments; one argument may be the full XML which is too long.
-      $arg = isset($store_error['arguments'][0]) ? ($store_error['arguments'][0]  . ', ...') : $store_error['arguments'];
-      drupal_set_message($store_error['function'] . '(' . $arg . ') ' . $store_error['error']
-          . '<br/>See Recent Log Messages for more details.', 'error');
+      $arg =
+        implode(', ', array_diff_key($store_error['arguments'], array_flip(array(
+          'environmentId',
+          'userId',
+          'password',
+          'logonAs',
+          'connectorVersion'
+        ))));
+      if (strlen($arg) > 100) {
+        $arg = substr($arg, 0, 100) . '...';
+      }
+      drupal_set_message($store_error['function'] . '(' . check_plain($arg)
+                         . ') ' . check_plain($store_error['error'])
+                         . '<br/>See Recent Log Messages for more details.',
+        'error');
     }
     return TRUE;
   }
