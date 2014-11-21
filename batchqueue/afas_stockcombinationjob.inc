@@ -361,7 +361,8 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
   protected function getAfasStock() {
 
     // Get stock data from separate connector.
-    $afas_data = afas_api_get_data($this->stock_connector, $this->stock_extra_filter, FALSE);
+    $connection = new AfasSoapConnection();
+    $afas_data = $connection->getData($this->stock_connector, $this->stock_extra_filter, 'get_simplexml');
 
     $sku_field = !empty($this->stock_src_id_field) ? $this->stock_src_id_field :
       $this->src_id_field;

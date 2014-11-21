@@ -37,7 +37,8 @@ abstract class AfasImportJob extends BatchQueueImportJob {
   /// provide here for convenience, but not always enable by default.
 
   // Boolean: Advanced filter input element, which reads array structures
-  // understood by afas_api_get_data(). Set to TRUE to enable in settingsForm.
+  // understood by AfasSoapConnection::getData(). Set to TRUE to enable in
+  // settingsForm.
   protected $opt_adv_filter;
 // AfasGetConnector 1 end -- Custom 1 start
 
@@ -70,9 +71,9 @@ abstract class AfasImportJob extends BatchQueueImportJob {
    * @param bool $return_array
    *   If FALSE, returns a SimpleXMLElement object, otherwise an array of items.
    * @param array $extra_arguments
-   *   Extra parameters to pass to the AFAS SOAP call (GetDataWithOptions). This is
-   *   only very occasionally useful. Known parameters:
-   *   'Metadata' and 'OutputOptions'; see _afas_api_normalize_arguments().
+   *   Extra parameters to pass to the AFAS SOAP call (GetDataWithOptions). This
+   *   is only very occasionally useful. Known parameters: 'Metadata'
+   *   and 'OutputOptions'; see AfasSoapConnection::normalizeArguments().
    *
    * @return array|string
    *   Items from AFAS, or error message.
@@ -92,19 +93,19 @@ abstract class AfasImportJob extends BatchQueueImportJob {
       $tries_left = !empty($this->settings['tries']) ? $this->settings['tries'] : 1;
       while ($items === FALSE && --$tries_left >= 0) {
 
-        $connection_options = array();
+        $connection = new AfasSoapConnection();
         if (!empty($this->settings['response_timeout'])
             && is_numeric($this->settings['response_timeout'])) {
-          $connection_options =
-            array('response_timeout' => $this->settings['response_timeout']);
+          $connection->setOptions(
+            array('response_timeout' => $this->settings['response_timeout'])
+          );
         }
-
-        $items = afas_api_get_data($this->connector, $this->inputFilter(),
-          $return_array, $extra_arguments, $connection_options);
+        $items = $connection->getData($this->connector, $this->inputFilter(),
+          $return_array, $extra_arguments);
 
         if ($items === FALSE) {
           // Retry if timeout
-          $error = afas_api_last_call_info('error');
+          $error = $connection->getLastCallInfo('error');
           if (strpos($error, 'cURL ERROR: 28') !== FALSE) {
             if ($tries_left) {
               // Do 'error' only because it positions this message in between the other messages,
@@ -120,10 +121,10 @@ abstract class AfasImportJob extends BatchQueueImportJob {
       if ($items === FALSE) {
         // The caller always does a drupal_set_message (for Batch API form runs
         // that generate errors). So return a string to there, instead of doing
-        // our own drupal_set_message. Don't set 'print_errors' in afas_api; just
-        // ignore $this->print_errors.
+        // our own drupal_set_message. Don't set 'print_errors' in
+        // AfasSoapConnection; just ignore $this->print_errors.
         // More details are always logged to watchdog.
-        $items = afas_api_last_call_info('error') . ' (See Recent Log Messages for more details.)';
+        $items = $connection->getLastCallInfo('error') . ' (See Recent Log Messages for more details.)';
       }
       elseif ($return_array) {
         // Check if we need to cache items.
@@ -161,7 +162,8 @@ abstract class AfasImportJob extends BatchQueueImportJob {
    * Extends BatchQueueImportJob::inputFilter() with AFAS specific filters.
    *
    * @return array
-   *  'filters array' that can be used for calling afas_api_get_data().
+   *   'filters array' that can be used for calling
+   *   AfasSoapConnection::getData().
    */
   protected function inputFilter() {
     $filters = array();
@@ -170,13 +172,13 @@ abstract class AfasImportJob extends BatchQueueImportJob {
 // Custom 3 end -- AfasGetConnector 4 start
 
     // Add this filter 1 layer deeper than the 'simple'
-    // filter arguments. afas_api_get_data() will sort it out.
+    // filter arguments. AfasSoapConnection::getData() will sort it out.
     if (!empty($this->extra_filter)) {
       $filters[] = $this->extra_filter;
     }
 
     // Add filters from 'free text filter box' 1 layer deeper than the 'simple'
-    // filter arguments. afas_api_get_data() will sort it out.
+    // filter arguments. AfasSoapConnection::getData() will sort it out.
     foreach ($this->evalFilterInput() as $filter) {
       $filters[] = $filter;
     }
@@ -371,9 +373,10 @@ One example, to get only products that changed in the past week:<br/><em>array(<
               if (!isset($this->imgcache[$process['data_connector']])) {
                 // Image data for this item is not cached yet; get it.
 
-                if (!$items = afas_api_get_data($process['data_connector'],
+                $connection = new AfasSoapConnection();
+                if (!$items = $connection->getData($process['data_connector'],
                   array('Itemcode' => $this->src_item[$this->src_id_field]),
-                  FALSE)
+                  'get_simplexml')
                 ) {
                   // AFAS error was already logged (probably to watchdog; we
                   // do not change print_error settings), but we don't know
@@ -396,7 +399,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
               }
 
               if ($this->imgcache[$process['data_connector']] === FALSE) {
-                // afas_api_get_data() failed earlier; don't try again.
+                // AfasSoapConnection::getData() failed earlier; don't try again.
                 return;
               }
               if (!isset($this->imgcache[$process['data_connector']][$process['data_src']])) {

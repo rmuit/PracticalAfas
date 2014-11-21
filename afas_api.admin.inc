@@ -18,8 +18,8 @@ function afas_api_settings_form($form, &$form_state) {
   $form['afas_api_use_wsdl'] = array(
     '#type' => 'checkbox',
     '#title' => t('Use WSDL'),
-    '#description' => t('Not using WSDL is faster / simpler. However, v0.9.5 of the nuSOAP library cannot deal with AFAS servers without WSDL; you need sources from https://github.com/rmuit/NuSOAP'),
-    '#default_value' => variable_get('afas_api_use_wsdl', TRUE),
+    '#description' => t('Not using WSDL is faster / simpler; AFAS calls are simple/static enough not to need WSDL.'),
+    '#default_value' => variable_get('afas_api_use_wsdl', FALSE),
   );
   $form['afas_api_cache_wsdl'] = array(
     '#type' => 'select',
@@ -115,7 +115,9 @@ function afas_api_schema_form($form, &$form_state) {
  */
 function afas_api_schema_form_submit(&$form, &$form_state) {
   // Retrieve / display XSD.
-  $ret = afas_api_get_data($form_state['input']['function'], array(), 'data', array(), array('print_errors' => TRUE));
+  $connection = new AfasSoapConnection();
+  $connection->setErrorReporting(AFAS_LOG_SCREEN);
+  $ret = $connection->getData($form_state['input']['function'], array(), 'data', array());
   if ($ret) {
 
     /* We got an XML string returned, with the XSD encoded into one of the
@@ -164,8 +166,5 @@ function afas_api_schema_form_submit(&$form, &$form_state) {
     );
     // Do not redirect; print the value directly into the form.
     $form_state['redirect'] = FALSE;
-  }
-  elseif ($error = afas_api_last_call_info('error')) {
-    drupal_set_message(filter_xss($error), 'error');
   }
 }

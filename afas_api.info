@@ -2,6 +2,8 @@ name = AFAS API
 description = Base functionality for communicating with AFAS
 core = 7.x
 
+files[] = afas_api.classes.inc
+files[] = afas_api.nusoap.inc
 files[] = batchqueue/afas_getconnector.inc
 files[] = batchqueue/afas_getconnector_display.inc
 files[] = batchqueue/afas_importjob.inc
