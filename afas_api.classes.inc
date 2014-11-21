@@ -41,15 +41,25 @@ class AfasSoapConnection {
    */
   private $lastCallInfo;
 
+  /**
+   * Constructor function.
+   *
+   * @param string $client_class_name
+   *   The name of the class to use which contains soap-client specific
+   *   functionality in a callSoapFunction() method. It is almost never
+   *   necessary to provide this argument, because 'default' uses the SoapClient
+   *   class which comes bundled with PHP5.
+   */
   public function __construct($client_class_name = 'default') {
     // By default, do not print errors to the screen.
     $this->errorReporting = AFAS_LOG_WATCHDOG;
 
     if (empty($client_class_name) || $client_class_name == 'default') {
-      // Make a possibility to override usage of the PHP5-SOAP client by
-      // another class (e.g. 'AfasNusoapClient', in a site-config variable. This
-      // is supposedly used so infrequently that we do not have a config UI.
-      $this->clientClassName = variable_get('afas_api_client_class', 'AfasNusoapClient'); // @todo change this default!
+      // It is possible to override usage of the standard client by another
+      // class (e.g. 'AfasNusoapClient'), in a site-config variable. This is
+      // supposedly used so infrequently that there is no config UI for this.
+      $this->clientClassName = variable_get('afas_api_client_class', 'AfasNusoapClient');
+      // @todo change this default to AfasSoapClient!
     }
     else {
       $this->clientClassName = $client_class_name;
@@ -202,7 +212,7 @@ class AfasSoapConnection {
   }
 
   /**
-   * Calls AFAS 'Update connector' with an XML string and standard arguments.
+   * Calls AFAS 'Update connector' with standard arguments and an XML string.
    *
    * @param $connector_name
    *   Name of the UpdateConnector
@@ -210,15 +220,15 @@ class AfasSoapConnection {
    *   XML string as specified by AFAS. (See their XSD Schemas.)
    *
    * @return bool|mixed
-   *   Response object from NuSOAP call, or FALSE for error. In the last case,
+   *   Response object from SOAP call, or FALSE for error. In the last case,
    *   error details can be retrieved through getLastCallInfo(), but
-   *   they are printed/logged already.
+   *   they are printed/logged already (depending on getErrorReporting()).
    *   Be careful when checking only this return value for errors; some
    *   successful calls return an empty string.
    */
   function sendXml($connector_name, $xml) {
-    // This is not a complicated function, just a 'shorthand' to hide away all
-    // those confusing arguments that we never want to see or change.
+    // This is just a 'shorthand' to hide away all those confusing arguments
+    // to callSoapFunction that we never want to see or change.
     return $this->callSoapFunction(
       'Execute',
       array(
@@ -235,8 +245,6 @@ class AfasSoapConnection {
    * Sets up a SOAP connection to AFAS and calls a remote function. It should
    * not usually be necessary to call this function; it gets called from others.
    *
-   * @param AfasSoapConnection $afas_soap_connection
-   *   AfasSoapConnection class.
    * @param string $function
    *   Function name to call.
    * @param array $arguments
@@ -706,8 +714,11 @@ class AfasSoapConnection {
  * on a specific library used, while the AfasSoapConnection class can be
  * extended with arguments/behavior specific to certain functionality.
  *
- * Since the AfasSoapConnection class references this one as a property, we pass
- * that class in method arguments instead of referencing it as a property here.
+ * We pass the AfasSoapConnection class as a function argument in order to
+ * prevent cyclic references in class properties.
+ *
+ * @todo include and test PHP-SOAP code here. When rewriting the old NuSOAP
+ * centric code, the NuSOAP specific code was moved into AfasNusoapClient and
  */
 class AfasSoapClient {
 
