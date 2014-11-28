@@ -79,7 +79,7 @@ abstract class AfasGetConnector extends BatchQueueJob {
           );
         }
         $items = $connection->getData($this->connector, $this->inputFilter(),
-          $return_array, $extra_arguments);
+          $return_array ? 'get' : 'get_simplexml', $extra_arguments);
 
         if ($items === FALSE) {
           // Retry if timeout

@@ -146,6 +146,14 @@ class AfasSoapConnection {
           $function = 'Execute';
       }
     }
+    else {
+      $this->handleError(array(
+        'error_source' => 'call',
+        'error' => t('AFASSoapConnection::getData() called with unknown data_type argument %type!',
+          array('%type' => is_scalar($data_type) ? strval($data_type) : '<non-scalar>')),
+        'error_message_safe' => TRUE,
+      ));
+    }
 
     if ($function) {
       $data = $this->callSoapFunction($function, $extra_arguments, $connector_type);
@@ -371,7 +379,7 @@ class AfasSoapConnection {
           '@error' => $this->getLastCallInfo('error'),
           '@function' => $this->getLastCallInfo('function'),
           '@args' => print_r($this->getLastCallInfo('arguments'), TRUE)));
-// @todo what about debug? check it for our ICTP knthingy call.
+// @todo what about debug? check it for our ICTP knthingy call. We get some kind of object back which we can always convert to debug info.
 // @todo always log debug, regardless of error. Make option / constant.
     }
     if ($this->errorReporting & AFAS_LOG_SCREEN) {
