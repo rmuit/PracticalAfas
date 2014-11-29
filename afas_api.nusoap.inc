@@ -88,7 +88,8 @@ class AfasNusoapClient {
             $afas_soap_connection->handleError(array(
               'error_source' => 'wsdl',
               'error' => $error,
-              'debug' => $wsdl->getDebug(),
+              // At this point, getdebug() isn't completely horrible yet.
+              'error_detail' => $wsdl->getDebug(),
             ));
             return NULL;
           }
@@ -155,10 +156,29 @@ class AfasNusoapClient {
         $response = $client->Call($function, $arguments, 'urn:Afas.Profit.Services', 'urn:Afas.Profit.Services/' . $function, FALSE, NULL, 'document', 'literal wrapped');
       }
       if ($error = $client->getError()) {
+        if (isset($response->detail)) {
+          // NuSOAP's $client->getDebug() is just unusable. It includes
+          // duplicate info and lots of HTML font colors etc (or is that my
+          // settings influencing var_dump output? That still doesn't change
+          // the fact that it's unusable though).
+          // There are some details in there that are not in $response, like the
+          // parameters (but we already have those in
+          // $afas_soap_connection->lastCallInfo) and HTTP headers sent/received
+          // $response now actually is an array with 'faultcode', 'faultstring'
+          // and 'detail' keys - 'detail' contains 'ProfitApplicationException'
+          // containing 'ErrorNumber', 'Message' (== faultstring) and 'Detail'.
+          $details = print_r($response, TRUE);
+        }
+        else {
+          // Too bad; we don't have anything else than this...
+          // (If ->detail isn't set, then probably $response is false. If it is
+          // not false, we don't know yet which option is better.)
+          $details = $client->getDebug();
+        }
         $afas_soap_connection->handleError(array(
           'error_source' => 'client',
           'error' => $error,
-          'debug' => $client->getDebug(),
+          'error_detail' => $details,
         ));
       }
       else {

@@ -116,7 +116,7 @@ function afas_api_schema_form($form, &$form_state) {
 function afas_api_schema_form_submit(&$form, &$form_state) {
   // Retrieve / display XSD.
   $connection = new AfasSoapConnection();
-  $connection->setErrorReporting(AFAS_LOG_SCREEN);
+  $connection->setErrorReporting(AFAS_LOG_ERROR_DETAILS_SCREEN);
   $ret = $connection->getData($form_state['input']['function'], array(), 'data', array());
   if ($ret) {
 

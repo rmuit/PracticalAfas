@@ -6,17 +6,31 @@
  */
 
 // Constants used by the connection classes are defined here, so they are
-// recognized in external code without the classes being 'use'd.
+// recognized in external code without having to explicitly include the class
+// file. (Because Drupal 7 autoload is built to not include things explicitly.)
 
 /**
- * Errors reported by AFAS endpoint are logged to watchdog.
+ * Errors reported by the AFAS endpoint or this code are logged to watchdog.
  */
-const AFAS_LOG_WATCHDOG = 1;
+const AFAS_LOG_ERRORS_WATCHDOG = 1;
 
 /**
- * Errors reported by AFAS endpoint are printed using drupal_set_message().
+ * Errors reported by the AFAS endpoint or this code are output to the screen
+ * using drupal_set_message().
  */
-const AFAS_LOG_SCREEN = 2;
+const AFAS_LOG_ERRORS_SCREEN = 2;
+
+/**
+ * Verbose error details reported by the AFAS endpoint or this code are logged
+ * to watchdog. This implies AFAS_LOG_ERRORS_WATCHDOG.
+ */
+const AFAS_LOG_ERROR_DETAILS_WATCHDOG = 4;
+
+/**
+ * Verbose error details reported by the AFAS endpoint or this code are output
+ * to the screen using drupal_set_message(). Implies AFAS_LOG_ERRORS_SCREEN.
+ */
+const AFAS_LOG_ERROR_DETAILS_SCREEN = 8;
 
 /**
  * Implements hook_menu().

@@ -52,7 +52,7 @@ class AfasSoapConnection {
    */
   public function __construct($client_class_name = 'default') {
     // By default, do not print errors to the screen.
-    $this->errorReporting = AFAS_LOG_WATCHDOG;
+    $this->errorReporting = AFAS_LOG_ERROR_DETAILS_WATCHDOG;
 
     if (empty($client_class_name) || $client_class_name == 'default') {
       // It is possible to override usage of the standard client by another
@@ -288,7 +288,10 @@ class AfasSoapConnection {
     catch (exception $e) {
       $this->handleError(array(
         'error_source' => 'code',
-        'error' => $e->getMessage(),
+        'error' => t('SOAP call threw exception: @error',
+          array('@error' => $e->getMessage())),
+        'error_message_safe' => TRUE,
+        'error_detail' => $e->getFile() . ':' . $e->getLine(),
       ));
     }
   }
@@ -298,26 +301,28 @@ class AfasSoapConnection {
    * This is the way to get error information after a function returned FALSE.
    *
    * @param string $type
-   *   Type of information to return. Should be mostly self explanatory.
-   *   Can be 'error_source', 'error', 'debug', 'function', 'arguments', 'time',
-   *   or left empty.
-   *   'error_source' can be "code" (should never happen), "call" (invalid
-   *   parameters etc), "config" (missing configuration), "wsdl" and "client"
-   *   (probably remote errors)
+   *   Type of information to return. Can be:
+   *   - empty: see return value
+   *   - error_message_safe - boolean; if nonempty, this specifies 'error' is
+   *                          sanitized already
+   *   - error:               string; error message
+   *   - error_detail:        string; detailed error info
+   *   - error_source:        string; can be "code" (should never happen),
+   *      "call" (invalid parameters etc), "config" (missing configuration),
+   *      "wsdl" and "client" (probably remote errors).
+   *   - function:            string; SOAP function name. Only filled for
+   *                          error_source "wsdl" and "client".
+   *   - arguments:           array; SOAP function arguments.
+   *   - time:                string; timestamp for error.
    *
    * @return mixed
-   *  The requested info. 'error', 'function' and 'time' return strings.
-   *  'argument' and 'debug'(?) return arrays.
    *  If $type is empty, all these values are returned in an encompassing array.
-   *  In that case, not all elements are guaranteed to be set; e.g.
-   *  'function' is unset but 'error' is set, if an error is encountered by this
-   *  class without  making an actual SOAP call.
-   * @todo check if this function signature is OK for PHP-SOAP
+   *  In that case, not all elements are guaranteed to be set (see param).
    */
   public function getLastCallInfo($type = '') {
     $last_call = $this->lastCallInfo;
     if (!empty($type)) {
-      return empty($last_call[$type]) ? '' : $last_call[$type];
+      return isset($last_call[$type]) ? $last_call[$type] : '';
     }
     return $last_call;
   }
@@ -339,8 +344,9 @@ class AfasSoapConnection {
    *
    * @param int $methods_mask
    *   Ways to log/display errors reported by the AFAS endpoint. The value acts
-   *   as a bit mask; usually you will want to set either AFAS_LOG_WATCHDOG
-   *   or AFAS_LOG_WATCHDOG | AFAS_LOG_SCREEN.
+   *   as a bit mask; usually you will want to set AFAS_LOG_ERRORS_WATCHDOG or
+   *   AFAS_LOG_ERROR_DETAILS_WATCHDOG, and optionally add
+   *   "| AFAS_LOG_ERRORS_SCREEN" or "| AFAS_LOG_ERROR_DETAILS_SCREEN".
    *
    */
   public function setErrorReporting($methods_mask) {
@@ -352,9 +358,9 @@ class AfasSoapConnection {
    * logging/printing on screen according to earlier set properties.
    *
    * @param array $error_info
-   *   Error details to remember/handle. Usually, array keys are 'error' and
-   *   'debug'. (This is not checked, but other array keys are probably never
-   *   used.)
+   *   Error info to remember/handle; see getLastCallInfo() for details.
+   *
+   * @see getLastCallInfo()
    *
    * @todo option to throw errors in case of error, instead of logging/printing.
    */
@@ -369,21 +375,64 @@ class AfasSoapConnection {
         'function',
         'arguments',
       ))) + $error_info;
-    $this->lastCallInfo['time'] = date('r', time());
+    // This is equivalent to date('r') except it does not emit warnings if
+    // the current timezone is not set in php.ini.
+    $this->lastCallInfo['time'] = date_format(date_create(), 'r');
 
-    // Determine whether to print errors, from the function argument OR static var.
-    // Always log to watchdog, because that's too much detail to print to the screen.
-    if ($this->errorReporting & AFAS_LOG_WATCHDOG) {
-      watchdog('afas_api_soap', 'Error: @error<br/>Function: @function<br/>Arguments: @args',
-        array(
-          '@error' => $this->getLastCallInfo('error'),
-          '@function' => $this->getLastCallInfo('function'),
-          '@args' => print_r($this->getLastCallInfo('arguments'), TRUE)));
-// @todo what about debug? check it for our ICTP knthingy call. We get some kind of object back which we can always convert to debug info.
-// @todo always log debug, regardless of error. Make option / constant.
+    // Log to watchdog, error plus (optionally) details into one message.
+    if ($this->errorReporting & AFAS_LOG_ERROR_DETAILS_WATCHDOG) {
+      // Do not double-escape error messages.
+      $message_placeholder = $this->getLastCallInfo('error_message_safe')
+        ? '!error' : '@error';
+      $details = $this->getLastCallInfo('error_detail');
+      $function = $this->getLastCallInfo('function');
+      if ($function) {
+        // $details contains newlines which we want to honor when viewing
+        // watchdog logs on screen. But we also do not want to assume its value
+        // is safe. So we cannot replace newlines by <br> because those will be
+        // escaped with the rest of the value. (Unless we sanitize all of
+        // $details before saving.) Therefore: enclose in <pre>.
+        // Since we're already doing that for $details, do for $args too.
+        watchdog('afas_api', "Error: $message_placeholder<br>Function: @function<br>Arguments:<br><pre>@args</pre><br><strong>Error details:</strong><br><pre>@detail</pre>",
+          array(
+            $message_placeholder => $this->getLastCallInfo('error'),
+            '@function' => $this->getLastCallInfo('function'),
+            '@args' => print_r($this->getLastCallInfo('arguments'), TRUE),
+            '@detail' => $details ? $details : '-'),
+          WATCHDOG_ERROR);
+      }
+      else {
+        watchdog('afas_api', "Source: @source<br>Error: $message_placeholder<br>Error details:<br><pre>@detail</pre>",
+          array(
+            '@source' => $this->getLastCallInfo('error_source'),
+            $message_placeholder => $this->getLastCallInfo('error'),
+            '@detail' => $details ? $details : '-'),
+          WATCHDOG_ERROR);
+      }
     }
-    if ($this->errorReporting & AFAS_LOG_SCREEN) {
+    elseif ($this->errorReporting & AFAS_LOG_ERRORS_WATCHDOG) {
+      $message_placeholder = $this->getLastCallInfo('error_message_safe')
+        ? '!error' : '@error';
+      $function = $this->getLastCallInfo('function');
+      if ($function) {
+        watchdog('afas_api', "Error: $message_placeholder<br/>Function: @function<br/>Arguments: @args",
+          array(
+            $message_placeholder => $this->getLastCallInfo('error'),
+            '@function' => $this->getLastCallInfo('function'),
+            '@args' => print_r($this->getLastCallInfo('arguments'), TRUE)), WATCHDOG_ERROR);
+      }
+      else {
+        watchdog('afas_api', "Source: @source<br>Error: $message_placeholder",
+          array(
+            '@source' => $this->getLastCallInfo('error_source'),
+            $message_placeholder => $this->getLastCallInfo('error')), WATCHDOG_ERROR);
+      }
+    }
+
+    // Log to screen,(optionally) details in separate message.
+    if ($this->errorReporting & (AFAS_LOG_ERRORS_SCREEN | AFAS_LOG_ERROR_DETAILS_SCREEN)) {
       // You can't just print arguments; one argument may be the full XML which is too long.
+      $details = $this->getLastCallInfo('error_detail');
       $function = $this->getLastCallInfo('function');
       if ($function) {
         $args = $this->getLastCallInfo('arguments');
@@ -404,10 +453,21 @@ class AfasSoapConnection {
       $message = $function . ($this->getLastCallInfo('error_message_safe')
           ? $this->getLastCallInfo('error')
           : check_plain($this->getLastCallInfo('error')));
-      if ($this->errorReporting & AFAS_LOG_WATCHDOG) {
+      if ($details
+          && $this->errorReporting & AFAS_LOG_ERROR_DETAILS_WATCHDOG
+          && !($this->errorReporting & AFAS_LOG_ERROR_DETAILS_SCREEN)) {
         $message .= '<br/>See Recent Log Messages for more details.';
       }
       drupal_set_message($message, 'error');
+
+      if ($details && $this->errorReporting & AFAS_LOG_ERROR_DETAILS_SCREEN) {
+        // We can replace newlines by <br> but since some of the AFAS error
+        // details are formatted for display in a monospace font, enclose in
+        // <pre> instead.
+        drupal_set_message('Error details:<br><pre>'
+                           . check_plain($details) . '</pre>',
+          'error');
+      }
     }
   }
 
