@@ -2691,6 +2691,457 @@ class AfasSoapConnection {
     return $info;
   }
 
+  /**
+   * Maps country name to AFAS country code.
+   *
+   * @param string $name
+   *   Country name
+   * @param int $default_behavior
+   *   Code for default behavior if name is not found:
+   *   0: always return empty string
+   *   1: if $name itself is equal to a country code, return that code (always
+   *      uppercased). So the function accepts codes as well as names.
+   *   2: return the (non-uppercased) original string as default, even though it
+   *      is apparently not a legal code.
+   *   3: 1 + 2.
+   *   4: return NL instead of '' as the default. (Because AFAS is used in NL
+   *      primarily.)
+   *   5: 1 + 4.
+   *
+   * @return string
+   *   Country name, or NL / '' if not found.
+   */
+  public static function convertCountryName($name, $default_behavior = 0) {
+    // We define a flipped array here because it looks nicer / I just don't want
+    // to bother changing it around :p. In the future we could have this array
+    // map multiple names to the same country code, in which case we need to
+    // flip the keys/values.
+    $codes = array_flip(array_map('strtolower', array(
+      'AFG' => 'Afghanistan',
+      'AL' => 'Albania',
+      'DZ' => 'Algeria',
+      'ASM' => 'American Samoa',
+      'AND' => 'Andorra',
+      'AO' => 'Angola',
+      'AIA' => 'Anguilla',
+      'AG' => 'Antigua and Barbuda',
+      'RA' => 'Argentina',
+      'AM' => 'Armenia',
+      'AUS' => 'Australia',
+      'A' => 'Austria',
+      'AZ' => 'Azerbaijan',
+      'BS' => 'Bahamas',
+      'BRN' => 'Bahrain',
+      'BD' => 'Bangladesh',
+      'BDS' => 'Barbados',
+      'BY' => 'Belarus',
+      'B' => 'België',
+      'BH' => 'Belize',
+      'BM' => 'Bermuda',
+      'DY' => 'Benin',
+      'BT' => 'Bhutan',
+      'BOL' => 'Bolivia',
+      'BA' => 'Bosnia and Herzegowina',
+      'RB' => 'Botswana',
+      'BR' => 'Brazil',
+      'BRU' => 'Brunei Darussalam',
+      'BG' => 'Bulgaria',
+      'BU' => 'Burkina Faso',
+      'RU' => 'Burundi',
+      'K' => 'Cambodia',
+      'TC' => 'Cameroon',
+      'CDN' => 'Canada',
+      'CV' => 'Cape Verde',
+      'RCA' => 'Central African Republic',
+      'TD' => 'Chad',
+      'RCH' => 'Chile',
+      'CN' => 'China',
+      'CO' => 'Colombia',
+      'KM' => 'Comoros',
+      'RCB' => 'Congo',
+      'CR' => 'Costa Rica',
+      'CI' => 'Cote D\'Ivoire',
+      'HR' => 'Croatia',
+      'C' => 'Cuba',
+      'CY' => 'Cyprus',
+      'CZ' => 'Czech Republic',
+      'DK' => 'Denmark',
+      'DJI' => 'Djibouti',
+      'WD' => 'Dominica',
+      'DOM' => 'Dominican Republic',
+      'TLS' => 'East Timor',
+      'EC' => 'Ecuador',
+      'ET' => 'Egypt',
+      'EL' => 'El Salvador',
+      'CQ' => 'Equatorial Guinea',
+      'ERI' => 'Eritrea',
+      'EE' => 'Estonia',
+      'ETH' => 'Ethiopia',
+      'FLK' => 'Falkland Islands (Malvinas)',
+      'FRO' => 'Faroe Islands',
+      'FJI' => 'Fiji',
+      'FIN' => 'Finland',
+      'F' => 'France',
+      'GF' => 'French Guiana',
+      'PYF' => 'French Polynesia',
+      'ATF' => 'French Southern Territories',
+      'GA' => 'Gabon',
+      'WAG' => 'Gambia',
+      'GE' => 'Georgia',
+      'D' => 'Germany',
+      'GH' => 'Ghana',
+      'GIB' => 'Gibraltar',
+      'GR' => 'Greece',
+      'GRO' => 'Greenland',
+      'WG' => 'Grenada',
+      'GP' => 'Guadeloupe',
+      'GUM' => 'Guam',
+      'GCA' => 'Guatemala',
+      'GN' => 'Guinea',
+      'GW' => 'Guinea-bissau',
+      'GUY' => 'Guyana',
+      'RH' => 'Haiti',
+      'HMD' => 'Heard and Mc Donald Islands',
+      'HON' => 'Honduras',
+      'HK' => 'Hong Kong',
+      'H' => 'Hungary',
+      'IS' => 'Iceland',
+      'IND' => 'India',
+      'RI' => 'Indonesia',
+      'IR' => 'Iran (Islamic Republic of)',
+      'IRQ' => 'Iraq',
+      'IRL' => 'Ireland',
+      'IL' => 'Israel',
+      'I' => 'Italy',
+      'JA' => 'Jamaica',
+      'J' => 'Japan',
+      'HKJ' => 'Jordan',
+      'KZ' => 'Kazakhstan',
+      'EAK' => 'Kenya',
+      'KIR' => 'Kiribati',
+      'KO' => 'Korea, Democratic People\'s Republic of',
+      'ROK' => 'Korea, Republic of',
+      'KWT' => 'Kuwait',
+      'KG' => 'Kyrgyzstan',
+      'LAO' => 'Lao People\'s Democratic Republic',
+      'LV' => 'Latvia',
+      'RL' => 'Lebanon',
+      'LS' => 'Lesotho',
+      'LB' => 'Liberia',
+      'LAR' => 'Libyan Arab Jamahiriya',
+      'FL' => 'Liechtenstein',
+      'LT' => 'Lithuania',
+      'L' => 'Luxembourg',
+      'MO' => 'Macau',
+      'MK' => 'Macedonia, The Former Yugoslav Republic of',
+      'RM' => 'Madagascar',
+      'MW' => 'Malawi',
+      'MAL' => 'Malaysia',
+      'MV' => 'Maldives',
+      'RMM' => 'Mali',
+      'M' => 'Malta',
+      'MAR' => 'Marshall Islands',
+      'MQ' => 'Martinique',
+      'RIM' => 'Mauritania',
+      'MS' => 'Mauritius',
+      'MYT' => 'Mayotte',
+      'MEX' => 'Mexico',
+      'MIC' => 'Micronesia, Federated States of',
+      'MD' => 'Moldova, Republic of',
+      'MC' => 'Monaco',
+      'MON' => 'Mongolia',
+      'MSR' => 'Montserrat',
+      'MA' => 'Morocco',
+      'MOC' => 'Mozambique',
+      'BUR' => 'Myanmar',
+      'SWA' => 'Namibia',
+      'NR' => 'Nauru',
+      'NL' => 'Nederland',
+      'NPL' => 'Nepal',
+      'NA' => 'Netherlands Antilles',
+      'NCL' => 'New Caledonia',
+      'NZ' => 'New Zealand',
+      'NIC' => 'Nicaragua',
+      'RN' => 'Niger',
+      'WAN' => 'Nigeria',
+      'NIU' => 'Niue',
+      'NFK' => 'Norfolk Island',
+      'MNP' => 'Northern Mariana Islands',
+      'N' => 'Norway',
+      'OMA' => 'Oman',
+      'PK' => 'Pakistan',
+      'PLW' => 'Palau',
+      'PSE' => 'Palestina',
+      'PA' => 'Panama',
+      'PNG' => 'Papua New Guinea',
+      'PY' => 'Paraguay',
+      'PE' => 'Peru',
+      'RP' => 'Philippines',
+      'PCN' => 'Pitcairn',
+      'PL' => 'Poland',
+      'P' => 'Portugal',
+      'PR' => 'Puerto Rico',
+      'QA' => 'Qatar',
+      'REU' => 'Reunion',
+      'RO' => 'Romania',
+      'RUS' => 'Russian Federation',
+      'RWA' => 'Rwanda',
+      'KN' => 'Saint Kitts and Nevis',
+      'WL' => 'Saint Lucia',
+      'WV' => 'Saint Vincent and the Grenadines',
+      'WSM' => 'Samoa',
+      'RSM' => 'San Marino',
+      'ST' => 'Sao Tome and Principe',
+      'AS' => 'Saudi Arabia',
+      'SN' => 'Senegal',
+      'SRB' => 'Serbia',
+      'SY' => 'Seychelles',
+      'WAL' => 'Sierra Leone',
+      'SGP' => 'Singapore',
+      'SK' => 'Slovakia (Slovak Republic)',
+      'SLO' => 'Slovenia',
+      'SB' => 'Solomon Islands',
+      'SP' => 'Somalia',
+      'ZA' => 'South Africa',
+      'GS' => 'South Georgia and the South Sandwich Islands',
+      'E' => 'Spain',
+      'CL' => 'Sri Lanka',
+      'SHN' => 'St. Helena',
+      'SPM' => 'St. Pierre and Miquelon',
+      'SUD' => 'Sudan',
+      'SME' => 'Suriname',
+      'SJM' => 'Svalbard and Jan Mayen Islands',
+      'SD' => 'Swaziland',
+      'S' => 'Sweden',
+      'CH' => 'Switzerland',
+      'SYR' => 'Syrian Arab Republic',
+      'RC' => 'Taiwan',
+      'TAD' => 'Tajikistan',
+      'EAT' => 'Tanzania, United Republic of',
+      'T' => 'Thailand',
+      'TG' => 'Togo',
+      'TK' => 'Tokelau',
+      'TO' => 'Tonga',
+      'TT' => 'Trinidad and Tobago',
+      'TN' => 'Tunisia',
+      'TR' => 'Turkey',
+      'TMN' => 'Turkmenistan',
+      'TCA' => 'Turks and Caicos Islands',
+      'TV' => 'Tuvalu',
+      'EAU' => 'Uganda',
+      'UA' => 'Ukraine',
+      'AE' => 'United Arab Emirates',
+      'GB' => 'United Kingdom',
+      'USA' => 'United States',
+      'UMI' => 'United States Minor Outlying Islands',
+      'ROU' => 'Uruguay',
+      'OEZ' => 'Uzbekistan',
+      'VU' => 'Vanuatu',
+      'VAT' => 'Vatican City State (Holy See)',
+      'YV' => 'Venezuela',
+      'VN' => 'Viet Nam',
+      'VGB' => 'Virgin Islands (British)',
+      'VIR' => 'Virgin Islands (U.S.)',
+      'WLF' => 'Wallis and Futuna Islands',
+      'ESH' => 'Western Sahara',
+      'YMN' => 'Yemen',
+      'Z' => 'Zambia',
+      'ZW' => 'Zimbabwe',
+    )));
+
+    if (isset($codes[strtolower($name)])) {
+      return $codes[$name];
+    }
+    if ($default_behavior | 1) {
+      // Search for code inside array. If found, $name is a code.
+      if (in_array(strtoupper($name), $codes, TRUE)) {
+        return strtoupper($name);
+      }
+    }
+    if ($default_behavior | 2) {
+      return $name;
+    }
+    if ($default_behavior | 4) {
+      return 'NL';
+    }
+    return '';
+  }
+
+  /**
+   * Maps ISO to AFAS country code.
+   * (Note: this function is not complete yet, it only does Europe correctly.)
+   *
+   * @param string $isocode
+   *   ISO9166 2-letter country code
+   *
+   * @return string
+   *   AFAS country code
+   */
+  public static function convertIsoCountryCode($isocode) {
+    // European codes we know to NOT match the 2-letter ISO codes:
+    $cc = array(
+      'AT' => 'A',
+      'BE' => 'B',
+      'DE' => 'D',
+      'ES' => 'E',
+      'FI' => 'FIN',
+      'FR' => 'F',
+      'HU' => 'H',
+      'IT' => 'I',
+      'LU' => 'L',
+      'NO' => 'N',
+      'PT' => 'P',
+      'SE' => 'S',
+      'SI' => 'SLO',
+    );
+    if (!empty($cc[strtoupper($isocode)])) {
+      return $cc[strtoupper($isocode)];
+    }
+    // Return the input string (uppercased), or '' if the code is unrecognized.
+    return self::convertCountryName($isocode, 1);
+  }
+
+  /**
+   * Normalizes country_code, last_name, extracts search_name for use in update
+   * connectors. This function can be called for an array containing person
+   * data, address data, or both. See code details; it contains 'Dutch specific'
+   * logic, which can be a nice time saver but is partly arbitrary and not
+   * necessarily complete.
+   *
+   * This function only works if the keys in $data are all aliases (like
+   * first_name), not original AFAS tag names (like FiNm)!
+   *
+   * @param $data
+   *   Array with person and/or address data
+   */
+  public static function normalizePersonAddress(&$data) {
+
+    if (!empty($data['country_code'])) {
+      // country_code can contain names as well as ISO9166 country codes;
+      // normalize it to AFAS code.
+      // NOTE: country_code is assumed NOT to contain an AFAS 1/3 letter country
+      // code (because who uses these anyway?); these would be emptied out!
+      if (strlen($data['country_code']) > 3) {
+        $data['country_code'] = self::convertCountryName($data['country_code'], 3);
+      }
+      else {
+        $data['country_code'] = self::convertIsoCountryCode($data['country_code']);
+      }
+    }
+
+    if (!empty($data['street']) && empty($data['house_number']) && empty($data['house_number_add'])) {
+      // Split out house number and possible extension from street, because AFAS
+      // has separate fields for those
+      // We do this _only_ for defined countries where the splitting of house
+      // numbers is common. (This is a judgment call, and the list of countries
+      // is arbitrary - but there's slightly less risk of messing up foreign
+      // addresses that way.) 'No country' is assumed to be 'NL' since AFAS is
+      // NL-centric.
+      // This code comes from addressfield_tfnr module.
+      $want_to_split = FALSE;
+      $found = FALSE;
+      $matches = array();
+      if (empty($data['country_code']) || in_array($data['country_code'],
+          array('B', 'D', 'DK', 'FIN', 'H', 'NL', 'NO', 'S'))) {
+        // Split house nr and extension if possible.
+        $want_to_split = TRUE;
+        $found = preg_match('/^
+          (.*?\S) \s+ (\d+)  # normal thoroughfare, followed by spaces and a number;
+                             # non-greedy because for STREET NR1 NR2, "nr1" should
+                             # end up in the number field, not "nr2".
+          (?:\s+|[\-\.\/])?  # optionally separated by spaces or 1 other special character, which we throw away
+          (\S{0,4})?         # followed by optional suffix of at most 4 chars.
+                             # (I want to match "sous", at least.)
+          \s* $/x', $data['street'], $matches); // x == extended regex pattern
+        if ($found) {
+          $data['street'] = $matches[1];
+          $data['house_number'] = $matches[2];
+          if (!empty($matches[3])) {
+            $data['house_number_add'] = $matches[3];
+          }
+        }
+      }
+      //
+      // $want_to_split && !$found, improvise.
+      if ($want_to_split && !$found || $data['country_code'] == 'F') {
+        // Split house nr if possible. This happens if:
+        // - the country usually has addresses with house number (but not ext)
+        // - above regexp did not yield anything. we assume that our AFAS
+        //   installation really wants a house number, so we improvise.
+        //   (Note I have no idea if it's a good idea to split out 'house number
+        //   plus optional prefix' into one housenumber field, which is what
+        //   the above call does too. Change it when we get errors.)
+        // Same pattern except number + extension rolled into one match:
+        $found = preg_match('/^
+          (.*?\S) \s+ (\d+   # delete right bracket
+          (?:\s+|[\-\.\/])?  # ...so this is part of the 2nd match.
+          \S{0,4})           # delete left bracket; end 2nd match.
+          \s* $/x', $data['street'], $matches);
+        if ($found) {
+          $data['street'] = $matches[1];
+          $data['house_number'] = $matches[2];
+        }
+          // Try to find it on _both_ sides of the thoroughfare, also on start:
+        if (!$found && preg_match('/^\s*
+              (\d+              # number
+              (?:\s+|[\-\.\/])? # optionally separated by spaces or 1 other special character
+              \S{0,4})          # followed by optional suffix of at most 4 chars.
+              [,\s]\s*          # at least one space OR comma behind housenumber, can be thrown away
+              (\S.*)            # 2nd match: real thoroughfare field.
+              $/x', $data['street'], $matches)) {
+            $data['street'] = $matches[1];
+            $data['house_number'] = $matches[2];
+        }
+        // If that did not match, I guess we'll just let AFAS throw an error.
+      }
+    }
+
+    if (!empty($data['last_name']) && empty($data['prefix'])) {
+      // Split off (Dutch) prefix from last name.
+      // NOTE: creepily hardcoded stuff. Spaces are necessary, and sometimes
+      // ordering matters! ('van de' before 'van')
+      $name = strtolower($data['last_name']);
+      foreach (array(
+                 'de ',
+                 'v.',
+                 'v ',
+                 'v/d ',
+                 'v.d.',
+                 'van de ',
+                 'van der ',
+                 'van ',
+                 "'t "
+               ) as $value) {
+        if (strpos($name, $value) === 0) {
+          $data['prefix'] = $value;
+          $data['last_name'] = trim(substr($data['last_name'], strlen($value)));
+          break;
+        }
+      }
+    }
+
+    // Set search name
+    if (!empty($data['last_name']) && empty($data['search_name'])) {
+      // Zoeknaam: we got no request for a special definition of this, so:
+      $data['search_name'] = strtoupper($data['last_name']);
+      // Max length is 10, and we don't need to be afraid of duplicates.
+      if (strlen($data['search_name']) > 10) {
+        $data['search_name'] = substr($data['search_name'], 0, 10);
+      }
+    }
+
+    // Check if first name is really only initials
+    if (!empty($data['first_name']) && empty($data['initials'])) {
+      $data['first_name'] = trim($data['first_name']);
+      //  AFAS' automatic resolving in the thinks anything is initials if it
+      // contains a dot.
+      if (strlen($data['first_name']) < 16 && strpos($data['first_name'], '.') !== FALSE) {
+        $data['initials'] = $data['first_name'];
+        unset($data['first_name']);
+      }
+    }
+  }
+
 }
 
 /**
