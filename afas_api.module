@@ -95,10 +95,21 @@ function afas_api_libraries_info() {
 }
 
 /**
+ * Implements hook_afas_api_client_info().
+ */
+function afas_api_afas_api_client_info() {
+
+  // This requires batchqueue module. See admin/config/system/batchqueue.
+  $classes['AfasSoapClient'] = t('Client using standard PHP5 SOAP extension. Does not work with WSDL.');
+  $classes['AfasNusoapClient'] = t('Client using NuSOAP library. This can be used if the (preferred) PHP SOAP extension is not compiled/enabled on your server.')
+                                . '<br>' . t("Note v0.9.5 of the nuSOAP library cannot deal with AFAS servers without WSDL; you need to use WSDL or (since WSDL introduces overhead which is unnecessary with AFAS' simple call structure) you need sources from https://github.com/rmuit/NuSOAP.");
+  return $classes;
+}
+
+/**
  * Implements hook_queue_info().
  */
 function afas_api_queue_info() {
-  $queues = array();
 
   // This requires batchqueue module. See admin/config/system/batchqueue.
   $queues['afas_getconnector_display'] = array(

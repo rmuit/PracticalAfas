@@ -9,6 +9,34 @@
  */
 function afas_api_settings_form($form, &$form_state) {
 
+  $form['help'] = array(
+    '#markup' => t('These configuration options are used by the standard AfasSoapConnection class.')
+  );
+
+  $info = module_invoke_all('afas_api_client_info');
+  $form['class'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Client class'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+  $form['class']['afas_api_client_class'] = array(
+    '#type' => 'select',
+    '#title' => t('The name of the AFAS soap client class to use'),
+    '#options' => array_combine(array_keys($info), array_keys($info)),
+    '#default_value' => variable_get('afas_api_client_class', 'AfasSoapClient'),
+  );
+  $form['class']['info'] = array(
+    '#markup' => '<p>' . t('More information:') . '</p><p>',
+    '#prefix' => '<div class="description">',
+    '#suffix' => '</div>',
+  );
+  foreach ($info as $classname => $description) {
+    $form['class']['info']['#markup'] .= '<li>' . $classname . ': '
+                                         . $description . '</li>';
+  }
+  $form['class']['info']['#markup'] .= '</p>';
+
   $form['afas_api_url'] = array(
     '#type' => 'textfield',
     '#title' => t('URL of Web Service'),
