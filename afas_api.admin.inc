@@ -43,6 +43,12 @@ function afas_api_settings_form($form, &$form_state) {
     '#default_value' => variable_get('afas_api_environment', ''),
     '#size' => 20,
   );
+  $form['afas_api_domain'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Domain'),
+    '#default_value' => variable_get('afas_api_domain', 'AOL'),
+    '#size' => 20,
+  );
   $form['afas_api_user'] = array(
     '#type' => 'textfield',
     '#title' => t('User ID'),
@@ -85,12 +91,14 @@ function afas_api_schema_form($form, &$form_state) {
   // to itself and you will see the text.
   if (empty($form_state['input'])) {
     $form['desc'] = array(
-      '#markup' => t('<p>This screen retrieves information about the XML which should be sent to AFAS as a parameter to UpdateConnector and ReportConnector functions. (See afas_api_send_data().)</p><p>This can provide useful information for developers writing their own Update Connectors.</p>'),
+      '#markup' => '<p>' . t('This screen retrieves information about the XML which should be sent to AFAS as a parameter to UpdateConnector and ReportConnector functions. (See afas_api_send_data().)</p><p>This can provide useful information for developers writing their own Update Connectors.') . '</p>',
       '#weight' => 1,
     );
     $form['desc2'] = array(
-      '#markup' => '<div class="description">' . t('(Information about all possible SOAP functions to call, with their call parameters, can be retrieved from '
-                     . check_plain(variable_get('afas_api_url')) . '/XXXconnector.asmx - with XXX being update/report/get/data. But you probably don\'t need that and can just call <em>afas_api_send_data(function_name, XML)</em> instead of calling the lower level SOAP functions.)') . '</div>',
+      '#markup' => t('(Information about all possible SOAP functions to call, with their call parameters, can be retrieved from '
+                     . check_plain(variable_get('afas_api_url')) . '/XXXconnector.asmx - with XXX being update/report/get/data. But you probably don\'t need that and can just call <em>afas_api_send_data(function_name, XML)</em> instead of calling the lower level SOAP functions.)'),
+      '#prefix' => '<div class="description">',
+      '#suffix' => '</div>',
       '#weight' => 2,
     );
   }

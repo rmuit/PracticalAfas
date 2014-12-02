@@ -82,7 +82,7 @@ class AfasNusoapClient {
         $wsdl  = $cache->get($endpoint);
         if (is_null($wsdl)) {
           $wsdl = new wsdl();
-          $wsdl->setCredentials('AOL\\' . $options['userId'], $options['password'], 'ntlm');
+          $wsdl->setCredentials($options['domain'] . '\\' . $options['userId'] , $options['password'], 'ntlm');
           $wsdl->fetchWSDL($endpoint);
           if ($error = $wsdl->getError()) {
             $afas_soap_connection->handleError(array(
@@ -99,7 +99,7 @@ class AfasNusoapClient {
       }
     }
     $client = new nusoap_client($endpoint, $options['useWSDL']);
-    $client->setCredentials('AOL\\' . $options['userId'], $options['password'], 'ntlm');
+    $client->setCredentials($options['domain'] . '\\' . $options['userId'], $options['password'], 'ntlm');
     $client->useHTTPPersistentConnection();
     $client->soap_defencoding = 'utf-8';
     $client->xml_encoding = 'utf-8';

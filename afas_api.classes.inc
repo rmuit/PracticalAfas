@@ -492,6 +492,8 @@ class AfasSoapConnection {
    *                  uses 'afas_api_url' config variable if not set.
    *   - environment: AFAS environment name; uses 'afas_api_environment' config
    *                  variable if not set.
+   *   - domain       AFAS (NTLM) domain name; uses 'afas_api_domain' config
+   *                  variable if not set.
    *   - userId:      user id; uses 'afas_api_user' config variable if not set.
    *   - password:    password; uses 'afas_api_pw' config variable if not set.
    *   - useWSDL:     TRUE/FALSE for using WSDL; uses 'afas_api_use_wsdl' config
@@ -542,6 +544,17 @@ class AfasSoapConnection {
       $this->handleError(array(
         'error_source' => 'config',
         'error' => t('AFAS environment is not set. Maybe you forgot to set the module configuration?'),
+        'error_message_safe' => TRUE,
+      ));
+      return array();
+    }
+    if (!isset($this->options['domain'])) {
+      $this->options['domain'] = variable_get('afas_api_domain', 'AOL');
+    }
+    if (empty($this->options['domain'])) {
+      $this->handleError(array(
+        'error_source' => 'config',
+        'error' => t('AFAS domain is not set.'),
         'error_message_safe' => TRUE,
       ));
       return array();
