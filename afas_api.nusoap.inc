@@ -7,14 +7,14 @@
 /**
  * Class AfasNusoapClient
  *
- * This overrides AfasSoapClient, which works with the external (older) NuSOAP
- * library. Not that anyone still uses NuSOAP probably, but we already had
- * functional code, so why not keep it...
+ * This overrides AfasSoapClient to work with the external (older) NuSOAP
+ * library. It can be used if the (preferred) PHP SOAP extension is not
+ * compiled/enabled on your server.
  *
  * Note v0.9.5 of the nuSOAP library cannot deal with AFAS servers without WSDL;
  * you need to do AfasSoapConnection::setOptions(array('useWSDL' => TRUE)) or
  * (since WSDL introduces overhead which is unnecessary with AFAS' simple call
- * structure) you need sources from https://github.com/rmuit/NuSOAP,
+ * structure) you need sources from https://github.com/rmuit/NuSOAP.
  */
 class AfasNusoapClient {
 
@@ -22,7 +22,8 @@ class AfasNusoapClient {
    * Initializes a SOAP client object and other config values, after doing some
    * initial checks. Reads Drupal configuration variables.
    *
-   * See setClientOptions() for various options that can/should be set.
+   * See AfasSoapConnection::setOptions() for various options that can/should be
+   * set.
    *
    * @param AfasSoapConnection $afas_soap_connection
    *   AfasSoapConnection class.
@@ -30,9 +31,11 @@ class AfasNusoapClient {
    *   Type of AFAS connector. (This determines the SOAP endpoint URL.)
    *   Valid values: get / update / report / subject / data
    *
-   * @return object
+   * @return nusoap_client|null
    *   Initialized client object, or null in which case errors may be retrieved
    *   from AfasSoapConnection::getLastCallInfo('error').
+   *
+   * @see AfasSoapConnection::setOptions()
    */
   protected function initClient($afas_soap_connection, $type) {
     if (!in_array($type, array('get', 'update', 'report', 'subject', 'data'))) {
@@ -44,10 +47,6 @@ class AfasNusoapClient {
       return NULL;
     }
 
-    $options = $afas_soap_connection->checkOptions();
-    if (!$options) {
-      return NULL;
-    }
     if (!libraries_load('nusoap')) {
       $afas_soap_connection->handleError(array(
         'error_source' => 'config',
@@ -68,6 +67,18 @@ class AfasNusoapClient {
       }
       date_default_timezone_set($timezone);
     }
+
+    // Get options as possibly set by calling code and/or configuration,
+    // and set some defaults.
+    $options = $afas_soap_connection->checkOptions();
+    if (!$options) {
+      return NULL;
+    }
+    $options += array(
+      'soap_defencoding' => 'utf-8',
+      'xml_encoding' => 'utf-8',
+      'decode_utf8' => FALSE,
+    );
 
     // available: get/update/report/subject/dataconnector.
     $endpoint = trim($options['urlBase'], '/') . '/'
@@ -101,9 +112,6 @@ class AfasNusoapClient {
     $client = new nusoap_client($endpoint, $options['useWSDL']);
     $client->setCredentials($options['domain'] . '\\' . $options['userId'], $options['password'], 'ntlm');
     $client->useHTTPPersistentConnection();
-    $client->soap_defencoding = 'utf-8';
-    $client->xml_encoding = 'utf-8';
-    $client->decode_utf8 = FALSE;
 
     // Specific connection properties can be set by the caller.
     // About timeouts:
@@ -112,6 +120,8 @@ class AfasNusoapClient {
     // 'timeout' (default 0) has no effect; the 'response_timeout' can be upped to
     // max. 5 minutes.
     foreach (array(
+               'soap_defencoding',
+               'xml_encoding',
                'timeout',
                'response_timeout',
                'soap_defencoding',
@@ -138,22 +148,22 @@ class AfasNusoapClient {
    * @param string $connector_type
    *   Type of connector: get / update / report / subject / data.
    *
-   * @return bool|mixed
-   *   Response object from NuSOAP call, or NULL for error. In the last case,
-   *   error details can be retrieved through getLastCallInfo(), but
-   *   they are printed/logged already.
+   * @return string|null
+   *   Response, or NULL for error. In the last case, error details can be
+   *   retrieved through getLastCallInfo(), but they are probably printed/logged
+   *   already.
    *   Be careful when checking only this return value for errors; some
    *   successful calls return an empty string.
    */
-  public function callSoapFunction($afas_soap_connection, $function, $arguments, $connector_type) {
+  public function callAfas($afas_soap_connection, $function, $arguments, $connector_type) {
 
     if ($client = $this->initClient($afas_soap_connection, $connector_type)) {
 
       if ($client->endpointType === 'wsdl') {
-        $response = $client->Call($function, $arguments);
+        $response = $client->call($function, $arguments);
       }
       else {
-        $response = $client->Call($function, $arguments, 'urn:Afas.Profit.Services', 'urn:Afas.Profit.Services/' . $function, FALSE, NULL, 'document', 'literal wrapped');
+        $response = $client->call($function, $arguments, 'urn:Afas.Profit.Services', 'urn:Afas.Profit.Services/' . $function, FALSE, NULL, 'document', 'literal wrapped');
       }
       if ($error = $client->getError()) {
         if (isset($response->detail)) {
@@ -181,8 +191,16 @@ class AfasNusoapClient {
           'error_detail' => $details,
         ));
       }
+      elseif (isset($response[$function . 'Result'])) {
+        return $response[$function . 'Result'];
+      }
       else {
-        return $response;
+        $afas_soap_connection->handleError(array(
+          'error_source' => 'code',
+          'error' => 'NuSOAP response array has unexpected structure!',
+          'error_message_safe' => TRUE,
+          'error_detail' => print_r($response, TRUE),
+        ));
       }
     }
     return NULL;
