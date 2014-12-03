@@ -30,6 +30,14 @@ class AfasGetConnectorDisplay extends AfasGetConnector {
       '#description' => t('The name of a GET connector, as defined in your AFAS enviroment'),
       '#weight'      => 6,
     );
+
+    $form['include_empty'] = array(
+      '#type'          => 'checkbox',
+      '#value'         => t('Include empty fields'),
+      '#default_value' => TRUE,
+      '#weight'        => 3,
+    );
+
     return $form;
   }
 
@@ -43,7 +51,11 @@ class AfasGetConnectorDisplay extends AfasGetConnector {
       return 'No connector name specified.';
     }
     $this->connector = $this->settings['connector'];
-    return $this->getAfasItems();
+    return $this->getAfasItems(
+      TRUE,
+      empty($this->settings['include_empty']) ? array() :
+        array('options' => array('Outputoptions' => 3))
+    );
   }
 
   /**

@@ -50,8 +50,9 @@ abstract class AfasGetConnector extends BatchQueueJob {
    *   If FALSE, returns a SimpleXMLElement object, otherwise an array of items.
    * @param array $extra_arguments
    *   Extra parameters to pass to the AFAS SOAP call (GetDataWithOptions). This
-   *   is only very occasionally useful. Known parameters: 'Metadata'
-   *   and 'OutputOptions'; see AfasSoapConnection::normalizeArguments().
+   *   is only very occasionally useful. Known parameters:
+   *   array('options' => array('Outputoptions' => 3)) to also return empty
+   *   fields; see AfasSoapConnection::normalizeArguments().
    *
    * @return array|string
    *   Items from AFAS, or error message.
