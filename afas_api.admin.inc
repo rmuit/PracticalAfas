@@ -153,7 +153,7 @@ function afas_api_schema_form_submit(&$form, &$form_state) {
   // Retrieve / display XSD.
   $connection = new AfasSoapConnection();
   $connection->setErrorReporting(AFAS_LOG_ERROR_DETAILS_SCREEN);
-  $ret = $connection->getData($form_state['input']['function'], array(), 'data', array());
+  $ret = $connection->getData($form_state['values']['function'], array(), 'data', array());
   if ($ret) {
 
     /* We got an XML string returned, with the XSD encoded into one of the
