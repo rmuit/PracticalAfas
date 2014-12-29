@@ -7,7 +7,7 @@
 
 // Constants used by the connection classes are defined here, so they are
 // recognized in external code without having to explicitly include the class
-// file. (Because Drupal 7 autoload is built to not include things explicitly.)
+// file. (Because Drupal 7 autoload is built to not include classes explicitly.)
 
 /**
  * Errors reported by the AFAS endpoint or this code are logged to watchdog.
@@ -116,7 +116,7 @@ function afas_api_queue_info() {
     'title'      => t('Fetch/display/export data from GetConnector (no processing).'),
     'batchqueue' => array(
       'class'         => 'AfasGetConnectorDisplay',
-      'cron_disable' => TRUE,
+      'fetcher_class' => 'AfasGetConnector',
     ),
   );
 

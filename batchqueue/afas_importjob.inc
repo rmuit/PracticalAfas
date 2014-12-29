@@ -4,204 +4,47 @@
  * Class providing some helper functions for Batch/Queue jobs importing data
  * through an AFAS GET connector. Other modules can create import jobs by
  * - installing the 'batchqueue' Drupal contrib module;
- * - extending this class and exposing their extending classes through
- *   hook_queue_info().
+ * - extending this class and exposing the subclasses through hook_queue_info().
  *
- * This class is a companion class of AfasGetConnector (and unfortunately has
- * all code from AfasGetConnector copied into here, because there's no multiple
- * inheritance in PHP5). Use AfasImportJob or AfasGetConnector, depending on
- * whether you need the import functionality.
+ * @todo convert all the required properties into real settings so that we can
+ *       just use this class, and fully define imports in hook_queue_info().
  */
-abstract class AfasImportJob extends BatchQueueImportJob {
+class AfasImportJob extends BatchQueueImportJob {
 
-// AfasGetConnector 1 start
-  /// Keys in $this->settings that are used by this class:
-  //
-  // 'response_timeout':  response_timeout to set for the nusoap_client object.
-
-  /// Class variables which an extending class must set in order to make use of
-  /// some of the helper functions. (Most simple way: hardcode in __construct();
-  /// see also BatchQueueImportJob variables.)
-
-  // Name of the GET Connector.
-  protected $connector;
-
-  // Optional extra filter. (Added for convenience; it's perfectly possible for
-  // classes to do their own filtering - but this way they can 'hardcode' an
-  // extra filter for their connector in their __construct function.)
-  // Must be a single-level array (i.e. can contain multiple fields but only
-  // one operator).
-  protected $extra_filter;
-
-  /// Class variables enabling 'optional' functionality we want to
-  /// provide here for convenience, but not always enable by default.
-
-  // Boolean: Advanced filter input element, which reads array structures
-  // understood by AfasSoapConnection::getData(). Set to TRUE to enable in
-  // settingsForm.
-  protected $opt_adv_filter;
-// AfasGetConnector 1 end -- Custom 1 start
-
-  // Boolean: Checkbox 'skip existing images'. Set to TRUE to enable in
-  // settingsForm.
-  // Note this option only determines presence of the checkbox. The actual
-  // setting governing runtime behavior is $setting['skip_images'].
-  // (This is not remembered anywhere in $context, so cron runs will never
-  // have it set.) The default behavior (if option/setting is not set) is TRUE.
-  protected $opt_skip_images;
+  /*
+   * Settings in $this->settings, used by this class:
+   *
+   * - opt_skip_images (boolean, TRUE by default / if not set):
+   *   Enables 'unpub_after_finish' setting in settingsForm.
+   * - skip_images (boolean):
+   *   See settingsForm() description.
+   */
 
   // Class-wide variables which are filled once per processItem() run
   // and used by its various called functions to make the code easier:
   //
   // Cache for image data retrieved from another connector in transformApiFieldValue().
   protected $imgcache;
-// Custom 1 end -- AfasGetConnector 2 start
 
-  /// Extra methods for extending classes to call!
-
-  /**
-   * Replacement for BatchQueueImportJob::getItems().
-   * (Cannot override it because of different call signature.)
-   *
-   * Returns AFAS data, after calling predefined filter/caching functions.
-   *
-   * This is a convenience/example function; in many situations, you only need a
-   * 'return $this->getAfasItems()' from the extending class' init() function.
-   *
-   * @param bool $return_array
-   *   If FALSE, returns a SimpleXMLElement object, otherwise an array of items.
-   * @param array $extra_arguments
-   *   Extra parameters to pass to the AFAS SOAP call (GetDataWithOptions). This
-   *   is only very occasionally useful. Known parameters: 'Metadata'
-   *   and 'OutputOptions'; see AfasSoapConnection::normalizeArguments().
-   *
-   * @return array|string
-   *   Items from AFAS, or error message.
-   */
-  protected function getAfasItems($return_array = TRUE, $extra_arguments = array()) {
-
-    $items = array();
-    // Check if we need to use cached items.
-    // SimpleXMLElement cannot be cached, so if we're supposed to get one,
-    // we'll silently ignore cache settings.
-    if ($return_array) {
-      $items = $this->checkCache();
-    }
-    if (!$items) {
-
-      $items = FALSE;
-      $tries_left = !empty($this->settings['tries']) ? $this->settings['tries'] : 1;
-      while ($items === FALSE && --$tries_left >= 0) {
-
-        $connection = new AfasSoapConnection();
-        if (!empty($this->settings['response_timeout'])
-            && is_numeric($this->settings['response_timeout'])) {
-          $connection->setOptions(
-            array('response_timeout' => $this->settings['response_timeout'])
-          );
-        }
-        $items = $connection->getData($this->connector, $this->inputFilter(),
-          $return_array ? 'get' : 'get_simplexml', $extra_arguments);
-
-        if ($items === FALSE) {
-          // Retry if timeout
-          $error = $connection->getLastCallInfo('error');
-          if (strpos($error, 'cURL ERROR: 28') !== FALSE) {
-            if ($tries_left) {
-              // Do 'error' only because it positions this message in between the other messages,
-              // if this is called from the batch form.
-              $this->log('AFAS timeout occurred; retrying, #@try', array('@try' => $this->settings['tries'] - $tries_left), WATCHDOG_ERROR);
-            }
-          }
-          else {
-            $tries_left = 0;
-          }
-        }
-      }
-      if ($items === FALSE) {
-        // The caller always does a drupal_set_message (for Batch API form runs
-        // that generate errors). So return a string to there, instead of doing
-        // our own drupal_set_message. Don't set 'print_errors' in
-        // AfasSoapConnection; just ignore $this->print_errors.
-        // More details are always logged to watchdog.
-        $items = $connection->getLastCallInfo('error') . ' (See Recent Log Messages for more details.)';
-      }
-      elseif ($return_array) {
-        // Check if we need to cache items.
-        $this->checkCacheSet($items);
-      }
-    }
-// AfasGetConnector 2 end -- Custom 2 start
-    elseif (!empty($this->settings['single_item'])
-            && !empty($this->src_id_field)) {
-
-      // Filter cached items. There could theoretically be multiple items
-      // with the same source-id field value, so loop through all items.
-      $new_items = array();
-      foreach ($items as $item) {
-        if (!empty($item[$this->src_id_field]) &&
-            $item[$this->src_id_field] == $this->settings['single_item']
-        ) {
-          $new_items[] = $item;
-        }
-      }
-      $items = $new_items;
-    }
-// Custom 2 end -- AfasGetConnector 3 start
-
-    // If $return_array is FALSE, it's up to the extending class to implement
-    // 'limit'. (Probably while/after it converts items into an array.)
-    if (!empty($this->settings['limit']) && $this->settings['limit'] > 0
-        && count($items) > $this->settings['limit'] && $return_array) {
-      $items = array_slice($items, 0, $this->settings['limit']);
-    }
-    return $items;
-  }
-
-  /**
-   * Extends BatchQueueImportJob::inputFilter() with AFAS specific filters.
-   *
-   * @return array
-   *   'filters array' that can be used for calling
-   *   AfasSoapConnection::getData().
-   */
-  protected function inputFilter() {
-    $filters = array();
-// AfasGetConnector 3 end -- Custom 3 start
-    $filters = parent::inputFilter();
-// Custom 3 end -- AfasGetConnector 4 start
-
-    // Add this filter 1 layer deeper than the 'simple'
-    // filter arguments. AfasSoapConnection::getData() will sort it out.
-    if (!empty($this->extra_filter)) {
-      $filters[] = $this->extra_filter;
-    }
-
-    // Add filters from 'free text filter box' 1 layer deeper than the 'simple'
-    // filter arguments. AfasSoapConnection::getData() will sort it out.
-    foreach ($this->evalFilterInput() as $filter) {
-      $filters[] = $filter;
-    }
-
-    return $filters;
-  }
 
   /// Interface functions
 
   public function __construct($settings = array()) {
+
+    if (!isset($this->settings['batchqueue_fetcher_class'])) {
+      // We're an AFAS job. Obviously we want to set the AFAS Fetcher, at least
+      // as a default.
+      $this->settings['batchqueue_fetcher_class'] = 'AfasGetConnector';
+    }
+
     parent::__construct($settings);
 
     // AFAS is typically a system where
     // - you are bound to input data with trailing spaces (apparently
-    //   at least the 'predefined lists' do not protect against this);
+    //   at least the 'predefined lists' in AFAS do not protect against this);
     // - all your data are strings (XML input stream)
     // so trim data to prevent obscure bugs.
     $this->trim_item_values = TRUE;
-
-    // In case an extending class sets $this->opt_list, we also pass the
-    // following settings as an URL argument; see settingsForm().
-    $this->form_settings_display_filter[] = 'filters';
-    $this->form_settings_display_filter[] = 'all_fields';
   }
 
   /**
@@ -209,9 +52,8 @@ abstract class AfasImportJob extends BatchQueueImportJob {
    */
   public function settingsForm() {
     $form = parent::settingsForm();
-// AfasGetConnector 4 end -- Custom 4 start
 
-    if ($this->opt_skip_images) {
+    if ($this->settings['opt_skip_images']) {
       $form['behavior']['skip_images'] = array(
         '#type'          => 'checkbox',
         '#title'         => t('Skip existing images'),
@@ -220,49 +62,24 @@ abstract class AfasImportJob extends BatchQueueImportJob {
         '#weight'        => 2,
       );
     }
-// Custom 4 end -- AfasGetConnector 5 start BUT CHANGED next form element
-
-    if (!empty($this->opt_adv_filter)) {
-      $field = !empty($this->changed_field) ? $this->changed_field : 'SOME-CHANGED-DATE';
-      // Potential security hole; this edit screen must only be available for admins
-      $form['selection']['filters'] = array(
-        '#type'          => 'textarea',
-        '#rows'          => 5,
-        '#title'         => t('Filter'),
-        '#description'   => "Fill a comma separated set of array definitions if you want to apply other filters.<br/>
-One example, to get only products that changed in the past week:<br/><em>array(<br/>
-'$field' => '" . date('Y-m-d\TH:i:s', time() - 7 * 86400) . "',<br/>
-'#op' => '>',<br/>
-),</em>",
-        '#default_value' => "array(
-),",
-        '#weight'        => 12,
-      );
-    }
-
-    $form['tries'] = array(
-      '#type'          => 'textfield',
-      '#title'         => t('Tries'),
-      '#description'   => 'The number of times to repeatedly try fetching data, in case of timeouts',
-      '#default_value' => 1,
-      '#size'          => 3,
-      '#weight'        => 97,
-    );
 
     return $form;
   }
-// AfasGetConnector 5 end -- Custom 5 start
 
   /**
-   * Extends BatchQueueImportJob::initContext().
+   * Extends BatchQueueImportJob::init().
    */
-  public function initContext(&$items, &$context) {
-    parent::initContext($items, $context);
+  public function init(&$context) {
+    parent::init($context);
 
-    if ($context['results']['unpub_after_finish']) {
-      // Like BatchQueueImportJob: only do this for unfiltered feeds.
-      $filters = $this->evalFilterInput();
-      $context['results']['unpub_after_finish'] = empty($filters);
+    // Extension of the logic in BatchQueueImportJob::init(): only unpublish
+    // entities afterwards, if this is a complete/unfiltered 'feed' of items.
+    // We assume (a subclass of) AfasGetConnector is set as a Fetcher class;
+    // if not, do not change the setting.
+    if ($context['results']['unpub_after_finish']
+        && $this->callFetcherMethod('inputFilter', FALSE)) {
+      // inputFilter() returns a nonempty value.
+      $context['results']['unpub_after_finish'] = FALSE;
     }
   }
 
@@ -520,47 +337,6 @@ One example, to get only products that changed in the past week:<br/><em>array(<
     }
 
     return $file;
-  }
-// Custom 5 end -- AfasGetConnector 6 start
-
-  /**
-   * Checks for/evaluates a comma separated list of arrays in
-   * $this->settings['filters'].
-   * This is used for the 'Filter' textarea value in the batch form.
-   *
-   * @return array
-   *   Array of filters, or empty array.
-   */
-  private function evalFilterInput() {
-    static $filters;
-
-    if (!isset($filters)) {
-      $filters = array();
-
-      if (!empty($this->settings['filters'])) {
-        $eval = '';
-        eval('$eval = array(' . $this->settings['filters'] . ');');
-        if (is_array($eval)) {
-          foreach ($eval as $filter) {
-            if (is_array($filter)) {
-              if (!empty($filter)) {
-                $filters[] = $filter;
-              }
-              // Just disregard filter-parts which are empty arrays.
-            }
-            else {
-              $this->log("Invalid 'filter' (part) setting passed to inputFilter(): %p",
-                array('%p' => print_r($filter, TRUE)), WATCHDOG_ERROR, FALSE);
-            }
-          }
-        }
-        else {
-          $this->log("Invalid 'filters' setting passed to inputFilter(): %p",
-            array('%p' => print_r($this->settings['filters'], TRUE)), WATCHDOG_ERROR, FALSE);
-        }
-      }
-    }
-    return $filters;
   }
 
 }
