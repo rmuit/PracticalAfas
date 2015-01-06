@@ -346,6 +346,8 @@ class AfasSoapConnection {
    *   - error_source:        string; can be "code" (should never happen),
    *      "call" (invalid parameters etc), "config" (missing configuration),
    *      "wsdl" and "client" (probably remote errors).
+   *   - error_temporary:     bool: whether the error is temporary. (This is not
+   *                          necessarily correct in 100% of cases; see code.)
    *   - function:            string; SOAP function name. Only filled for
    *                          error_source "wsdl" and "client".
    *   - arguments:           array; SOAP function arguments.
@@ -354,6 +356,8 @@ class AfasSoapConnection {
    * @return mixed
    *  If $type is empty, all these values are returned in an encompassing array.
    *  In that case, not all elements are guaranteed to be set (see param).
+   *
+   * @see handleError()
    */
   public function getLastCallInfo($type = '') {
     $last_call = $this->lastCallInfo;
@@ -414,6 +418,40 @@ class AfasSoapConnection {
     // This is equivalent to date('r') except it does not emit warnings if
     // the current timezone is not set in php.ini.
     $this->lastCallInfo['time'] = date_format(date_create(), 'r');
+
+    // Set whether the error is temporary.
+    if (!isset($error_info['error_temporary'])) {
+      // Deduce 'temporary' ourselves. We don't have any error codes so we'll
+      // need to be imperfect and just keep adding any descriptions we see.
+      // Until now, we've erred on the side of marking "temporary". The most
+      // probable effect, for processes checking this, is that less calls get
+      // silently discarded, and more calls get silently regularly re-tried
+      // when that doesn't really make sense.
+      // To be re-evaluated whenever necessary.
+      //
+      //
+      $this->lastCallInfo['error_temporary'] =
+        in_array($error_info['error_source'], array('client', 'wsdl'), TRUE) &&
+        (strpos($error_info['error'], 'Operation timed out') !== FALSE
+         || strpos($error_info['error'], 'connection timeout') !== FALSE
+         || strpos($error_info['error'], 'error parsing WSDL') !== FALSE
+         || strpos($error_info['error'], 'System.OutOfMemoryException') !== FALSE
+         // MS SQL Server errors:
+         || strpos($error_info['error'], 'insufficient disk space') !== FALSE
+         || strpos($error_info['error'], 'tempdb is probably out of space') !== FALSE
+         // We've observed (intermittent) 403s (access denied) on AFAS server/
+         // load problems. 403s should not normally be encountered, so marking
+         // 'temporary' should be safe.
+         || strpos($error_info['error'], 'HTTP response status 403') !== FALSE
+         // This one's more doubtful. (We've seen it on temporary errors, but
+         // probably there are permanent errors too which cause this.
+         || strpos($error_info['error'], 'Response not of type text/xml') !== FALSE
+         // And this one's even more doubtful: [ANTA WARNING] are very generic.
+         // We should really be looking at the error_detail instead, to make a
+         // distinction there, because some [ANTA WARNING]s are permanent.
+         || strpos($error_info['error'], '[ANTA WARNING]') !== FALSE
+      );
+    }
 
     // Log to watchdog, error plus (optionally) details into one message.
     if ($this->errorReporting & AFAS_LOG_ERROR_DETAILS_WATCHDOG) {
