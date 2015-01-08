@@ -95,7 +95,7 @@ abstract class AfasStockImportJob extends AfasImportJob {
   /**
    * Implements BatchQueueJobInterface::init()
    */
-  public function init() {
+  public function init(&$context) {
 
     // Don't check _everything_ here so the class is still useful for
     // list_format = raw. More checks in processItem().

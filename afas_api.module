@@ -1,8 +1,25 @@
 <?php
-
 /**
  * @file 
- * Functions for connecting to AFAS SOAP service.
+ * Functionality for communicating with AFAS SOAP service.
+ *
+ * There are no helper functions in this module file, only some menu entries for
+ * config screens. Most needed functionality can be found in AfasSoapConnection.
+ * Example to retrieve data from a Get Connector which you've defined in your
+ * AFAS environment:
+ *   $connection = new AfasSoapConnection();
+ *   $result_rows = $connection->getData($your_connector_name);
+ * For more functionality (like error handling, calling Update connectors),
+ * please see the class' methods.
+ *
+ * Helper methods to e.g. format data arrays before sending them into AFAS
+ * using an Update Connector can be found in AfasApiHelper.
+ * D7 non-OO developers: these are all static methods, so you can just call them
+ * from your code like any other function; their names are just a bit longer:
+ *  $result = AfasApiHelper::methodName($arg1, ...);
+ *
+ * @see AfasSoapConnection
+ * @see AfasApiHelper
  */
 
 // Constants used by the connection classes are defined here, so they are
@@ -44,7 +61,8 @@ function afas_api_menu() {
     'position' => 'right',
     'weight' => -8,
     'page callback' => 'system_admin_menu_block_page',
-    'access arguments' => array('synchronize afas products'),
+    // @todo add permission(s)
+    'access arguments' => array('administer site configuration'),
     'file' => 'system.admin.inc',
     'file path' => 'modules/system',
   );
@@ -53,7 +71,7 @@ function afas_api_menu() {
     'description' => 'General AFAS related settings',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('afas_api_settings_form'),
-    'access arguments' => array('synchronize afas products'),
+    'access arguments' => array('administer site configuration'),
     'file' => 'afas_api.admin.inc',
     'weight' => 1,
   );
@@ -62,7 +80,7 @@ function afas_api_menu() {
     'description' => 'Check XML schema definitions for AFAS calls',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('afas_api_schema_form'),
-    'access arguments' => array('synchronize afas products'),
+    'access arguments' => array('administer site configuration'),
     'file' => 'afas_api.admin.inc',
     'weight' => 9,
   );

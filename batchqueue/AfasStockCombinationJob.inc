@@ -80,7 +80,7 @@ abstract class AfasStockCombinationJob extends AfasStockImportJob {
   /**
    * Extends AfasStockImportJob::init()
    */
-  public function init() {
+  public function init(&$context) {
 
     // Don't check _everything_ immediately so the class is still useful for
     // list_format = raw. More checks in processItem().
