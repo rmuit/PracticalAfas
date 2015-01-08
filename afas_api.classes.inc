@@ -1032,12 +1032,16 @@ class AfasSoapConnection {
         // Get value from the property equal to the tag (case sensitive!), or the
         // alias. If two values are present with both tag and alias, we throw an
         // exception.
+        $value_exists_by_alias = isset($map_properties['alias']) && array_key_exists($map_properties['alias'], $element);
         if (array_key_exists($tag, $element)) {
+          if ($value_exists_by_alias) {
+            throw new Exception(t('Item @type has a value provided by both its property name @property and alias @alias.',
+              array('@type' => $type, '@property' => $tag, '@alias' =>$map_properties['alias'])));
+          }
           $value = $element[$tag];
           unset($element[$tag]);
         }
-        elseif (isset($map_properties['alias'])
-                && array_key_exists($map_properties['alias'], $element)) {
+        elseif ($value_exists_by_alias) {
           $value = $element[$map_properties['alias']];
           unset($element[$map_properties['alias']]);
         }
@@ -1087,40 +1091,53 @@ class AfasSoapConnection {
       }
       $xml .= $indent_str . '</Fields>';
 
-      // Add other embedded objects
-      if (isset($element['objects'])) {
-        if (!is_array($element['objects'])) {
-          throw new Exception(t("'objects' property in item type @type must be array.",
-            array('@type' => $type)));
-        }
+      if (!empty($element)) {
+        // Add other embedded objects. (We assume all remaining element values
+        // are indeed objects. If not, an error will be thrown below.)
+        $xml .= $indent_str . '<Objects>';
 
-        foreach ($element['objects'] as $data_key => $embedded_data) {
+        foreach ($info['objects'] as $tag => $alias) {
+          $value_present = TRUE;
 
-          // Like tags, we allow objects to be defined by their official type name
-          // or our self-defined alias.
-          if (isset($info['objects'][$data_key])) {
-            $object_type = $data_key;
+          // Get value from the property equal to the tag (case sensitive!), or the
+          // alias. If two values are present with both tag and alias, we throw an
+          // exception. @todo finish this
+          if (array_key_exists($tag, $element)) {
+            if (array_key_exists($alias, $element)) {
+              throw new Exception(t('Item @type has a value provided by both its property name @property and alias @alias.',
+                array('@type' => $type, '@property' => $tag, '@alias' => $alias)));
+            }
+            $value = $element[$tag];
+            unset($element[$tag]);
           }
-          elseif (!isset($info['objects'])
-                  || !$object_type = array_search($data_key, $info['objects'], TRUE)) {
-            throw new Exception(t('Embedding @embedded_type inside item type @type is not supported.',
-              array('@type' => $type, '@embedded_type' => $data_key)));
+          elseif (array_key_exists($alias, $element)) {
+            $value = $element[$alias];
+            unset($element[$alias]);
           }
-          $xml .= $indent_str . "<Objects>" . ($indent < 0 ? '' : "\n")
-                  . $this->constructXml(
-              $object_type,
-              $embedded_data,
-              $action,
-              $type,
-              $indent < 0 ? $indent : $indent + 3 * $tab_width
-            ) . $indent_str . '</Objects>';
+          else {
+            $value_present = FALSE;
+          }
+
+          if ($value_present) {
+            if (!is_array($value)) {
+              throw new Exception(t('Value for object @property in item @type must be array.',
+                array('@type' => $type, '@property' => $tag . (isset($alias) ? " ($alias)" : ''))));
+            }
+            $xml .= ($indent < 0 ? '' : "\n") . $this->constructXml(
+                $tag,
+                $value,
+                $action,
+                $type,
+                $indent < 0 ? $indent : $indent + 3 * $tab_width
+              );
+          }
         }
-        unset($element['objects']);
+        $xml .= $indent_str . '</Objects>';
       }
 
       // Throw error for unknown item data (for which we have not seen a tag).
       if (!empty($element)) {
-        throw new Exception(t('Unused data values provided for item type @type: keys are @keys.',
+        throw new Exception(t('Unmapped data values provided for item type @type: keys are @keys.',
           array('@type' => $type, '@keys' => "'" . implode(', ', array_keys($element)) . "'")));
       }
 
