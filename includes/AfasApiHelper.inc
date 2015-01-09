@@ -460,15 +460,33 @@ class AfasApiHelper {
       }
     }
 
-    // Check if first name is really only initials
     if (!empty($data['first_name']) && empty($data['initials'])) {
       $data['first_name'] = trim($data['first_name']);
-      //  AFAS' automatic resolving in the thinks anything is initials if it
-      // contains a dot.
-      if (strlen($data['first_name']) < 16 && strpos($data['first_name'], '.') !== FALSE) {
-        $data['initials'] = $data['first_name'];
+
+      // Check if first name is really only initials. If so, move it.
+      // AFAS' automatic resolving code in its new-(contact)person UI thinks
+      // anything is initials if it contains a dot. It will then proceed to
+      // place spaces in between every letter, but we won't do that last part.
+      // (It may be good for user UI input, but coded data does not expect it.)
+      if (strlen($data['first_name']) == 1
+          || strlen($data['first_name']) < 16
+             && strpos($data['first_name'], '.') !== FALSE
+             && strpos($data['first_name'], ' ') === FALSE) {
+        // Dot but no spaces, or just one letter: all initials - move it.
+        $data['initials'] = strlen($data['first_name']) == 1 ?
+          strtoupper($data['first_name']) . '.' : $data['first_name'];
         unset($data['first_name']);
       }
+      elseif (preg_match('/^[A-Za-z \-]+$/', $data['first_name'])) {
+        // First name only contains letters, spaces and hyphens. In this case
+        // (which is probeably stricter than the AFAS UI), create initials.
+        $data['initials'] = '';
+        foreach (preg_split('/[- ]+/', $data['first_name']) as $part) {
+          // Don't separate initials by spaces, only dot.
+          $data['initials'] .= strtoupper(substr($part, 0, 1)) . '.';
+        }
+      }
+      // Note if there's both a dot and spaces in 'first_name', we skip it.
     }
   }
 
@@ -589,7 +607,7 @@ class AfasApiHelper {
 
       // Construct element with fields within the XML. (For each element inside
       // the loop, because $info can differ with $data.)
-      $info = self::xmlTypeInfo($type, $parent_type, $data, $fields_action);
+      $info = self::xmlTypeInfo($type, $parent_type, $element, $fields_action);
       if (empty($info)) {
         throw new Exception(t('No XML definition present for item type @type.',
           array('@type' => $type)));
@@ -1238,6 +1256,11 @@ class AfasApiHelper {
             ),
           ),
         );
+
+        // first name is not required if initials are filled.
+        if (!empty($data['In']) || !empty($data['initials'])) {
+          unset($info['fields']['FiNm']['required']);
+        }
 
         // MatchPer defaults: Our principle is we would rather insert duplicate
         // data than silently overwrite data by accident.
