@@ -522,15 +522,13 @@ class AfasApiHelper {
    *   type is not known by this function.
    * @param array $data
    *   Data to construct the XML from.
-   *   This can represent one item, in which case all keys in this array are XML
-   *   tags or aliases (defined in this function, see the code) and all values
-   *   except 'objects' must be scalars. $data can also represent an array of
-   *   (one or more) items; in that case all values must be arrays (representing
-   *   a single item).
-   *   'objects' must contain one or more items or arrays-of-items (i.e. arrays
-   *   which could be standalone $data arguments), keyed by their type (again:
-   *   XML tag or alias). These items' XML will be embedded inside the XML of
-   *   the object.
+   *   This can represent an array of (one or more) items; in this case
+   *   all values are arrays representing a single item.
+   *   It can also represent one item, in which case all keys in this array are
+   *   XML tags or aliases (defined in xmlTypeInfo()) and values represent the
+   *   corresponding tag (scalar) or related-object (array) value. There must be
+   *   one field/scalar value; passing one data object containing only related-
+   *   objects and no fields is disallowed, unless when wrapping it in array().
    *   An item can have two other key-value pairs that do not represent real
    *   item values:
    *   - #id: the 'id attribute' of an item in XML. Only some item types have
@@ -591,16 +589,14 @@ class AfasApiHelper {
         : ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">');
 
     // Determine if $element holds a single item or an array of items:
-    // if one item, all item-values except 'object' must be scalars (or at least
-    // cast-able to a string?); if several, all values must be arrays.
-    // We test for an array value. (Only one; we just assume $data has a correct
-    // structure.) Then we 'normalize' to a multi-item array.
-    $value = reset($data);
-    while (key($data) === 'objects') {
-      $value = next($data);
-    }
-    if (!is_array($value)) {
-      $data = array($data);
+    // if one item, we must have at least one scalar value; if several, all
+    // values must be arrays.
+    foreach ($data as $key => $element) {
+      if (is_scalar($element)) {
+        // Normalize $data to an array of items.
+        $data = array($data);
+        break;
+      }
     }
 
     foreach ($data as $key => $element) {
@@ -1018,7 +1014,7 @@ class AfasApiHelper {
             $info['objects']['KnPerson'] = 'person';
 
             // If we specify a person in the data too, 'Persoon' is the default.
-            if (!empty($data['objects']['KnPerson']) || !empty($data['objects']['person'])) {
+            if (!empty($data['KnPerson']) || !empty($data['person'])) {
               $info['fields']['ViKc']['default'] = 'PRS';
             }
           }
@@ -2372,10 +2368,10 @@ class AfasApiHelper {
     if (isset($info['fields']['PadAdr'])
         && isset($info['objects']['KnBasicAddressAdr'])
         && isset($info['objects']['KnBasicAddressPad'])
-        && (!empty($data['objects']['KnBasicAddressAdr'])
-            || !empty($data['objects'][$info['objects']['KnBasicAddressAdr']]))
-        && (empty($data['objects']['KnBasicAddressPad'])
-            || empty($data['objects'][$info['objects']['KnBasicAddressPad']]))
+        && (!empty($data['KnBasicAddressAdr'])
+            || !empty($data[$info['objects']['KnBasicAddressAdr']]))
+        && (empty($data['KnBasicAddressPad'])
+            || empty($data[$info['objects']['KnBasicAddressPad']]))
     ) {
       $info['fields']['PadAdr']['default'] = TRUE;
     }
