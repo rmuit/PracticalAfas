@@ -494,19 +494,19 @@ class AfasApiHelper {
    * Construct XML representing one or more AFAS 'items', which is suitable for
    * sending through an AFAS UpdateConnector.
    *
-   * This is an evolving function containing lots of (maybe incomplete)
+   * xmlTypeInfo() is an evolving function containing lots of (maybe incomplete)
    * hardcoded logic and comment fragments from incomplete info in AFAS'
    * knowledge base. Because of this volatility, $data must adhere to a strict
    * structure; the function will throw exceptions when e.g. required data is
-   * not present, present data is not recognized, mixed array/string values are
-   * passed in $data, ...
+   * not present, present data is not recognized, ...
    *
-   * See admin/config/services/afas/schema for getting more XSD schema info to
-   * make this function more robust. The information from those XSD schemas is
-   * more complete, so if you want to use those schemas to construct XML for
-   * sending through sendXml() instead of using this function, that's fine. This
-   * function exists for those who would like to construct array data with more
-   * descriptive keys, instead of an XML string with hard to remember tag names.
+   * AfasSoapConnection::getData(CONNECTOR, array(), 'data') can be used for
+   * getting more XSD schema info to make this function more robust. The
+   * information from those XSD schemas may be more complete, so if you want to
+   * use those schemas to construct XML for sending through sendXml() instead of
+   * using this function with sendData(), that's fine. This function exists for
+   * those who would like to construct array data with more descriptive keys,
+   * instead of an XML string with hard to remember tag names.
    *
    * We hope that the below code catches all strange/dangerous combinations of
    * 'id' /  $fields_action / AutoNum / MatchXXX values and 'embedding items',
@@ -522,13 +522,14 @@ class AfasApiHelper {
    *   type is not known by this function.
    * @param array $data
    *   Data to construct the XML from.
-   *   This can represent an array of (one or more) items; in this case
-   *   all values are arrays representing a single item.
+   *   This can represent a set of (one or more) items; in this case all values
+   *   are arrays representing a single item.
    *   It can also represent one item, in which case all keys in this array are
-   *   XML tags or aliases (defined in xmlTypeInfo()) and values represent the
-   *   corresponding tag (scalar) or related-object (array) value. There must be
-   *   one field/scalar value; passing one data object containing only related-
-   *   objects and no fields is disallowed, unless when wrapping it in array().
+   *   XML tags or aliases (defined in xmlTypeInfo()) and values are the
+   *   corresponding tag (scalar) or related-object (array) value. The item must
+   *   contain at least one field/scalar value; passing one data object
+   *   containing only related-objects and no fields is disallowed. (If you have
+   *   to, make it a 'set of 1 item' by wrapping it in array().)
    *   An item can have two other key-value pairs that do not represent real
    *   item values:
    *   - #id: the 'id attribute' of an item in XML. Only some item types have
@@ -551,7 +552,7 @@ class AfasApiHelper {
    *   (Default: -1.)
    *
    * @return string
-   *   The constructed XML.
+   *   The constructed XML. All values in $data get XML-encoded/escaped.
    *
    * @throws Exception
    *
@@ -602,7 +603,7 @@ class AfasApiHelper {
     foreach ($data as $key => $element) {
 
       // Construct element with fields within the XML. (For each element inside
-      // the loop, because $info can differ with $data.)
+      // the loop, because $info can differ with $element.)
       $info = self::xmlTypeInfo($type, $parent_type, $element, $fields_action);
       if (empty($info)) {
         throw new Exception(t('No XML definition present for item type @type.',
@@ -618,7 +619,7 @@ class AfasApiHelper {
 
       // Action and Id are set inside 'fake properties' in the data array; use
       // them and unset them.
-      if (isset($data['#action'])) {
+      if (isset($element['#action'])) {
         if (empty($parent_type)) {
           // This really is an override and we want to keep it that way.
           // When possible, people must specify a correct $fields_action.
@@ -626,27 +627,27 @@ class AfasApiHelper {
         }
         // Not sure whether '' makes sense as an override?
         // Also maybe we should disallow deletes inside inserts etc?
-        if (!in_array($data['#action'], array('insert', 'update', 'delete'), TRUE)) {
+        if (!in_array($element['#action'], array('insert', 'update', 'delete'), TRUE)) {
           throw new Exception(t('Unknown value %value for #action inside @type',
-            array('%value' => $data['#action'], '@type' => $type)));
+            array('%value' => $element['#action'], '@type' => $type)));
         }
-        $action = $data['#action'];
-        unset($data['#action']);
+        $action = $element['#action'];
+        unset($element['#action']);
       }
       else {
         $action = $fields_action;
       }
 
-      if (!empty($data['#id']) && empty($info['id_field'])) {
+      if (!empty($element['#id']) && empty($info['id_field'])) {
         throw new Exception(t('Id value provided but no id-field defined for item @type.',
           array('@type' => $type)));
       }
 
       $xml .= $indent_str . '<Element'
-              . (empty($data['#id']) ? '' : ' ' . $info['id_field'] . '="'
-                                            . $data['#id'] . '"')
+              . (empty($element['#id']) ? '' : ' ' . $info['id_field'] . '="'
+                                               . $element['#id'] . '"')
               . '>';
-      unset($data['#id']);
+      unset($element['#id']);
       $indent_str .= $extra_spaces;
 
       $xml .= $indent_str . '<Fields'
@@ -657,9 +658,9 @@ class AfasApiHelper {
       foreach ($info['fields'] as $tag => $map_properties) {
         $value_present = TRUE;
 
-        // Get value from the property equal to the tag (case sensitive!), or the
-        // alias. If two values are present with both tag and alias, we throw an
-        // exception.
+        // Get value from the property equal to the tag (case sensitive!), or
+        // the alias. If two values are present with both tag and alias, we
+        // throw an exception.
         $value_exists_by_alias = isset($map_properties['alias']) && array_key_exists($map_properties['alias'], $element);
         if (array_key_exists($tag, $element)) {
           if ($value_exists_by_alias) {
@@ -727,9 +728,9 @@ class AfasApiHelper {
         foreach ($info['objects'] as $tag => $alias) {
           $value_present = TRUE;
 
-          // Get value from the property equal to the tag (case sensitive!), or the
-          // alias. If two values are present with both tag and alias, we throw an
-          // exception. @todo finish this
+          // Get value from the property equal to the tag (case sensitive!), or
+          // the alias. If two values are present with both tag and alias, we
+          // throw an exception.
           if (array_key_exists($tag, $element)) {
             if (array_key_exists($alias, $element)) {
               throw new Exception(t('Item @type has a value provided by both its property name @property and alias @alias.',
@@ -928,6 +929,8 @@ class AfasApiHelper {
             ),
             // Functie op visitekaart
             'FuDs' => array(
+              // Abbreviates 'function description', but that seems too Dutch.
+              'alias' => 'job_title',
             ),
             // Correspondentie
             'Corr' => array(
@@ -1053,6 +1056,24 @@ class AfasApiHelper {
              * We make sure that you must explicitly specify a value for this
              * with $field_action 'update' (and otherwise get an error), by
              * setting the default - see further down.
+             *
+             * NOTE 20150215: updating/inserting a contact/person inside an
+             * organization is only possible by sending in an embedded
+             * knOrganisation -> knContact -> knPerson XML (as far as I know).
+             * But updating existing data is tricky.
+             * Updates-or-inserts work when specifying non-zero match_method, no
+             * BcCo numbers and no $fields_action (if there are no multiple
+             * matches; those will yield an error).
+             * Specifying MatchPer=0 and BcCo for an existing org+person, and no
+             * $fields_action, yields an AFAS error "Object variable or With
+             * block variable not set" (which is a Visual Basic error, pointing
+             * to an error in AFAS' program code). To bypass this error,
+             * $fields_action "update" must be explicitly specified.
+             * When inserting new contact/person objects into an existing
+             * organization (without risking the 'multiple matches' error above)
+             * $fields_action "update" + BcCo + MatchPer=0 must be specified for
+             * the organization, and $fields_action "insert" must be specified
+             * for the contact/person object. (In xmlEncode(), use '#action'.)
              *
              * NOTE - for Qoony sources in 2011 (which inserted KnPerson objects
              *   inside KnSalesRelationPer), 3 had the comment
@@ -1405,7 +1426,7 @@ class AfasApiHelper {
              * method is specified, AFAS throws an error.
              *
              * We make sure that you must explicitly specify a value for this
-             * with $field_action 'update' (and otherwise get an error), by
+             * with $field_action "update" (and otherwise get an error), by
              * setting the default - see further down.
              */
             // Organisatie vergelijken op
@@ -1428,7 +1449,8 @@ class AfasApiHelper {
               'alias' => 'search_name',
             ),
             // Name. Is not required officially, but I guess you must fill in either
-            // BcCo, SeNm or Nm to
+            // BcCo, SeNm or Nm to be able to find the record back. (Or maybe you get an
+            // error if you don't specify any.)
             'Nm' => array(
               'alias' => 'name',
             ),
