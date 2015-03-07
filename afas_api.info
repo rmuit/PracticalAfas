@@ -1,6 +1,7 @@
 name = AFAS API
 description = Base functionality for communicating with AFAS
 core = 7.x
+php = 5.3
 
 files[] = batchqueue/AfasGetConnector.inc
 files[] = batchqueue/AfasGetConnectorDisplay.inc

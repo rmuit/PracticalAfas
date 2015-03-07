@@ -8,9 +8,8 @@
  * Class AfasSoapConnection.
  *
  * This contains general functions to make most AFAS SOAP calls and error
- * handling easier. It has a hard dependency on AfasApiHelper::constructXml(),
- * but still it seemed best to split that out. This class is now expected to
- * have a reasonable stable 'interface', though it is not officially defined.
+ * handling easier. No interface is officially defined, but the methods /
+ * parameters are expected to remain stable.
  */
 class AfasSoapConnection {
 
@@ -221,52 +220,20 @@ class AfasSoapConnection {
   }
 
   /**
-   * Calls AFAS 'Update connector' with standard arguments, and XML constructed
-   * from a data array in a (strict) format by AfasApiHelper.
-   *
-   * @param $connector_name
-   *   Name of the UpdateConnector
-   * @param array $data
-   *   Data to construct the XML from. See constructXml().
-   * @param string $fields_action
-   *   Action to fill in 'fields' tag; can be 'insert', 'update', 'delete', ''.
-   *
-   * @return bool|mixed
-   *   Response object from SOAP call, or FALSE for error. In the last case,
-   *   error details can be retrieved through getLastCallInfo(), but
-   *   they are printed/logged already (depending on getErrorReporting()).
-   *   Be careful when checking only this return value for errors; some
-   *   successful calls return an empty string.
-   *
-   * @see constructXml()
-   * @see xmlTypeInfo()
-   */
-  public function sendData($connector_name, $data, $fields_action = '') {
-    return $this->call(
-      'Execute',
-      array(
-        'logonAs' => '',
-        'connectorType' => $connector_name,
-        'connectorVersion' => '1',
-        'dataXml' => AfasApiHelper::constructXml($connector_name, $data, $fields_action),
-      ),
-      'update'
-    );
-  }
-
-  /**
    * Calls AFAS 'Update connector' with standard arguments and an XML string.
    *
    * @param $connector_name
    *   Name of the UpdateConnector
    * @param $xml
-   *   XML string as specified by AFAS. (See their XSD Schemas.)
+   *   XML string as specified by AFAS. See their XSD Schemas, or use
+   *   AfasApiHelper::constructXML($connector_name, ...) as an argument to this
+   *   method if you would rather pass custom arrays than an XML string.
    *
    * @return bool|mixed
    *   Response object from SOAP call, or FALSE for error. In the last case,
    *   error details can be retrieved through getLastCallInfo(), but
    *   they are printed/logged already (depending on getErrorReporting()).
-   *   Be careful when checking only this return value for errors; some
+   *   Be careful when checking only this return value for errors; most
    *   successful calls return an empty string.
    */
   function sendXml($connector_name, $xml) {

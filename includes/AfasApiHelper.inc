@@ -7,17 +7,16 @@
 /**
  * Class AfasApiHelper.
  *
- * This is a collection of general helper methods for data manipulation, which
- * are mainly useful before sending data into AFAS. It's split out from
- * AfasSoapConnection (even though AfasSoapConnection now has a hard dependency
- * on AfasApiHelper::constructXml()) to protect the stability of the
- * AfasSoapConnection 'interface' a bit: this collection will probably see some
- * change over time.
+ * This is a collection of standalone helper methods for data manipulation,
+ * which are mainly useful before sending data into AFAS. It's split out from
+ * AfasSoapConnection to protect the stability of the AfasSoapConnection
+ * 'interface' a bit: this collection will probably see some change over time.
  * (And, the data definitions in here are just too big for AfasSoapConnection.)
  *
- * All methods are static so far. (This could just have been global functions
- * in afas_api.module, but since Drupal is moving to classes anyway... this
- * makes things a little more extensible.)
+ * You probably want to extend xmlTypeInfo() if you have defined your own custom
+ * fields inside your AFAS environment.
+ *
+ * All methods are static so far.
  */
 class AfasApiHelper {
 
@@ -518,18 +517,18 @@ class AfasApiHelper {
    *
    * @param string $type
    *   The type of item; this (usually?) corresponds to the outer tag in the XML
-   *   string / an 'updateConnectorId' The function throws an exception if the
-   *   type is not known by this function.
+   *   string / an 'updateConnectorId'; see xmlTypeInfo() for possible values.
+   *   An exception is thrown if the type is unknown.
    * @param array $data
-   *   Data to construct the XML from.
+   *   Data to construct the XML from; see xmlTypeInfo() for possible values.
    *   This can represent a set of (one or more) items; in this case all values
    *   are arrays representing a single item.
    *   It can also represent one item, in which case all keys in this array are
-   *   XML tags or aliases (defined in xmlTypeInfo()) and values are the
-   *   corresponding tag (scalar) or related-object (array) value. The item must
-   *   contain at least one field/scalar value; passing one data object
-   *   containing only related-objects and no fields is disallowed. (If you have
-   *   to, make it a 'set of 1 item' by wrapping it in array().)
+   *   XML tags or aliases and values are the corresponding tag/field (scalar)
+   *   or related-object (array) value. The item must contain at least one
+   *   scalar (field) value; passing one data object containing only
+   *   related-objects and no fields is disallowed. (If you have to, make it a
+   *   'set of 1 item' by wrapping it in array().)
    *   An item can have two other key-value pairs that do not represent real
    *   item values:
    *   - #id: the 'id attribute' of an item in XML. Only some item types have
@@ -542,7 +541,7 @@ class AfasApiHelper {
    *   Combination of $fields_action == 'insert' & non-empty id is allowed
    *   (probably you have autonumbering turned off, if you do this).
    *   Combination of $fields_action == 'update' & empty id is logical only
-   *   when the item has a 'MatchXXX' property; see definitions.
+   *   when the item has a 'MatchXXX' property; see xmlTypeInfo().
    * @param string $parent_type
    *   If nonempty, the generated XML will be a fragment suitable for embedding
    *   within the parent type, which is slightly different from standalone XML.
@@ -604,7 +603,7 @@ class AfasApiHelper {
 
       // Construct element with fields within the XML. (For each element inside
       // the loop, because $info can differ with $element.)
-      $info = self::xmlTypeInfo($type, $parent_type, $element, $fields_action);
+      $info = static::xmlTypeInfo($type, $parent_type, $element, $fields_action);
       if (empty($info)) {
         throw new Exception(t('No XML definition present for item type @type.',
           array('@type' => $type)));
@@ -1073,7 +1072,7 @@ class AfasApiHelper {
              * organization (without risking the 'multiple matches' error above)
              * $fields_action "update" + BcCo + MatchPer=0 must be specified for
              * the organization, and $fields_action "insert" must be specified
-             * for the contact/person object. (In xmlEncode(), use '#action'.)
+             * for the contact/person object. (In constructXML() use '#action'.)
              *
              * NOTE - for Qoony sources in 2011 (which inserted KnPerson objects
              *   inside KnSalesRelationPer), 3 had the comment
