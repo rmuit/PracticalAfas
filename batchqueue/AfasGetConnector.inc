@@ -17,42 +17,38 @@
 class AfasGetConnector extends BatchQueueFetcher {
 
   /// Keys in $this->settings that are used by this class:
+  // - afas_connector: the name of the GET connector to use for fetching data.
+  // - afas_filter (array): filter to use. See comments (all types are
+  //   supported) at AfasSoapConnection::normalizeArguments().
   //
-  // 'afas_connector'  : the name of the GET connector to use for fetching data.
-  // 'response_timeout': response_timeout to set for AfasNusoapClient.
-  //                     (Has no effect on AfasSoapClient. It doesn't matter, as
-  //                     long as we keep using CURL for that one.)
-  // 'tries'           : number of times to try connecting at timeout.
-  // 'afas_include_empty_fields': includes empty fields in AFAS output.
-
-  /// Class variables which an extending class must set in order to make use of
-  /// some of the helper functions. (Most simple way: hardcode in __construct();
-  /// see also BatchQueueImportJob variables.)
+  // - afas_adv_filter (string): Filter to use (one 'array level' only), as PHP
+  //   code. Thisis only useful for the per-process settingsForm; use
+  //   'afas_filter' instead.
+  // - opt_afas_adv_filter: (boolean, interpreted as TRUE by default / if not set):
+  //                  Enables 'afas_adv_filter' setting in settingsForm.
+  //
+  // - afas_include_empty_fields (boolean): include empty fields in AFAS output.
+  //
+  // - fetcher_timeout (int): response_timeout to set for AfasNusoapClient.
+  //   (Has no effect on AfasSoapClient. It doesn't matter, as long as we keep
+  //   using CURL for that one.)
+  // - fetcher_tries (int): number of times to try connecting at timeout.
 
   // Optional extra filter. (Added for convenience; it's perfectly possible for
   // classes to do their own filtering - but this way they can 'hardcode' an
   // extra filter for their connector in their __construct function.)
   // Needs to be a single-level array (i.e. can contain multiple fields but only
   // one operator).
+  // @deprecated - use settings[afas_filter].
   protected $extra_filter;
-
-  /// Class variables enabling 'optional' functionality we want to
-  /// provide here for convenience, but not always enable by default.
-
-  // Boolean: Advanced filter input element, which reads array structures
-  // understood by AfasSoapConnection::getData(). Set to TRUE to enable in
-  // settingsForm.
-  protected $opt_adv_filter;
 
   public function __construct($settings = array()) {
     parent::__construct($settings);
 
-    $this->opt_limit = TRUE;
-    // Note $this->opt_single_item is not enabled. It doesn't have a lot of
-    // added value if we don't also add a 'pkey' setting.
-
     // @todo implement permission?
-    $this->opt_adv_filter = TRUE;
+    if (!isset($this->settings['opt_afas_adv_filter'])) {
+      $this->settings['opt_afas_adv_filter'] = TRUE;
+    }
   }
 
   /// Interface functions
@@ -63,7 +59,7 @@ class AfasGetConnector extends BatchQueueFetcher {
   public function settingsForm() {
     $form = parent::settingsForm();
 
-    if (!empty($this->opt_adv_filter)) {
+    if (!empty($this->settings['opt_afas_adv_filter'])) {
 
       // There's a slight chance that the fieldset has not been defined yet
       // (creating #weight isseus), see BatchQueueFetcher.
@@ -77,7 +73,7 @@ class AfasGetConnector extends BatchQueueFetcher {
 
       // Potential security hole; this edit screen must only be available for admins.
       // TODO implement extra permission?
-      $form['selection']['filters'] = array(
+      $form['selection']['afas_adv_filter'] = array(
         '#type'          => 'textarea',
         '#rows'          => 5,
         '#title'         => t('Advanced filter'),
@@ -108,7 +104,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
       }
     }
 
-    $form['tries'] = array(
+    $form['fetcher_tries'] = array(
       '#type'          => 'textfield',
       '#title'         => t('Tries'),
       '#description'   => 'The number of times to repeatedly try fetching data, in case of timeouts',
@@ -145,14 +141,14 @@ One example, to get only products that changed in the past week:<br/><em>array(<
     }
 
     $items = FALSE;
-    $tries_left = !empty($this->settings['tries']) ? $this->settings['tries'] : 1;
+    $tries_left = !empty($this->settings['fetcher_tries']) ? $this->settings['fetcher_tries'] : 1;
     while ($items === FALSE && --$tries_left >= 0) {
 
       $connection = new AfasSoapConnection();
-      if (!empty($this->settings['response_timeout'])
-          && is_numeric($this->settings['response_timeout'])) {
+      if (!empty($this->settings['fetcher_timeout'])
+          && is_numeric($this->settings['fetcher_timeout'])) {
         $connection->setOptions(
-          array('response_timeout' => $this->settings['response_timeout'])
+          array('fetcher_timeout' => $this->settings['fetcher_timeout'])
         );
       }
       $items = $connection->getData($this->settings['afas_connector'], $this->inputFilter(),
@@ -165,7 +161,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
           if ($tries_left) {
             // Do 'error' only because it positions this message in between
             // the other messages, if this is called from the batch form.
-            $this->log('AFAS timeout occurred; retrying, #@try', array('@try' => $this->settings['tries'] - $tries_left), WATCHDOG_ERROR);
+            $this->log('AFAS timeout occurred; retrying, #@try', array('@try' => $this->settings['fetcher_tries'] - $tries_left), WATCHDOG_ERROR);
           }
         }
         else {
@@ -204,7 +200,9 @@ One example, to get only products that changed in the past week:<br/><em>array(<
    *   AfasSoapConnection::getData().
    */
   public function inputFilter() {
-    $filters = array();
+    // This support 'simple' and 'deeper' array arguments.
+    $filters = isset($this->settings['afas_filter']) && is_array($this->settings['afas_filter'])
+      ? $this->settings['afas_filter'] : array();
 
     // Add this filter 1 layer deeper than the 'simple'
     // filter arguments. AfasSoapConnection::getData() will sort it out.
@@ -236,9 +234,9 @@ One example, to get only products that changed in the past week:<br/><em>array(<
     if (!isset($filters)) {
       $filters = array();
 
-      if (!empty($this->settings['filters'])) {
+      if (!empty($this->settings['afas_adv_filter'])) {
         $eval = '';
-        eval('$eval = array(' . $this->settings['filters'] . ');');
+        eval('$eval = array(' . $this->settings['afas_adv_filter'] . ');');
         if (is_array($eval)) {
           foreach ($eval as $filter) {
             if (is_array($filter)) {
@@ -254,8 +252,8 @@ One example, to get only products that changed in the past week:<br/><em>array(<
           }
         }
         else {
-          $this->log("Invalid 'filters' setting passed to inputFilter(): %p",
-            array('%p' => print_r($this->settings['filters'], TRUE)), WATCHDOG_ERROR, FALSE);
+          $this->log("Invalid 'afas_adv_filter' setting passed to inputFilter(): %p",
+            array('%p' => print_r($this->settings['afas_adv_filter'], TRUE)), WATCHDOG_ERROR, FALSE);
         }
       }
     }
