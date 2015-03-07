@@ -14,7 +14,7 @@
 class AfasSoapConnection {
 
   /**
-   * Wrapper class around the SOAP client library.
+   * Name of the client 'wrapper' class we use to execute actual SOAP calls.
    *
    * @var string
    */
@@ -774,6 +774,18 @@ class AfasSoapConnection {
          * We want to keep supporting 1 for easier readability (and 2 for backward
          * compatibility), but to prevent strange errors, we'll also support '#op'
          * in the first array level; this overrides 'filter_operator'.
+         * We also support mixed instances of both, meaning the following array
+         * has the same output as 3) above:
+         *   array(
+         *     FIELD1 => VALUE1,
+         *     'key_is_ignored' => array(FIELD3 => VALUE3, ..., [ '#op' => operator2  ]),
+         *     ...,
+         *     '#op' => operator,
+         *   }
+         * This will be 'normalized' into the same array of individual
+         * field+value+operator items, which are all AND'ed together.
+         * (AFAS get connectors do not support 'OR' filters.)
+         *
          * Operators can be numeric (AFAS like) as well as the values above.
          * Anything unresolved will default to '='.
          */
@@ -785,6 +797,8 @@ class AfasSoapConnection {
         if (!is_numeric($operator)) {
           $operator = !empty($operators[$operator]) ? $operators[$operator] : 1;
         }
+        unset($filters['#op']);
+        unset($filters['filter_operator']);
         foreach ($filters as $outerfield => &$filter) {
           if (is_array($filter)) {
             // Process extra layer
@@ -799,13 +813,13 @@ class AfasSoapConnection {
             // Construct filter(s) in this sections
             foreach ($filter as $key => $value) {
               if ($key != '#op') {
-                $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . check_plain($value) . '</Field>';
+                $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . static::xmlValue($value) . '</Field>';
               }
             }
           }
           else {
             // Construct 1 filter in this section, with standard operator.
-            $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . check_plain($filter) . '</Field>';
+            $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . static::xmlValue($filter) . '</Field>';
 
             // Normalize $filters for reference by callers.
             $filter = array(
@@ -814,8 +828,6 @@ class AfasSoapConnection {
             );
           }
         }
-        unset($filters['#op']);
-        unset($filters['filter_operator']);
         $arguments['filters'] = $filters;
 
         // There can be multiple 'Filter' tags with FilterID. We only need to use
@@ -825,4 +837,16 @@ class AfasSoapConnection {
     }
   }
 
+  /**
+   * Prepare a value for inclusion in XML: trim and encode.
+   * @param string $text
+   * @return string
+   */
+  protected static function xmlValue($text) {
+    // check_plain() / ENT_QUOTES converts single quotes to &#039; which is
+    // illegal in XML so we can't use it for sanitizing.) The below is
+    // equivalent to "htmlspecialchars($text, ENT_QUOTES | ENT_XML1)", but also
+    // valid in PHP < 5.4.
+    return str_replace("'", '&apos;', htmlspecialchars(trim($text)));
+  }
 }

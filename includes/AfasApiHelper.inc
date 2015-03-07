@@ -712,7 +712,7 @@ class AfasApiHelper {
             }
           }
           $xml .= $indent_str . $extra_spaces . (isset($value)
-              ? "<$tag>" . self::xmlEncode($value) . "</$tag>"
+              ? "<$tag>" . static::xmlValue($value) . "</$tag>"
               // Value is passed but NULL, or default value is null:
               : "<$tag xsi:nil=\"true\"/>");
         }
@@ -791,18 +791,16 @@ class AfasApiHelper {
   }
 
   /**
-   * Encode text for inclusion inside XML tags.
+   * Prepare a value for inclusion in XML: trim and encode.
    * @param string $text
-   * @param string $encoding
    * @return string
    */
-  private static function xmlEncode($text, $encoding = 'utf-8') {
+  protected static function xmlValue($text) {
     // check_plain() / ENT_QUOTES converts single quotes to &#039; which is
     // illegal in XML so we can't use it for sanitizing.) The below is
-    // equivalent to "htmlspecialchars($text, ENT_XML1)", but also valid in
-    // PHP < 5.4.
-    return str_replace("'", '&apos;',
-      htmlspecialchars($text, ENT_COMPAT, $encoding));
+    // equivalent to "htmlspecialchars($text, ENT_QUOTES | ENT_XML1)", but also
+    // valid in PHP < 5.4.
+    return str_replace("'", '&apos;', htmlspecialchars(trim($text)));
   }
 
   /**
@@ -867,7 +865,6 @@ class AfasApiHelper {
             'HmNr' => array(
               'alias' => 'house_number',
               'type' => 'long',
-              'required' => TRUE,
             ),
             // Toev. aan huisnr.
             'HmAd' => array(
@@ -1011,7 +1008,7 @@ class AfasApiHelper {
           );
 
           // According to the XSD, a knContact can contain a knPerson if it's
-          // inside a knOrganisation, but not if it's stendalone.
+          // inside a knOrganisation, but not if it's standalone.
           if ($parent_type == 'KnOrganisation') {
             $info['objects']['KnPerson'] = 'person';
 
@@ -1152,7 +1149,7 @@ class AfasApiHelper {
             ),
             // Sex (M = Man, V = Vrouw, O = Onbekend)
             'ViGe' => array(
-              'alias' => 'sex',
+              'alias' => 'gender',
               'default' => 'O',
             ),
             // Nationaliteit (verwijzing naar: Tabelwaarde,Nationaliteit (NEN1888) => AfasKnCodeTableValue)
