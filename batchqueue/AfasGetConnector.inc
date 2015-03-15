@@ -107,7 +107,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
     $form['fetcher_tries'] = array(
       '#type'          => 'textfield',
       '#title'         => t('Tries'),
-      '#description'   => 'The number of times to repeatedly try fetching data, in case of timeouts',
+      '#description'   => 'The number of times to repeatedly try fetching AFAS data, in case of timeouts',
       '#default_value' => 1,
       '#size'          => 3,
       '#weight'        => 97,

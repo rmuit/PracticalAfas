@@ -379,7 +379,7 @@ class AfasApiHelper {
                              # non-greedy because for STREET NR1 NR2, "nr1" should
                              # end up in the number field, not "nr2".
           (?:\s+|[\-\.\/])?  # optionally separated by spaces or 1 other special character, which we throw away
-          (\S{0,4})?         # followed by optional suffix of at most 4 chars.
+          (\S.{0,29})?       # followed by optional suffix of at most 30 chars (30 is the maximum in the AFAS UI)
                              # (I want to match "sous", at least.)
           \s* $/x', $data['street'], $matches); // x == extended regex pattern
         if ($found) {
@@ -392,7 +392,7 @@ class AfasApiHelper {
       }
       //
       // $want_to_split && !$found, improvise.
-      if ($want_to_split && !$found || $data['country_code'] == 'F') {
+      if ($want_to_split && !$found || $data['country_code'] === 'F') {
         // Split house nr if possible. This happens if:
         // - the country usually has addresses with house number (but not ext)
         // - above regexp did not yield anything. we assume that our AFAS
@@ -404,7 +404,7 @@ class AfasApiHelper {
         $found = preg_match('/^
           (.*?\S) \s+ (\d+   # delete right bracket
           (?:\s+|[\-\.\/])?  # ...so this is part of the 2nd match.
-          \S{0,4})           # delete left bracket; end 2nd match.
+          \S.{0,29})         # delete left bracket; end 2nd match.
           \s* $/x', $data['street'], $matches);
         if ($found) {
           $data['street'] = $matches[1];
@@ -414,7 +414,7 @@ class AfasApiHelper {
         if (!$found && preg_match('/^\s*
               (\d+              # number
               (?:\s+|[\-\.\/])? # optionally separated by spaces or 1 other special character
-              \S{0,4})          # followed by optional suffix of at most 4 chars.
+              \S.{0,29})        # followed by optional suffix of at most 30 chars.
               [,\s]\s*          # at least one space OR comma behind housenumber, can be thrown away
               (\S.*)            # 2nd match: real thoroughfare field.
               $/x', $data['street'], $matches)) {
@@ -699,7 +699,7 @@ class AfasApiHelper {
                   throw new Exception(t('Property @property in item @type must be numeric.',
                     array('@type' => $type, '@property' => $tag . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : ''))));
                 }
-                if ($map_properties['type'] == 'long' && strpos((string) $value, '.') !== FALSE) {
+                if ($map_properties['type'] === 'long' && strpos((string) $value, '.') !== FALSE) {
                   throw new Exception(t("Property @property in item @type must be a 'long'.",
                     array('@type' => $type, '@property' => $tag . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : ''))));
                 }
@@ -994,7 +994,7 @@ class AfasApiHelper {
             ),
           ),
         );
-        if ($parent_type == 'KnOrganisation' || $parent_type == 'KnPerson') {
+        if ($parent_type === 'KnOrganisation' || $parent_type === 'KnPerson') {
           $info['fields'] += array(
             // Soort Contact
             // Values:  AFD:Afdeling bij organisatie   AFL:Afleveradres
@@ -1009,7 +1009,7 @@ class AfasApiHelper {
 
           // According to the XSD, a knContact can contain a knPerson if it's
           // inside a knOrganisation, but not if it's standalone.
-          if ($parent_type == 'KnOrganisation') {
+          if ($parent_type === 'KnOrganisation') {
             $info['objects']['KnPerson'] = 'person';
 
             // If we specify a person in the data too, 'Persoon' is the default.
@@ -1315,7 +1315,7 @@ class AfasApiHelper {
           $info['fields']['MatchPer']['default'] = '0';
         }
 
-        if ($parent_type == 'KnContact' || $parent_type == 'KnSalesRelationPer') {
+        if ($parent_type === 'KnContact' || $parent_type === 'KnSalesRelationPer') {
           // Note: a knPerson cannot be inside a knContact directly. So far we
           // know only of the situation where that knContact is again inside a
           // knOrganisation.
@@ -1328,7 +1328,7 @@ class AfasApiHelper {
             ),
           );
         }
-        if ($parent_type == 'KnSalesRelationPer') {
+        if ($parent_type === 'KnSalesRelationPer') {
           // Usually, phone/mobile/e-mail aliases are set to the business
           // ones, and these are the ones you see on the screen in the UI.
           // Inside KnSalesRelationPer, you see the private equivalents in the
@@ -1566,7 +1566,7 @@ class AfasApiHelper {
           // ...and fiscal number.
           $info['fields']['MatchOga']['default'] = '2';
         }
-        elseif ($fields_action == 'insert') {
+        elseif ($fields_action === 'insert') {
           // Since we can get an error if not setting MatchOga in some
           // circumstances (see 0 above), explicitly set 'always insert'.
           $info['fields']['MatchOga']['default'] = '6';
@@ -2368,7 +2368,7 @@ class AfasApiHelper {
 
     // If no ID is specified, default AutoNum to TRUE for inserts.
     if (isset($info['fields']['AutoNum'])
-        && $fields_action == 'insert' && !isset($data['#id'])) {
+        && $fields_action === 'insert' && !isset($data['#id'])) {
       $info['fields']['AutoNum']['default'] = TRUE;
     }
 
