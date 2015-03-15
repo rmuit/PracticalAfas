@@ -537,10 +537,14 @@ class AfasApiHelper {
    *     nested item, if that is different from $fields_action. This must never
    *     be set for an 'outer' item; use $fields_action parameter instead.
    * @param string $fields_action
-   *   Action to fill in 'fields' tag; can be 'insert', 'update', 'delete', ''.
-   *   Combination of $fields_action == 'insert' & non-empty id is allowed
+   *   Action to fill in 'Fields' tag; can be "insert", "update", "delete", "".
+   *   In cases where specifying "insert" in the XML does not make AFAS'
+   *   behavior different from not specifying anything, it may still be
+   *   important because this module will only add default field values if
+   *   "insert" is explicitly specified.
+   *   Combination of $fields_action "insert" and non-empty id is allowed
    *   (probably you have autonumbering turned off, if you do this).
-   *   Combination of $fields_action == 'update' & empty id is logical only
+   *   Combination of $fields_action "update" and empty id is logical only
    *   when the item has a 'MatchXXX' property; see xmlTypeInfo().
    * @param string $parent_type
    *   If nonempty, the generated XML will be a fragment suitable for embedding
@@ -816,7 +820,7 @@ class AfasApiHelper {
    * @param array $data
    *   Data to construct the XML from. This can influence e.g. some defaults.
    * @param string $fields_action
-   *   Action to fill in 'fields' tag; can be 'insert', 'update', 'delete', ''.
+   *   Action to fill in 'fields' tag; can be "insert", "update", "delete", "".
    *   This can influence e.g. some defaults.
    *
    * @return array
@@ -828,6 +832,8 @@ class AfasApiHelper {
    * @see constructXml()
    */
   protected static function xmlTypeInfo($type, $parent_type, $data, $fields_action) {
+
+    $inserting = $fields_action === 'insert';
 
     $info = array();
     switch ($type) {
@@ -1043,14 +1049,15 @@ class AfasApiHelper {
               // See below for a dynamic default
             ),
             /**
-             * If you specify MatchPer, the difference between $fields_action
-             * 'update' and 'insert' falls away: if there is a match (but only
-             * one), the existing record is updated. If there isn't, a new one
-             * is inserted. If there are multiple matches, or a wrong match
-             * method is specified, AFAS throws an error.
+             * If you specify MatchPer and if the corresponding fields have
+             * values, the difference between $fields_action "update" and
+             * "insert" falls away: if there is a match (but only one) the
+             * existing record is updated. If there isn't, a new one is
+             * inserted. If there are multiple matches, or a wrong match method
+             * is specified, AFAS throws an error.
              *
              * We make sure that you must explicitly specify a value for this
-             * with $field_action 'update' (and otherwise get an error), by
+             * with $field_action "update" (and get an error if you don't), by
              * setting the default - see further down.
              *
              * NOTE 20150215: updating/inserting a contact/person inside an
@@ -1129,7 +1136,7 @@ class AfasApiHelper {
             // Geboortenaam apart vastleggen
             'SpNm' => array(
               'type' => 'boolean',
-              'default' => FALSE,
+              'default' => FALSE, // only for explicit inserts; see below.
             ),
             // Voorv. geb.naam
             'IsBi' => array(
@@ -1151,6 +1158,12 @@ class AfasApiHelper {
             'ViGe' => array(
               'alias' => 'gender',
               'default' => 'O',
+              // The default is only for explicit inserts; see below. This means
+              // that for data which is ambiguous about being an insert or
+              // update, you must specify a value yourself, otherwise you get an
+              // error "Bij een persoon is het geslacht verplicht.".
+              // There is no other way; if we set a default here for non-inserts
+              // we risk silently overwriting the gender value present in AFAS.
             ),
             // Nationaliteit (verwijzing naar: Tabelwaarde,Nationaliteit (NEN1888) => AfasKnCodeTableValue)
             // Values:  000:Onbekend   NL:Nederlandse   DZ:Algerijnse   AN:Angolese   RU:Burundische   RB:Botswaanse   BU:Burger van Burkina Faso   RCA:Centrafrikaanse   KM:Comorese   RCB:Kongolese   DY:Beninse   ET:Egyptische   EQ:Equatoriaalguinese   ETH:Etiopische   DJI:Djiboutiaanse   GA:Gabonese   WAG:Gambiaanse   GH:Ghanese   GN:Guinese   CI:Ivoriaanse   CV:Kaapverdische   TC:Kameroense   EAK:Kenyaanse   CD:ZaÃ¯rese   LS:Lesothaanse   LB:Liberiaanse   LAR:Libische   RM:Malagassische   MW:Malawische   RMM:Malinese   MA:Marokkaanse   RIM:Burger van Mauritanië   MS:Burger van Mauritius   MOC:Mozambiquaanse   SD:Swazische   RN:Burger van Niger   WAN:Burger van Nigeria   EAU:Ugandese   GW:Guineebissause   ZA:Zuidafrikaanse   ZW:Zimbabwaanse   RWA:Rwandese   ST:Burger van SÃ£o TomÃ© en Principe   SN:Senegalese   WAL:Sierraleoonse   SUD:Soedanese   SP:Somalische   EAT:Tanzaniaanse   TG:Togolese   TS:Tsjadische   TN:Tunesische   Z:Zambiaanse   ZSUD:Zuid-Soedanese   BS:Bahamaanse   BH:Belizaanse   CDN:Canadese   CR:Costaricaanse   C:Cubaanse   DOM:Burger van Dominicaanse Republiek   EL:Salvadoraanse   GCA:Guatemalteekse   RH:HaÃ¯tiaanse   HON:Hondurese   JA:Jamaicaanse   MEX:Mexicaanse   NIC:Nicaraguaanse   PA:Panamese   TT:Burger van Trinidad en Tobago   USA:Amerikaans burger   RA:Argentijnse   BDS:Barbadaanse   BOL:Boliviaanse   BR:Braziliaanse   RCH:Chileense   CO:Colombiaanse   EC:Ecuadoraanse   GUY:Guyaanse   PY:Paraguayaanse   PE:Peruaanse   SME:Surinaamse   ROU:Uruguayaanse   YV:Venezolaanse   WG:Grenadaanse   KN:Burger van Saint Kitts-Nevis   SK:Slowaakse   CZ:Tsjechische   BA:Burger van Bosnië-Herzegovina   GE:Burger van Georgië   AFG:Afgaanse   BRN:Bahreinse   BT:Bhutaanse   BM:Burmaanse   BRU:Bruneise   K:Kambodjaanse   CL:Srilankaanse   CN:Chinese   CY:Cyprische   RP:Filipijnse   TMN:Burger van Toerkmenistan   RC:Taiwanese   IND:Burger van India   RI:Indonesische   IRQ:Iraakse   IR:Iraanse   IL:Israëlische   J:Japanse   HKJ:Jordaanse   TAD:Burger van Tadzjikistan   KWT:Koeweitse   LAO:Laotiaanse   RL:Libanese   MV:Maldivische   MAL:Maleisische   MON:Mongolische   OMA:Omanitische   NPL:Nepalese   KO:Noordkoreaanse   OEZ:Burger van Oezbekistan   PK:Pakistaanse   KG:Katarese   AS:Saoediarabische   SGP:Singaporaanse   SYR:Syrische   T:Thaise   AE:Burger van de Ver. Arabische Emiraten   TR:Turkse   UA:Burger van Oekraine   ROK:Zuidkoreaanse   VN:Viëtnamese   BD:Burger van Bangladesh   KYR:Burger van Kyrgyzstan   MD:Burger van Moldavië   KZ:Burger van Kazachstan   BY:Burger van Belarus (Wit-Rusland)   AZ:Burger van Azerbajdsjan   AM:Burger van Armenië   AUS:Australische   PNG:Burger van Papua-Nieuwguinea   NZ:Nieuwzeelandse   WSM:Westsamoaanse   RUS:Burger van Rusland   SLO:Burger van Slovenië   AG:Burger van Antigua en Barbuda   VU:Vanuatuse   FJI:Fijische   GB4:Burger van Britse afhankelijke gebieden   HR:Burger van Kroatië   TO:Tongaanse   NR:Nauruaanse   USA2:Amerikaans onderdaan   LV:Letse   SB:Solomoneilandse   SY:Seychelse   KIR:Kiribatische   TV:Tuvaluaanse   WL:Sintluciaanse   WD:Burger van Dominica   WV:Burger van Sint Vincent en de Grenadinen   EW:Estnische   IOT:British National (overseas)   ZRE:ZaÃ¯rese (Congolese)   TLS:Burger van Timor Leste   SCG:Burger van Servië en Montenegro   SRB:Burger van Servië   MNE:Burger van Montenegro   LT:Litouwse   MAR:Burger van de Marshalleilanden   BUR:Myanmarese   SWA:Namibische   499:Staatloos   AL:Albanese   AND:Andorrese   B:Belgische   BG:Bulgaarse   DK:Deense   D:Duitse   FIN:Finse   F:Franse   YMN:Jemenitische   GR:Griekse   GB:Brits burger   H:Hongaarse   IRL:Ierse   IS:IJslandse   I:Italiaanse   YU:Joegoslavische   FL:Liechtensteinse   L:Luxemburgse   M:Maltese   MC:Monegaskische   N:Noorse   A:Oostenrijkse   PL:Poolse   P:Portugese   RO:Roemeense   RSM:Sanmarinese   E:Spaanse   VAT:Vaticaanse   S:Zweedse   CH:Zwitserse   GB2:Brits onderdaan   ERI:Eritrese   GB3:Brits overzees burger   MK:Macedonische   XK:Kosovaar
@@ -1187,7 +1200,7 @@ class AfasApiHelper {
               // ALG was given in Qoony (where person was inside knSalesRelationPer).
               // in newer environment where it's inside knOrganisation > knContact,
               // I don't even see this one in an entry screen.
-              //'default' => 'ALG',
+              //'default' => 'ALG', // only for explicit inserts; see below.
             ),
             // Tweede titel (verwijzing naar: Titel => AfasKnTitle)
             'TtEx' => array(
@@ -1227,7 +1240,7 @@ class AfasApiHelper {
             // Correspondentie
             'Corr' => array(
               'type' => 'boolean',
-              'default' => FALSE,
+              'default' => FALSE, // only for explicit inserts; see below.
             ),
             // Voorkeursmedium (verwijzing naar: Tabelwaarde,Medium voor correspondentie => AfasKnCodeTableValue)
             'ViMd' => array(
@@ -1275,23 +1288,23 @@ class AfasApiHelper {
           unset($info['fields']['FiNm']['required']);
         }
 
+        // We're sure that the record will be newly inserted if MatchPer
+        // specifies this, and the 'fields action' does not say otherwise.
+        // @todo test: what about MatchPer 7 and "update"? What overrides what?
+        $inserting = (!$fields_action || $fields_action === 'insert')
+                     && (!isset($data['match_method']) && !isset($data['MatchPer'])
+                         || isset($data['match_method']) && $data['match_method'] == 7
+                         || isset($data['MatchPer']) && $data['MatchPer'] == 7);
+
         // MatchPer defaults: Our principle is we would rather insert duplicate
         // data than silently overwrite data by accident.
         if (!empty($data['BcCo'])) {
-          /* ...but it seems very unlikely that someone would specify BcCo when
-           * they don't explicitly want the corresponding record overwritten.
-           * So we match on BcCo in that case. This means there is no difference\
-           * between $fields_action 'insert' and 'update'!
-           * If we do _not_ set MatchPer while BcCo _is_ specified, with
-           * $fields_action 'insert' we get error "Unsupported match value!!"
-           *
-           * If we set MatchPer=0 if BcCo is not specified,
-           * - we get error "Voer een waarde in bij 'Nummer'" at 'update';
-           * - a record is always inserted at 'insert' (so I guess in this case
-           *   '0' is equal to '6').
-           * (NOTE we haven't actually tested this until now, just assumed that
-           * it works the same way as for knOrganisation, which was tested...)
-           */
+          // ...but it seems very unlikely that someone would specify BcCo when
+          // they don't explicitly want the corresponding record overwritten.
+          // So we match on BcCo in that case. This means there is no difference
+          // between $fields_action "insert" and "update"!
+          // If we do _not_ set MatchPer while BcCo _is_ specified, with
+          // $fields_action "insert" we get error "Unsupported match value!!"
           $info['fields']['MatchPer']['default'] = '0';
         }
         elseif (!empty($data['SoSe']) || !empty($data['bsn'])) {
@@ -1304,14 +1317,20 @@ class AfasApiHelper {
         // a lot of testing. Do this later. We will feel entitled to change this
         // part of this function's behavior silently.
         else {
-          // Probably even with $fields_action 'update', a new record will be
+          // Probably even with $fields_action "update", a new record will be
           // inserted if there is no match... but we do not know this for sure!
           // Since our principle is to prevent silent overwrites of data, we
-          // here force an error for 'update' (see 0 above) if MatchPer is not
-          // explicitly specified in $data.
+          // here force an error for "update" if MatchPer is not explicitly
+          // specified in $data.
           // (If you disagree / encounter circumstances where this is not OK,
           // tell me so we can refine this. --Roderik.)
-          // For 'insert', this will insert a new record - see comment above.
+          //
+          // If we set MatchPer=0 if BcCo is not specified,
+          // - we get error "Voer een waarde in bij 'Nummer'" at "update";
+          // - a record is always inserted at "insert" (so I guess in this case
+          //   '0' is equal to '7').
+          // (NOTE we haven't actually tested this until now, just assumed that
+          // it works the same way as for knOrganisation, which was tested...)
           $info['fields']['MatchPer']['default'] = '0';
         }
 
@@ -1408,21 +1427,22 @@ class AfasApiHelper {
             'PbAd' => array(
               'alias' => 'is_po_box',
               'type' => 'boolean',
-              'default' => FALSE,
+              'default' => FALSE, // only for explicit inserts; see below.
             ),
             'AutoNum' => array(
               'alias' => 'auto_num',
               'type' => 'boolean',
             ),
             /**
-             * If you specify MatchOga, the difference between $fields_action
-             * 'update' and 'insert' falls away: if there is a match (but only
-             * one), the existing record is updated. If there isn't, a new one
-             * is inserted. If there are multiple matches, or a wrong match
-             * method is specified, AFAS throws an error.
+             * If you specify MatchOga and if the corresponding fields have
+             * values, the difference between $fields_action "update" and
+             * "insert" falls away: if there is a match (but only one) the
+             * existing record is updated. If there isn't, a new one is
+             * inserted. If there are multiple matches, or a wrong match method
+             * is specified, AFAS throws an error.
              *
              * We make sure that you must explicitly specify a value for this
-             * with $field_action "update" (and otherwise get an error), by
+             * with $field_action "update" (and get an error if you don't), by
              * setting the default - see further down.
              */
             // Organisatie vergelijken op
@@ -1539,21 +1559,24 @@ class AfasApiHelper {
             ),
           ),
         );
+
+        // We're sure that the record will be newly inserted if MatchPer
+        // specifies this, and the 'fields action' does not say otherwise.
+        // @todo test: what about MatchOga 6 and "update"? What overrides what?
+        $inserting = (!$fields_action || $fields_action === 'insert')
+                     && (!isset($data['match_method']) && !isset($data['MatchOga'])
+                         || isset($data['match_method']) && $data['match_method'] == 6
+                         || isset($data['MatchOga']) && $data['MatchOga'] == 6);
+
         // MatchOga defaults: Our principle is we would rather insert duplicate
         // data than silently overwrite data by accident.
         if (!empty($data['BcCo'])) {
-          /* ...but it seems very unlikely that someone would specify BcCo when
-           * they don't explicitly want the corresponding record overwritten.
-           * So we match on BcCo in that case. This means there is no difference\
-           * between $fields_action 'insert' and 'update'!
-           * If we do _not_ set MatchOga while BcCo _is_ specified, with
-           * $fields_action 'insert' we get error "Unsupported match value!!"
-           *
-           * If we set MatchOga=0 if BcCo is not specified,
-           * - we get error "Voer een waarde in bij 'Nummer'" at 'update';
-           * - a record is always inserted at 'insert' (so I guess in this case
-           *   '0' is equal to '6').
-           */
+          // ...but it seems very unlikely that someone would specify BcCo when
+          // they don't explicitly want the corresponding record overwritten.
+          // So we match on BcCo in that case. This means there is no difference
+          // between $fields_action "insert" and "update"!
+          // If we do _not_ set MatchOga while BcCo _is_ specified, with
+          // $fields_action "insert" we get error "Unsupported match value!!"
           $info['fields']['MatchOga']['default'] = '0';
         }
         elseif (!empty($data['CcNr']) || !empty($data['coc_number'])) {
@@ -1572,14 +1595,18 @@ class AfasApiHelper {
           $info['fields']['MatchOga']['default'] = '6';
         }
         else {
-          // Probably even with $fields_action 'update', a new record will be
+          // Probably even with $fields_action "update", a new record will be
           // inserted if there is no match... but we do not know this for sure!
           // Since our principle is to prevent silent overwrites of data, we
-          // here force an error for 'update' (see 0 above) if MatchOga is not
-          // explicitly specified in $data.
+          // here force an error for "update" if MatchOga is not explicitly
+          // specified in $data.
           // (If you disagree / encounter circumstances where this is not OK,
           // tell me so we can refine this. --Roderik.)
-          // For 'insert', this will insert a new record - see comment above.
+          //
+          // If we set MatchOga=0 if BcCo is not specified,
+          // - we get error "Voer een waarde in bij 'Nummer'" at "update";
+          // - a record is always inserted at "insert" (so I guess in this case
+          //   '0' is equal to '6').
           $info['fields']['MatchOga']['default'] = '0';
         }
         break;
@@ -2364,6 +2391,15 @@ class AfasApiHelper {
           ),
         );
         break;
+    }
+
+    // If we are not sure that the record will be newly inserted, we do not
+    // want to have any default values - because those will risk silently
+    // overwriting existing values in AFAS.
+    if (!$inserting) {
+      foreach ($info['fields'] as $field => &$definition) {
+        unset($definition['default']);
+      }
     }
 
     // If no ID is specified, default AutoNum to TRUE for inserts.
