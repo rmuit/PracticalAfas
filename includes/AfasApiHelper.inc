@@ -857,7 +857,8 @@ class AfasApiHelper {
             'PbAd' => array(
               'alias' => 'is_po_box',
               'type' => 'boolean',
-              'default' => FALSE,
+              'required' => TRUE,
+              'default!' => FALSE,
             ),
             // Toev. voor straat
             'StAd' => array(
@@ -895,12 +896,12 @@ class AfasApiHelper {
             // Ingangsdatum adreswijziging (wordt genegeerd bij eerste datum)
             'BeginDate' => array(
               'type' => 'date',
-              'default' => date('Y-m-d', REQUEST_TIME),
+              'default!' => date('Y-m-d', REQUEST_TIME),
             ),
             'ResZip' => array(
               'alias' => 'resolve_zip',
               'type' => 'boolean',
-              'default' => FALSE,
+              'default!' => FALSE,
             ),
           ),
         );
@@ -1096,7 +1097,6 @@ class AfasApiHelper {
             // Values:  0:Zoek op BcCo (Persoons-ID)   1:Burgerservicenummer   2:Naam + voorvoegsel + initialen + geslacht   3:Naam + voorvoegsel + initialen + geslacht + e-mail werk   4:Naam + voorvoegsel + initialen + geslacht + mobiel werk   5:Naam + voorvoegsel + initialen + geslacht + telefoon werk   6:Naam + voorvoegsel + initialen + geslacht + geboortedatum   7:Altijd nieuw toevoegen
             'MatchPer' => array(
               'alias' => 'match_method',
-              'default' => '0',
             ),
             // Organisatie/persoon (intern)
             // From "Organisaties toevoegen en wijzigen (UpdateConnector KnOrganisation)":
@@ -1136,7 +1136,7 @@ class AfasApiHelper {
             // Geboortenaam apart vastleggen
             'SpNm' => array(
               'type' => 'boolean',
-              'default' => FALSE, // only for explicit inserts; see below.
+              'default' => FALSE,
             ),
             // Voorv. geb.naam
             'IsBi' => array(
@@ -1200,7 +1200,7 @@ class AfasApiHelper {
               // ALG was given in Qoony (where person was inside knSalesRelationPer).
               // in newer environment where it's inside knOrganisation > knContact,
               // I don't even see this one in an entry screen.
-              //'default' => 'ALG', // only for explicit inserts; see below.
+              //'default' => 'ALG',
             ),
             // Tweede titel (verwijzing naar: Titel => AfasKnTitle)
             'TtEx' => array(
@@ -1240,7 +1240,7 @@ class AfasApiHelper {
             // Correspondentie
             'Corr' => array(
               'type' => 'boolean',
-              'default' => FALSE, // only for explicit inserts; see below.
+              'default' => FALSE,
             ),
             // Voorkeursmedium (verwijzing naar: Tabelwaarde,Medium voor correspondentie => AfasKnCodeTableValue)
             'ViMd' => array(
@@ -1305,13 +1305,13 @@ class AfasApiHelper {
           // between $fields_action "insert" and "update"!
           // If we do _not_ set MatchPer while BcCo _is_ specified, with
           // $fields_action "insert" we get error "Unsupported match value!!"
-          $info['fields']['MatchPer']['default'] = '0';
+          $info['fields']['MatchPer']['default!'] = '0';
         }
         elseif (!empty($data['SoSe']) || !empty($data['bsn'])) {
           // I guess we can assume the same logic (we never want duplicate
           // records so just update everything silently, even for inserts), for
           // BSN...
-          $info['fields']['MatchPer']['default'] = '1';
+          $info['fields']['MatchPer']['default!'] = '1';
         }
         // TODO we can surely assume the same logic for 2-6 but this would take
         // a lot of testing. Do this later. We will feel entitled to change this
@@ -1331,7 +1331,7 @@ class AfasApiHelper {
           //   '0' is equal to '7').
           // (NOTE we haven't actually tested this until now, just assumed that
           // it works the same way as for knOrganisation, which was tested...)
-          $info['fields']['MatchPer']['default'] = '0';
+          $info['fields']['MatchPer']['default!'] = '0';
         }
 
         if ($parent_type === 'KnContact' || $parent_type === 'KnSalesRelationPer') {
@@ -1427,7 +1427,7 @@ class AfasApiHelper {
             'PbAd' => array(
               'alias' => 'is_po_box',
               'type' => 'boolean',
-              'default' => FALSE, // only for explicit inserts; see below.
+              'default' => FALSE,
             ),
             'AutoNum' => array(
               'alias' => 'auto_num',
@@ -1577,22 +1577,22 @@ class AfasApiHelper {
           // between $fields_action "insert" and "update"!
           // If we do _not_ set MatchOga while BcCo _is_ specified, with
           // $fields_action "insert" we get error "Unsupported match value!!"
-          $info['fields']['MatchOga']['default'] = '0';
+          $info['fields']['MatchOga']['default!'] = '0';
         }
         elseif (!empty($data['CcNr']) || !empty($data['coc_number'])) {
           // I guess we can assume the same logic (we never want duplicate
           // records so just update everything silently, even for inserts), for
           // KvK number...
-          $info['fields']['MatchOga']['default'] = '1';
+          $info['fields']['MatchOga']['default!'] = '1';
         }
         elseif (!empty($data['FiNr']) || !empty($data['fiscal_number'])) {
           // ...and fiscal number.
-          $info['fields']['MatchOga']['default'] = '2';
+          $info['fields']['MatchOga']['default!'] = '2';
         }
         elseif ($fields_action === 'insert') {
           // Since we can get an error if not setting MatchOga in some
           // circumstances (see 0 above), explicitly set 'always insert'.
-          $info['fields']['MatchOga']['default'] = '6';
+          $info['fields']['MatchOga']['default!'] = '6';
         }
         else {
           // Probably even with $fields_action "update", a new record will be
@@ -1607,7 +1607,7 @@ class AfasApiHelper {
           // - we get error "Voer een waarde in bij 'Nummer'" at "update";
           // - a record is always inserted at "insert" (so I guess in this case
           //   '0' is equal to '6').
-          $info['fields']['MatchOga']['default'] = '0';
+          $info['fields']['MatchOga']['default!'] = '0';
         }
         break;
 
@@ -2394,10 +2394,16 @@ class AfasApiHelper {
     }
 
     // If we are not sure that the record will be newly inserted, we do not
-    // want to have any default values - because those will risk silently
+    // want to have default values - because those will risk silently
     // overwriting existing values in AFAS.
-    if (!$inserting) {
-      foreach ($info['fields'] as $field => &$definition) {
+    // Exception: those marked with '!'.
+    foreach ($info['fields'] as $field => &$definition) {
+      if (isset($definition['default!'])) {
+        // This is always the default
+        $definition['default'] = $definition['default!'];
+        unset($definition['default!']);
+      }
+      elseif (!$inserting) {
         unset($definition['default']);
       }
     }
