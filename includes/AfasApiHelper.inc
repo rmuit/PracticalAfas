@@ -358,73 +358,35 @@ class AfasApiHelper {
       }
     }
 
-    if (!empty($data['street']) && empty($data['house_number']) && empty($data['house_number_add'])) {
-      // Split off house number and possible extension from street, because AFAS
-      // has separate fields for those
-      // We do this _only_ for defined countries where the splitting of house
-      // numbers is common. (This is a judgment call, and the list of countries
-      // is arbitrary - but there's slightly less risk of messing up foreign
-      // addresses that way.) 'No country' is assumed to be 'NL' since AFAS is
-      // NL-centric.
-      // This code comes from addressfield_tfnr module.
-      $want_to_split = FALSE;
-      $found = FALSE;
-      $matches = array();
-      if (empty($data['country_code']) || in_array($data['country_code'],
-          array('B', 'D', 'DK', 'FIN', 'H', 'NL', 'NO', 'S'))) {
-        // Split house nr and extension if possible.
-        $want_to_split = TRUE;
-        $found = preg_match('/^
+    $matches = array();
+    if (!empty($data['street']) && empty($data['house_number']) &&
+        empty($data['house_number_ext'])
+        // Split off house number and possible extension from street, because
+        // AFAS has separate fields for those.
+        // We do this _only_ for defined countries where the splitting of house
+        // numbers is common. (This is a judgment call, and the list of
+        // countries is arbitrary - but there's slightly less risk of messing up
+        // foreign addresses that way.) 'No country' is assumed to be 'NL' since
+        // AFAS is NL-centric.
+        // This code comes from addressfield_tfnr module and was adjusted later
+        // to conform to AFAS' definition of "extension".
+        && (empty($data['country_code']) || in_array($data['country_code'],
+          array('B', 'D', 'DK', 'F', 'FIN', 'H', 'NL', 'NO', 'S')))
+        && preg_match('/^
           (.*?\S) \s+ (\d+)  # normal thoroughfare, followed by spaces and a number;
                              # non-greedy because for STREET NR1 NR2, "nr1" should
                              # end up in the number field, not "nr2".
           (?:\s+|[\-\.\/])?  # optionally separated by spaces or 1 other special character, which we throw away
           (\S.{0,29})?       # followed by optional suffix of at most 30 chars (30 is the maximum in the AFAS UI)
                              # (I want to match "sous", at least.)
-          \s* $/x', $data['street'], $matches); // x == extended regex pattern
-        if ($found) {
-          $data['street'] = ltrim($matches[1]);
-          $data['house_number'] = $matches[2];
-          if (!empty($matches[3])) {
-            $data['house_number_add'] = rtrim($matches[3]);
-          }
-        }
-      }
-      //
-      // $want_to_split && !$found, improvise.
-      if ($want_to_split && !$found || $data['country_code'] === 'F') {
-        // Split house nr if possible. This happens if:
-        // - the country usually has addresses with house number (but not ext)
-        // - above regexp did not yield anything. we assume that our AFAS
-        //   installation really wants a house number, so we improvise.
-        //   (Note I have no idea if it's a good idea to split out 'house number
-        //   plus optional prefix' into one housenumber field, which is what
-        //   the above call does too. Change it when we get errors.)
-        // Same pattern except number + extension rolled into one match:
-        $found = preg_match('/^
-          (.*?\S) \s+ (\d+   # delete right bracket
-          (?:\s+|[\-\.\/])?  # ...so this is part of the 2nd match.
-          (?:\S.{0,29})?)    # make this part optional and add right bracket to end 2nd match.
-          \s* $/x', $data['street'], $matches);
-        if ($found) {
-          $data['street'] = ltrim($matches[1]);
-          $data['house_number'] = rtrim($matches[2]);
-        }
-          // Try to find it on _both_ sides of the thoroughfare, also on start:
-        if (!$found && preg_match('/^\s*
-              (\d+              # number
-              (?:\s+|[\-\.\/])? # optionally separated by spaces or 1 other special character
-              (?:\S.{0,29})?)   # followed by optional suffix of at most 30 chars.
-              [,\s]\s*          # at least one space OR comma behind housenumber, can be thrown away
-              (\S.*)            # 2nd match: real thoroughfare field.
-              $/x', $data['street'], $matches)) {
-            $data['house_number'] = rtrim($matches[1]);
-            $data['street'] = rtrim($matches[2]);
-        }
-        // If that did not match, I guess we'll just let AFAS throw an error.
+          \s* $/x', $data['street'], $matches)) { // x == extended regex pattern
+      $data['street'] = ltrim($matches[1]);
+      $data['house_number'] = $matches[2];
+      if (!empty($matches[3])) {
+        $data['house_number_ext'] = rtrim($matches[3]);
       }
     }
-    elseif (empty($data['house_number']) && empty($data['house_number_add'])) {
+    elseif (!empty($data['house_number']) && empty($data['house_number_ext'])) {
       // Split off extension from house number
       $matches = array();
       if (preg_match('/^
@@ -433,7 +395,7 @@ class AfasApiHelper {
             (\S.{0,29})
             \s* $/x', $data['house_number'], $matches)) {
         $data['house_number'] = $matches[1];
-        $data['house_number_add'] = rtrim($matches[2]);
+        $data['house_number_ext'] = rtrim($matches[2]);
       }
     }
 
@@ -887,7 +849,7 @@ class AfasApiHelper {
             ),
             // Toev. aan huisnr.
             'HmAd' => array(
-              'alias' => 'house_number_add',
+              'alias' => 'house_number_ext',
             ),
             // Postcode
             'ZpCd' => array(
