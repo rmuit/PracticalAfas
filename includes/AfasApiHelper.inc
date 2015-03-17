@@ -359,7 +359,7 @@ class AfasApiHelper {
     }
 
     if (!empty($data['street']) && empty($data['house_number']) && empty($data['house_number_add'])) {
-      // Split out house number and possible extension from street, because AFAS
+      // Split off house number and possible extension from street, because AFAS
       // has separate fields for those
       // We do this _only_ for defined countries where the splitting of house
       // numbers is common. (This is a judgment call, and the list of countries
@@ -383,10 +383,10 @@ class AfasApiHelper {
                              # (I want to match "sous", at least.)
           \s* $/x', $data['street'], $matches); // x == extended regex pattern
         if ($found) {
-          $data['street'] = $matches[1];
+          $data['street'] = ltrim($matches[1]);
           $data['house_number'] = $matches[2];
           if (!empty($matches[3])) {
-            $data['house_number_add'] = $matches[3];
+            $data['house_number_add'] = rtrim($matches[3]);
           }
         }
       }
@@ -404,24 +404,36 @@ class AfasApiHelper {
         $found = preg_match('/^
           (.*?\S) \s+ (\d+   # delete right bracket
           (?:\s+|[\-\.\/])?  # ...so this is part of the 2nd match.
-          \S.{0,29})         # delete left bracket; end 2nd match.
+          (?:\S.{0,29})?)    # make this part optional and add right bracket to end 2nd match.
           \s* $/x', $data['street'], $matches);
         if ($found) {
-          $data['street'] = $matches[1];
-          $data['house_number'] = $matches[2];
+          $data['street'] = ltrim($matches[1]);
+          $data['house_number'] = rtrim($matches[2]);
         }
           // Try to find it on _both_ sides of the thoroughfare, also on start:
         if (!$found && preg_match('/^\s*
               (\d+              # number
               (?:\s+|[\-\.\/])? # optionally separated by spaces or 1 other special character
-              \S.{0,29})        # followed by optional suffix of at most 30 chars.
+              (?:\S.{0,29})?)   # followed by optional suffix of at most 30 chars.
               [,\s]\s*          # at least one space OR comma behind housenumber, can be thrown away
               (\S.*)            # 2nd match: real thoroughfare field.
               $/x', $data['street'], $matches)) {
-            $data['street'] = $matches[1];
-            $data['house_number'] = $matches[2];
+            $data['house_number'] = rtrim($matches[1]);
+            $data['street'] = rtrim($matches[2]);
         }
         // If that did not match, I guess we'll just let AFAS throw an error.
+      }
+    }
+    elseif (empty($data['house_number']) && empty($data['house_number_add'])) {
+      // Split off extension from house number
+      $matches = array();
+      if (preg_match('/^
+            \s* (\d+)
+            (?:\s+|[\-\.\/])?
+            (\S.{0,29})
+            \s* $/x', $data['house_number'], $matches)) {
+        $data['house_number'] = $matches[1];
+        $data['house_number_add'] = rtrim($matches[2]);
       }
     }
 
@@ -442,7 +454,7 @@ class AfasApiHelper {
                  "'t "
                ) as $value) {
         if (strpos($name, $value) === 0) {
-          $data['prefix'] = $value;
+          $data['prefix'] = rtrim($value);
           $data['last_name'] = trim(substr($data['last_name'], strlen($value)));
           break;
         }
