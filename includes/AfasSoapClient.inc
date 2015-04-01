@@ -80,11 +80,16 @@ class AfasSoapClient {
                 . strtolower($type) . 'connector.asmx';
     $wsdl_endpoint = NULL;
     if ($options['useWSDL']) {
-      $wsdl_endpoint = $endpoint . '?WSDL';
-      if ($options['cacheWSDL']) {
-        // @todo note that this may not work when object is already instantiated (which is what happens after we redo the code? or not, because static?)
-        ini_set('soap.wsdl_cache_ttl', $options['cacheWSDL']);
+      $wsdl_endpoint = 'public://afas_api_wsdl/' . strtolower($type) . 'connector.wsdl';
+      if (!file_exists($wsdl_endpoint)) {
+        $wsdl_endpoint = drupal_realpath($wsdl_endpoint);
+        throw new Exception("$wsdl_endpoint not present. You must download the WSDL definition from $endpoint?WSDL to that location manually (or turn off WSDL), because the SOAP client unfortunately cannot deal with the needed authentication at the WSDL stage.");
       }
+// If the file is local anyway, it doesn't make much sense to cache it.
+//      if ($options['cacheWSDL']) {
+//        // @todo note that this may not work when object is already instantiated (which is what happens after we redo the code? or not, because static?)
+//        ini_set('soap.wsdl_cache_ttl', $options['cacheWSDL']);
+//      }
     }
     else {
       $options += array(
@@ -227,6 +232,7 @@ class NtlmSoapClient extends SoapClient {
     // Drupal will log a PHP error saying there was a '401 Unauthorized'.
     // It seems we cannot override this yet like we can override the actual call
     // below -- 20141201
+    // @todo call curl here and cache locally
     parent::__construct($wsdl, $options);
   }
 
