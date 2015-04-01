@@ -146,6 +146,8 @@ class AfasSoapClient {
    *   already.
    *   Be careful when checking only this return value for errors; some
    *   successful calls return an empty string.
+   *
+   * @throws Exception
    */
   public function callAfas($afas_soap_connection, $function, $arguments, $connector_type) {
 
@@ -154,9 +156,21 @@ class AfasSoapClient {
 
       $params = array();
       foreach ($arguments as $name => $value) {
-        $params[] = new SoapParam($value, $name);
+        $params[] = new SoapVar($value, XSD_STRING, NULL, NULL, $name, 'urn:Afas.Profit.Services');
       }
-      $response = $client->__soapCall($function, $params, array('soapaction' => 'urn:Afas.Profit.Services/' . $function));
+      $function_wrapper = new SoapVar($params, SOAP_ENC_OBJECT, NULL, NULL, $function, 'urn:Afas.Profit.Services');
+      $function_param = new SoapParam($function_wrapper, $function);
+
+      $options = $afas_soap_connection->checkOptions();
+      if ($options['useWSDL']) {
+        $response = $client->$function($function_param);
+      }
+      else {
+        // The above call would set the SOAPAction HTTP header to:
+        // urn:Afas.Profit.Services#GetDataWithOptions
+        $response = $client->__soapCall($function, array($function_param), array('soapaction' => 'urn:Afas.Profit.Services/' . $function));
+      }
+
       if (is_soap_fault($response)) {
         if (isset($response->detail)) {
           // 'detail' contains 'ProfitApplicationException', containing
@@ -173,8 +187,17 @@ class AfasSoapClient {
           'error_detail' => $details,
         ));
       }
-      else {
+      // See the WSDL definition: Every AFAS call returns a single-value
+      // response with the single value always a string named XXXResponse.
+      elseif (is_object($response) && isset($response->{"{$function}Response"})) {
+        return $response->{"{$function}Response"};
+      }
+      elseif (is_string($response)) {
+        // WSDL-less call returns a string.
         return $response;
+      }
+      else {
+        throw new Exception('Unknown response format');
       }
     }
     return NULL;
@@ -242,6 +265,7 @@ class NtlmSoapClient extends SoapClient {
       curl_setopt($handle, CURLOPT_USERPWD, $this->options['login'] . ':' . $this->options['password']);
       curl_setopt($handle, CURLOPT_HTTPAUTH, CURLAUTH_NTLM);
     }
+
     $response = curl_exec($handle);
     if (empty($response)) {
       throw new SoapFault('CURL error: '. curl_error($handle), curl_errno($handle));
@@ -255,25 +279,6 @@ class NtlmSoapClient extends SoapClient {
    */
   public function __doRequest($request, $location, $action, $version, $one_way = 0) {
 
-    if (isset($this->options['style']) && isset($this->options['use'])
-        && $this->options['style'] == SOAP_DOCUMENT
-        && $this->options['use'] == SOAP_LITERAL) {
-      // Based on http://www.ibm.com/developerworks/webservices/library/ws-whichwsdl/:
-      // This server does 'document/literal wrapped', not 'document/literal'.
-      // So we need to wrap the body in the function call. Which makes for
-      // this ugly code which makes assumptions about $request and $action:
-      $p1 = strpos($request, '<SOAP-ENV:Body>');
-      if ($p1 !== FALSE) {
-        $p1 += strlen('<SOAP-ENV:Body>');
-        $p2 = strpos($request, '</SOAP-ENV:Body>');
-        if ($p2 !== FALSE && $p2 > $p1) {
-          $function = substr($action, strlen('urn:Afas.Profit.Services/'));
-          $request = substr($request, 0, $p1) . "<$function xmlns=\"urn:Afas.Profit.Services\">"
-                     . substr($request, $p1, $p2 - $p1) . "</$function>"
-                     . substr($request, $p2);
-        }
-      }
-    }
     return $this->callCurl($request, $location, $action);
   }
 

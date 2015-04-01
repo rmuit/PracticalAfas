@@ -119,7 +119,7 @@ function afas_api_afas_api_client_info() {
 
   $classes['AfasSoapClient'] = t('Client using standard PHP5 SOAP extension. Does not work with WSDL.');
   $classes['AfasNusoapClient'] = t('Client using NuSOAP library. This can be used if the (preferred) PHP SOAP extension is not compiled/enabled on your server.')
-                                . '<br>' . t("Note v0.9.5 of the nuSOAP library cannot deal with AFAS servers without WSDL; you need to use WSDL or (since WSDL introduces overhead which is unnecessary with AFAS' simple call structure) you need sources from https://github.com/rmuit/NuSOAP.");
+                                . '<br>' . t("nuSOAP v0.9.5 only works when using WSDL; if you want to turn off WSDL, you need sources from https://github.com/rmuit/NuSOAP, or the AfasNusoapClient class needs to be fixed.");
   return $classes;
 }
 
