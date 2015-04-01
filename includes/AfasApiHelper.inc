@@ -392,10 +392,12 @@ class AfasApiHelper {
       if (preg_match('/^
             \s* (\d+)
             (?:\s+|[\-\.\/])?
-            (\S.{0,29})
+            (\S.{0,29})? # the ? means $matches[2] may be empty, but prevents a multi-digit number from being split.
             \s* $/x', $data['house_number'], $matches)) {
-        $data['house_number'] = $matches[1];
-        $data['house_number_ext'] = rtrim($matches[2]);
+        if (!empty($matches[2])) {
+          $data['house_number'] = $matches[1];
+          $data['house_number_ext'] = rtrim($matches[2]);
+        }
       }
     }
 
