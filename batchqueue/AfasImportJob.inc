@@ -2,14 +2,9 @@
 /**
  * @file
  * Class providing some helper functions for Batch/Queue jobs importing data
- * through an AFAS GET connector. Other modules can create import jobs by
- * - installing the 'batchqueue' Drupal contrib module;
- * - extending this class and exposing the subclasses through hook_queue_info().
- *
- * @todo convert all the required properties into real settings so that we can
- *       just use this class, and fully define imports in hook_queue_info().
+ * through an AFAS GET connector. See batchqueue module.
  */
-class AfasImportJob extends BatchQueueImportJob {
+class AfasImportJob extends BatchQueueEntityImportJob {
 
   /*
    * Settings in $this->settings, used by this class:
@@ -38,13 +33,6 @@ class AfasImportJob extends BatchQueueImportJob {
     }
 
     parent::__construct($settings);
-
-    // AFAS is typically a system where
-    // - you are bound to input data with trailing spaces (apparently
-    //   at least the 'predefined lists' in AFAS do not protect against this);
-    // - all your data are strings (XML input stream)
-    // so trim data to prevent obscure bugs.
-    $this->trim_item_values = TRUE;
   }
 
   /**
@@ -105,13 +93,13 @@ class AfasImportJob extends BatchQueueImportJob {
     if (!isset($field_info)) {
       // The caller is responsible for making sure we never end up here!
       $this->log('addApiValue() was called for destination field %dst, which is not an API-Field for entity type %t. Skipping. (source field: %src)',
-        array('%t' => $this->entity_type, '%dst' => $dst, '%src' => $source_field), WATCHDOG_ERROR);
+        array('%t' => $this->settings['import_entity_type'], '%dst' => $dst, '%src' => $source_field), WATCHDOG_ERROR);
       return;
     }
 
     // Mapping may not be present for 'unknown source' (e.g. default) values.
-    if (isset($this->dest_field_mapping[$dst])) {
-      $dst_mapping = $this->dest_field_mapping[$dst];
+    if (isset($this->results['import_field_mapping'][$dst])) {
+      $dst_mapping = $this->results['import_field_mapping'][$dst];
     }
     else {
       $dst_mapping = array();
@@ -148,7 +136,7 @@ class AfasImportJob extends BatchQueueImportJob {
           // filenames may be duplicate, and there are multiple source fields.
           // We'll turn FILENAME into SRC-ID_sourcefieldindex_FILENAME.
           $index = 1;
-          foreach ($this->dest_field_mapping[$dst]['src'] as $s) {
+          foreach ($this->results['import_field_mapping'][$dst]['src'] as $s) {
             if ($source_field == $s) {
               break;
             }
@@ -156,7 +144,7 @@ class AfasImportJob extends BatchQueueImportJob {
           }
 
           $dest_uri = file_default_scheme() . '://' . $process['folder'] . '/'
-                      . $this->src_item[$this->src_id_field] . '_' . $index
+                      . $this->src_item[$this->results['import_src_pkey']] . '_' . $index
                       . '_' . $value;
           // If a file with a certain name already exists on disk, it is not
           // written again. But then its data does not need to be retrieved.
@@ -176,7 +164,7 @@ class AfasImportJob extends BatchQueueImportJob {
                 $this->log("Image data field %datafield not found (for item %item), and no 'data_connector' property defined in mapping for %dst destination field. (source field: %src)",
                   array(
                     '%datafield' => $process['data_src'],
-                    '%item' => $this->src_item[$this->src_id_field],
+                    '%item' => $this->src_item[$this->results['import_src_pkey']],
                     '%dst' => $dst,
                     '%src' => $src
                   ), WATCHDOG_ERROR);
@@ -192,7 +180,7 @@ class AfasImportJob extends BatchQueueImportJob {
 
                 $connection = new AfasSoapConnection();
                 if (!$items = $connection->getData($process['data_connector'],
-                  array('Itemcode' => $this->src_item[$this->src_id_field]),
+                  array('Itemcode' => $this->src_item[$this->results['import_src_pkey']]),
                   'get_simplexml')
                 ) {
                   // AFAS error was already logged (probably to watchdog; we
@@ -201,7 +189,7 @@ class AfasImportJob extends BatchQueueImportJob {
                   $this->log('Error while fetching image data for file %file (for item %item, field %src); see system log for details.',
                     array(
                       '%file' => $value,
-                      '%item' => $this->src_item[$this->src_id_field],
+                      '%item' => $this->src_item[$this->results['import_src_pkey']],
                       '%src' => $src
                     ), WATCHDOG_ERROR);
                   // Perform 'negative caching' (see below).
@@ -224,7 +212,7 @@ class AfasImportJob extends BatchQueueImportJob {
                   array(
                     '%datafield' => $process['data_src'],
                     '%con' => $process['data_connector'],
-                    '%item' => $this->src_item[$this->src_id_field],
+                    '%item' => $this->src_item[$this->results['import_src_pkey']],
                     '%src' => $src
                   ), WATCHDOG_ERROR);
                 return;
@@ -240,7 +228,7 @@ class AfasImportJob extends BatchQueueImportJob {
                 $this->log('Directory %dir could not be created; file %file (from Item %item, field %src) could not be saved to destination %dest.',
                   array(
                     '%dir'  => $dirname,
-                    '%item' => $this->src_item[$this->src_id_field],
+                    '%item' => $this->src_item[$this->results['import_src_pkey']],
                     '%file' => $value,
                     '%dest' => $dest_uri,
                     '%src' => $src
@@ -261,7 +249,7 @@ class AfasImportJob extends BatchQueueImportJob {
                 else {
                   $this->log('File %file (from Item %item, field %source_field) could not be saved to destination %dest. See other errors for details.',
                     array(
-                      '%item' => $this->src_item[$this->src_id_field],
+                      '%item' => $this->src_item[$this->results['import_src_pkey']],
                       '%file' => $value,
                       '%dest' => $dest_uri,
                       '%src' => $src

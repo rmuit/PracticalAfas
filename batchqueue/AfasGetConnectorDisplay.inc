@@ -17,6 +17,8 @@
  * - we do not have settingsFormSubmit (with the Display button) moved into
  *   another (ui_fetcher?) class
  * @todo But we want to do at least one of those, probably the 2nd.
+ * When we fix this, this class can be deleted because we'll be able to use
+ * AfasGetConnector for its purpose.
  */
 class AfasGetConnectorDisplay extends BatchQueueJob {
 

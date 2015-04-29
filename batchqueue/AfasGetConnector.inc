@@ -45,9 +45,8 @@ class AfasGetConnector extends BatchQueueFetcher {
   public function __construct($settings = array()) {
     parent::__construct($settings);
 
-    // @todo implement permission?
     if (!isset($this->settings['opt_afas_adv_filter'])) {
-      $this->settings['opt_afas_adv_filter'] = TRUE;
+      $this->settings['opt_afas_adv_filter'] = user_access('access batchqueue advanced');
     }
   }
 
@@ -72,7 +71,6 @@ class AfasGetConnector extends BatchQueueFetcher {
       }
 
       // Potential security hole; this edit screen must only be available for admins.
-      // TODO implement extra permission?
       $form['selection']['afas_adv_filter'] = array(
         '#type'          => 'textarea',
         '#rows'          => 5,
@@ -93,7 +91,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
         ctools_include('object-cache');
         $items = ctools_object_cache_get('batchqueue_items', $this->settings['job_id']);
         if (is_array($items) && $items) {
-          if (!empty($form['selection']['single_item'])) {
+          if (!empty($form['selection']['fetcher_single_item'])) {
             $form['selection']['cache_items']['#description']
               .= ' ' . t('One cached item can be processed by with the \'!single_item\' option.');
           }
@@ -119,40 +117,40 @@ One example, to get only products that changed in the past week:<br/><em>array(<
   /// Extra methods for extending classes to call!
 
   /**
-   * Implements BatchQueueFetcher::fetchItems(), extending the function with
-   * some arguments.
-   *
-   * @param bool $return_simplexml
-   *   If TRUE, returns a SimpleXMLElement object, otherwise an array of items.
-   * @param array $extra_arguments
-   *   Extra parameters to pass to the AFAS SOAP call (GetDataWithOptions). This
-   *   is only very occasionally useful. Known parameters:
-   *   array('options' => array('Outputoptions' => 3)) to also return empty
-   *   fields; see AfasSoapConnection::normalizeArguments().
+   * {@inheritdoc}
+   */
+  public function feedIsComplete(&$context) {
+    return parent::feedIsComplete($context) && !$this->inputFilter();
+  }
+
+  /**
+   * Implements BatchQueueFetcher::fetchItems().
+   * Modifiers:
+   * - afas_return_xml in context (nonempty value returns SimpleXML, not array)
+   * - afas_include_empty_fields setting
    *
    * @return array|string
    *   Items from AFAS, or error message.
    */
-  protected function fetchItems($return_simplexml = FALSE, $extra_arguments = array()) {
+  protected function fetchItems(&$context) {
 
-    // Use property for 2nd function argument, if set.
-    if (!$extra_arguments && !empty($this->settings['afas_include_empty_fields'])) {
-      $extra_arguments = array('options' => array('Outputoptions' => 3));
-    }
-
+    $connection = new AfasSoapConnection();
     $items = FALSE;
     $tries_left = !empty($this->settings['fetcher_tries']) ? $this->settings['fetcher_tries'] : 1;
     while ($items === FALSE && --$tries_left >= 0) {
 
-      $connection = new AfasSoapConnection();
       if (!empty($this->settings['fetcher_timeout'])
           && is_numeric($this->settings['fetcher_timeout'])) {
         $connection->setOptions(
           array('fetcher_timeout' => $this->settings['fetcher_timeout'])
         );
       }
-      $items = $connection->getData($this->settings['afas_connector'], $this->inputFilter(),
-        $return_simplexml ?  'get_simplexml' : 'get', $extra_arguments);
+      $items = $connection->getData($this->settings['afas_connector'],
+        $this->inputFilter(),
+        $context['results']['afas_return_xml'] ?  'get_simplexml' : 'get',
+        !empty($this->settings['afas_include_empty_fields'])
+          ? array('options' => array('Outputoptions' => 3)) : array()
+      );
 
       if ($items === FALSE) {
         // Retry if timeout
