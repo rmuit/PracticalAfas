@@ -10,11 +10,11 @@
  * This is a collection of standalone helper methods for data manipulation,
  * which are mainly useful before sending data into AFAS. It's split out from
  * AfasSoapConnection to protect the stability of the AfasSoapConnection
- * 'interface' a bit: this collection will probably see some change over time.
- * (And, the data definitions in here are just too big for AfasSoapConnection.)
+ * 'interface' a bit: this collection will probably see change over time.
+ * (Plus: the data definitions in here are just too big for AfasSoapConnection.)
  *
- * You probably want to extend xmlTypeInfo() if you have defined your own custom
- * fields inside your AFAS environment.
+ * If someone defined custom fields in their AFAS environment, they probably
+ * want to extend xmlTypeInfo() in a subclass.
  *
  * All methods are static so far.
  */
@@ -331,6 +331,75 @@ class AfasApiHelper {
   }
 
   /**
+   * Checks if a string can be interpreted as a valid Dutch phone number.
+   * (There's only a "Dutch" function since AFAS will have 99% Dutch clients.
+   * Extended helper functionality can be added as needed.)
+   *
+   * @param string $phonenumber
+   *   Phone number to be validated.
+   *
+   * @return array
+   *   If not recognized, empty array. If recognized: 2-element array with area/
+   *   mobile code and local part - as input; not uniformly re-formatted yet.
+   */
+  public static function validateDutchPhoneNr($phonenumber) {
+    /*
+      Accepts:
+      	06-12345678
+      	06 123 456 78
+      	010-1234567
+      	+31 10-1234567
+      	+31-10-1234567
+      	+31 (0)10-1234567
+      	+3110-1234567
+      	020 123 4567
+      	(020) 123 4567
+      	0221-123456
+      	0221 123 456
+      	(0221) 123 456
+      Rejects:
+      	010-12345678
+      	05-12345678
+      	061-2345678
+      	(06) 12345678
+      	123-4567890
+      	123 456 7890
+      	+31 010-1234567
+    */
+
+    // Area codes start with 0, +31 or the (now deprecated) '+31 (0)'.
+    // Non-mobile area codes starting with 0 may be surrounded by brackets.
+    foreach (
+      array(
+        '((?:\+31[-\s]?(?:\(0\))?\s?|0)6)            # mobile
+        [-\s]* ([1-9]\s*(?:[0-9]\s*){7})',
+
+        '((?:\+31[-\s]?(?:\(0\))?\s?|0)[1-5789][0-9] # 3-digit area code...
+        | \(0[1-5789][0-9]\))                        # (possibly between brackets...)
+        [-\s]* ([1-9]\s*(?:[0-9]\s*){6})             # ...plus local number.',
+
+        '((?:\+31[-\s]?(?:\(0\))?\s?|0)[1-5789][0-9]{2} # 4-digit area code...
+        |\(0[1-5789][0-9]{2}\))                         # (possibly between brackets...)
+        [-\s]* ([1-9]\s*(?:[0-9]\s*){5})                # ...plus local number.',
+      ) as $regex) {
+
+      if (preg_match('/^\s*' . $regex . '\s*$/x', $phonenumber, $matches)) {
+        $return = array(
+          strtr($matches[1], array(' ' => '', '-' => '', '+31' => '0')),
+          $matches[2],
+        );
+        // $return[0] is a space-less area code now, with or without trailing 0.
+        // $return[1] is not formatted.
+        if ($return[0][0] !== '0') {
+          $return[0] = "0$return[0]";
+        }
+        return $return;
+      }
+    }
+    return array();
+  }
+
+  /**
    * Normalizes country_code, last_name, extracts search_name for use in update
    * connectors. This function can be called for an array containing person
    * data, address data, or both. See code details; it contains 'Dutch specific'
@@ -339,6 +408,11 @@ class AfasApiHelper {
    *
    * This function only works if the keys in $data are all aliases (like
    * first_name), not original AFAS tag names (like FiNm)!
+   *
+   * Phone number reformatting has not been incorporated into this function,
+   * because there is no uniform standard for it. (The 'official' standard
+   * of (012) 3456789 is not what most people want, i.e. 012-3456789.) You'll
+   * need to do this yourself additionally, using validateDutchPhoneNr().
    *
    * @param $data
    *   Array with person and/or address data
