@@ -16,23 +16,40 @@
  */
 class AfasGetConnector extends BatchQueueFetcher {
 
-  /// Keys in $this->settings that are used by this class:
-  // - afas_connector: the name of the GET connector to use for fetching data.
-  // - afas_filter (array): filter to use. See comments (all types are
-  //   supported) at AfasSoapConnection::normalizeArguments().
-  //
-  // - afas_adv_filter (string): Filter to use (one 'array level' only), as PHP
-  //   code. Thisis only useful for the per-process settingsForm; use
-  //   'afas_filter' instead.
-  // - opt_afas_adv_filter: (boolean, interpreted as TRUE by default / if not set):
-  //                  Enables 'afas_adv_filter' setting in settingsForm.
-  //
-  // - afas_include_empty_fields (boolean): include empty fields in AFAS output.
-  //
-  // - fetcher_timeout (int): response_timeout to set for AfasNusoapClient.
-  //   (Has no effect on AfasSoapClient. It doesn't matter, as long as we keep
-  //   using CURL for that one.)
-  // - fetcher_tries (int): number of times to try connecting at timeout.
+  /* Settings in $this->settings, used by this class:
+   * - job_id:              defined in parent
+
+   * - afas_connector (string):
+   *   the name of the GET connector to use for fetching data.
+   * - afas_filter (array):
+   *   filter to use. See comments (all types are supported) at
+   *   AfasSoapConnection::normalizeArguments().
+   * - afas_adv_filter (string):
+   *   Filter to use (one 'array level' only), as PHP code. This is only useful
+   *   for the per-process settingsForm; use 'afas_filter' instead.
+   * - opt_afas_adv_filter: (boolean):
+   *   Enables 'afas_adv_filter' setting in settingsForm.
+   *
+   * - afas_updated_field (string):
+   *   AFAS field containing 'updated' date values.
+   *   Used only when 'fetcher_timestamp_from' is set in context (by the parent
+   *   class), which signifies that a date filter should be added. This class'
+   *   inputFilter() method does that automatically, to prevent any child class
+   *   from forgetting this. But it needs to know the name of the 'updated'
+   *   field for this.
+   *   If not filled, a message will be logged.
+   * - afas_disable_updated_auto_filter (boolean):
+   *   Set to TRUE to suppress the above filter on 'updated' and messages about
+   *   a missing 'updated' field.
+   *
+   * - afas_include_empty_fields (boolean): include empty fields in AFAS output.
+   *
+   * - fetcher_timeout (int): response_timeout to set for AfasNusoapClient.
+   *   (Has no effect on AfasSoapClient. It doesn't matter, as long as we keep
+   *   using CURL for that one.)
+   * - fetcher_tries (int): number of times to try connecting at timeout.
+   *
+   */
 
   // Optional extra filter. (Added for convenience; it's perfectly possible for
   // classes to do their own filtering - but this way they can 'hardcode' an
@@ -120,7 +137,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
    * {@inheritdoc}
    */
   public function feedIsComplete(&$context) {
-    return parent::feedIsComplete($context) && !$this->inputFilter();
+    return parent::feedIsComplete($context) && !$this->inputFilter($context);
   }
 
   /**
@@ -146,8 +163,8 @@ One example, to get only products that changed in the past week:<br/><em>array(<
         );
       }
       $items = $connection->getData($this->settings['afas_connector'],
-        $this->inputFilter(),
-        $context['results']['afas_return_xml'] ?  'get_simplexml' : 'get',
+        $this->inputFilter($context),
+        !empty($context['results']['afas_return_xml']) ?  'get_simplexml' : 'get',
         !empty($this->settings['afas_include_empty_fields'])
           ? array('options' => array('Outputoptions' => 3)) : array()
       );
@@ -197,19 +214,35 @@ One example, to get only products that changed in the past week:<br/><em>array(<
    *   'filters array' that can be used for calling
    *   AfasSoapConnection::getData().
    */
-  public function inputFilter() {
-    // This support 'simple' and 'deeper' array arguments.
+  public function inputFilter($context) {
+    // This supports 'simple' (array key being the field name) and 'deeper'
+    // array arguments.
     $filters = isset($this->settings['afas_filter']) && is_array($this->settings['afas_filter'])
       ? $this->settings['afas_filter'] : array();
 
-    // Add this filter 1 layer deeper than the 'simple'
-    // filter arguments. AfasSoapConnection::getData() will sort it out.
+    // Add this filter 1 layer deeper than the 'simple' filter arguments.
+    // AfasSoapConnection::getData() will sort it out.
     if (!empty($this->extra_filter)) {
       $filters[] = $this->extra_filter;
     }
 
-    // Add filters from 'free text filter box' 1 layer deeper than the 'simple'
-    // filter arguments. AfasSoapConnection::getData() will sort it out.
+    // This filter too.
+    if (!empty($context['results']['fetcher_timestamp_from'])
+        && empty($this->settings['afas_disable_updated_auto_filter'])) {
+      if (empty($this->settings['afas_updated_field'])) {
+        $this->log('Updated-timestamp field is not specified for AFAS connector; no automatic filtering will be done!', array(), WATCHDOG_WARNING);
+      }
+      else {
+        // Since we won't use the timezone in our date expression below, we
+        // 'lose' information and have to be careful we get dates in our own
+        // timezone instead of UTC. Then it's simpler to use format_date().
+        $filters[] = array(
+          $this->settings['afas_updated_field'] => format_date($context['results']['fetcher_timestamp_from'], 'custom', 'Y-m-d\TH:i:s'),
+          '#op' => '>=',
+        );
+      }
+    }
+
     foreach ($this->evalFilterInput() as $filter) {
       $filters[] = $filter;
     }
