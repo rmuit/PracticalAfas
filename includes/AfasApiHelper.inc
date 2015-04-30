@@ -447,13 +447,19 @@ class AfasApiHelper {
         && (empty($data['country_code']) || in_array($data['country_code'],
           array('B', 'D', 'DK', 'F', 'FIN', 'H', 'NL', 'NO', 'S')))
         && preg_match('/^
-          (.*?\S) \s+ (\d+)  # normal thoroughfare, followed by spaces and a number;
-                             # non-greedy because for STREET NR1 NR2, "nr1" should
-                             # end up in the number field, not "nr2".
-          (?:\s+|[\-\.\/])?  # optionally separated by spaces or 1 other special character, which we throw away
-          (\S.{0,29})?       # followed by optional suffix of at most 30 chars (30 is the maximum in the AFAS UI)
-                             # (I want to match "sous", at least.)
+          (.*?\S) \s+ (\d+) # normal thoroughfare, followed by spaces and a number;
+                            # non-greedy because for STREET NR1 NR2, "nr1" should
+                            # end up in the number field, not "nr2".
+          (?:\s+)?          # optionally separated by spaces
+          (\S.{0,29})?      # followed by optional suffix of at most 30 chars (30 is the maximum in the AFAS UI)
           \s* $/x', $data['street'], $matches)) { // x == extended regex pattern
+      // More notes about the pattern:
+      // - theoretically a multi-digit number could be split into $matches[2/3];
+      //   this does not happen because the 3rd match is non-greedy.
+      // - for numbers like 2-a and 2/a, we include the -// into $matches[3] on
+      //   purpose: if AFAS has suffix "-a" or "/a" it prints them like "2-a" or
+      //   "2/a" when printing an address. On the other hand, if AFAS has suffix
+      //   "a" or "3", it prints them like "2 a" or "2 3".
       $data['street'] = ltrim($matches[1]);
       $data['house_number'] = $matches[2];
       if (!empty($matches[3])) {
@@ -463,11 +469,9 @@ class AfasApiHelper {
     elseif (!empty($data['house_number']) && empty($data['house_number_ext'])) {
       // Split off extension from house number
       $matches = array();
-      if (preg_match('/^
-            \s* (\d+)
-            (?:\s+|[\-\.\/])?
-            (\S.{0,29})? # the ? means $matches[2] may be empty, but prevents a multi-digit number from being split.
-            \s* $/x', $data['house_number'], $matches)) {
+      if (preg_match('/^ \s* (\d+) (?:\s+)? (\S.{0,29})? \s* $/x', $data['house_number'], $matches)) {
+        // Here too, the last ? means $matches[2] may be empty, but prevents a
+        // multi-digit number from being split into $matches[1/2].
         if (!empty($matches[2])) {
           $data['house_number'] = $matches[1];
           $data['house_number_ext'] = rtrim($matches[2]);
