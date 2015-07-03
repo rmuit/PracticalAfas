@@ -128,10 +128,10 @@ function afas_api_afas_api_client_info() {
  */
 function afas_api_queue_info() {
 
-  // This requires batchqueue module. See admin/config/system/batchqueue.
+  // This requires drunkins module. See admin/config/workflow/drunkins.
   $queues['afas_getconnector_display'] = array(
     'title'      => t('Fetch/display/export data from GetConnector (no processing).'),
-    'batchqueue' => array(
+    'drunkins' => array(
       'class'         => 'AfasGetConnectorDisplay',
       'fetcher_class' => 'AfasGetConnector',
     ),

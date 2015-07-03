@@ -3,11 +3,11 @@ description = Base functionality for communicating with AFAS
 core = 7.x
 php = 5.3
 
-files[] = batchqueue/AfasGetConnector.inc
-files[] = batchqueue/AfasGetConnectorDisplay.inc
-files[] = batchqueue/AfasImportJob.inc
-files[] = batchqueue/AfasStockCombinationJob.inc
-files[] = batchqueue/AfasStockImportJob.inc
+files[] = drunkins/AfasGetConnector.inc
+files[] = drunkins/AfasGetConnectorDisplay.inc
+files[] = drunkins/AfasImportJob.inc
+files[] = drunkins/AfasStockCombinationJob.inc
+files[] = drunkins/AfasStockImportJob.inc
 files[] = includes/AfasApiHelper.inc
 files[] = includes/AfasNusoapClient.inc
 files[] = includes/AfasSoapClient.inc

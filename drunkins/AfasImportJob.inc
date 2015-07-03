@@ -1,13 +1,17 @@
 <?php
 /**
  * @file
- * Class providing some helper functions for Batch/Queue jobs importing data
- * through an AFAS GET connector. See batchqueue module.
+ * Class providing some helper functions for Drunkins jobs importing data
+ * through an AFAS GET connector. See drunkins module.
+ *
+ * This should actually be some kind of 'plugin' functionality (in the way the
+ * fetcher is plugin-ish), instead of a child class. Because we don't know
+ * which class we want to extend. (Could be any of the Drunkins standard import
+ * classes which by now do not form a straight line of inheritance, but a tree.)
  */
-class AfasImportJob extends BatchQueueEntityImportJob {
+class AfasImportJob extends DrunkinsEntityImportJob {
 
-  /*
-   * Settings in $this->settings, used by this class:
+  /* Settings in $this->settings, used by this class:
    *
    * - opt_skip_images (boolean, TRUE by default / if not set):
    *   Enables 'unpub_after_finish' setting in settingsForm.
@@ -18,25 +22,26 @@ class AfasImportJob extends BatchQueueEntityImportJob {
   // Class-wide variables which are filled once per processItem() run
   // and used by its various called functions to make the code easier:
   //
-  // Cache for image data retrieved from another connector in transformApiFieldValue().
+  // Cache for image data retrieved from a separate connector in
+  // buildApiFieldValue().
   protected $imgcache;
 
+  /**
+   * {@inheritdoc}
+   */
+  public function __construct(array $settings = array()) {
 
-  /// Interface functions
-
-  public function __construct($settings = array()) {
-
-    if (!isset($this->settings['batchqueue_fetcher_class'])) {
+    if (!isset($this->settings['drunkins_fetcher_class'])) {
       // We're an AFAS job. Obviously we want to set the AFAS Fetcher, at least
       // as a default.
-      $this->settings['batchqueue_fetcher_class'] = 'AfasGetConnector';
+      $this->settings['drunkins_fetcher_class'] = 'AfasGetConnector';
     }
 
     parent::__construct($settings);
   }
 
   /**
-   * Extends BatchQueueImportJob::settingsForm()
+   * {@inheritdoc}
    */
   public function settingsForm() {
     $form = parent::settingsForm();
@@ -55,51 +60,32 @@ class AfasImportJob extends BatchQueueEntityImportJob {
   }
 
   /**
-   * Extends BatchQueueImportJob::init().
+   * {@inheritdoc}
    */
-  public function init(&$context) {
-    parent::init($context);
-
-    // Extension of the logic in BatchQueueImportJob::init(): only unpublish
-    // entities afterwards, if this is a complete/unfiltered 'feed' of items.
-    // We assume (a subclass of) AfasGetConnector is set as a Fetcher class;
-    // if not, do not change the setting.
-    if ($context['results']['unpub_after_finish']
-        && $this->callFetcherMethod('inputFilter', FALSE)) {
-      // inputFilter() returns a nonempty value.
-      $context['results']['unpub_after_finish'] = FALSE;
-    }
-  }
-
-  /**
-   * Extends BatchQueueImportJob::processItem
-   */
-  public function processItem($item, &$context) {
+  public function processItem($item, array &$context) {
     $this->imgcache = array();
     parent::processItem($item, $context);
   }
 
-  /// Extending non-interface functions
-
   /**
-   * Extends BatchQueueImportJob::addApiFieldValue().
+   * {@inheritdoc}
    */
-  protected function addApiFieldValue(&$added_values, $value, $source_field) {
+  protected function buildApiFieldValues($value, array $current_built_value = array(), $source_field) {
 
     // We handle type 'image' here, and refer to the parent for other types.
 
     $dst = $this->current_dst;
-    $field_info = field_info_field($dst);
+    $field_info = field_info_field($this->current_dst_field);
     if (!isset($field_info)) {
       // The caller is responsible for making sure we never end up here!
       $this->log('addApiValue() was called for destination field %dst, which is not an API-Field for entity type %t. Skipping. (source field: %src)',
         array('%t' => $this->settings['import_entity_type'], '%dst' => $dst, '%src' => $source_field), WATCHDOG_ERROR);
-      return;
+      return array();
     }
 
     // Mapping may not be present for 'unknown source' (e.g. default) values.
-    if (isset($this->results['import_field_mapping'][$dst])) {
-      $dst_mapping = $this->results['import_field_mapping'][$dst];
+    if (isset($this->context['import_field_mapping'][$dst])) {
+      $dst_mapping = $this->context['import_field_mapping'][$dst];
     }
     else {
       $dst_mapping = array();
@@ -136,7 +122,7 @@ class AfasImportJob extends BatchQueueEntityImportJob {
           // filenames may be duplicate, and there are multiple source fields.
           // We'll turn FILENAME into SRC-ID_sourcefieldindex_FILENAME.
           $index = 1;
-          foreach ($this->results['import_field_mapping'][$dst]['src'] as $s) {
+          foreach ($this->context['import_field_mapping'][$dst]['src'] as $s) {
             if ($source_field == $s) {
               break;
             }
@@ -144,7 +130,7 @@ class AfasImportJob extends BatchQueueEntityImportJob {
           }
 
           $dest_uri = file_default_scheme() . '://' . $process['folder'] . '/'
-                      . $this->src_item[$this->results['import_src_pkey']] . '_' . $index
+                      . $this->src_item[$this->context['import_src_pkey']] . '_' . $index
                       . '_' . $value;
           // If a file with a certain name already exists on disk, it is not
           // written again. But then its data does not need to be retrieved.
@@ -164,11 +150,11 @@ class AfasImportJob extends BatchQueueEntityImportJob {
                 $this->log("Image data field %datafield not found (for item %item), and no 'data_connector' property defined in mapping for %dst destination field. (source field: %src)",
                   array(
                     '%datafield' => $process['data_src'],
-                    '%item' => $this->src_item[$this->results['import_src_pkey']],
+                    '%item' => $this->src_item[$this->context['import_src_pkey']],
                     '%dst' => $dst,
                     '%src' => $src
                   ), WATCHDOG_ERROR);
-                return;
+                return array();
               }
               $data = $this->src_item[$process['data_src']];
             }
@@ -180,7 +166,7 @@ class AfasImportJob extends BatchQueueEntityImportJob {
 
                 $connection = new AfasSoapConnection();
                 if (!$items = $connection->getData($process['data_connector'],
-                  array('Itemcode' => $this->src_item[$this->results['import_src_pkey']]),
+                  array('Itemcode' => $this->src_item[$this->context['import_src_pkey']]),
                   'get_simplexml')
                 ) {
                   // AFAS error was already logged (probably to watchdog; we
@@ -189,12 +175,12 @@ class AfasImportJob extends BatchQueueEntityImportJob {
                   $this->log('Error while fetching image data for file %file (for item %item, field %src); see system log for details.',
                     array(
                       '%file' => $value,
-                      '%item' => $this->src_item[$this->results['import_src_pkey']],
+                      '%item' => $this->src_item[$this->context['import_src_pkey']],
                       '%src' => $src
                     ), WATCHDOG_ERROR);
                   // Perform 'negative caching' (see below).
                   $this->imgcache[$process['data_connector']] = FALSE;
-                  return;
+                  return array();
                 }
                 // Assume you're receiving only one item (from SimpleXMLElement
                 // with unknown key). Cast this item (which is also Element)
@@ -205,17 +191,17 @@ class AfasImportJob extends BatchQueueEntityImportJob {
 
               if ($this->imgcache[$process['data_connector']] === FALSE) {
                 // AfasSoapConnection::getData() failed earlier; don't try again.
-                return;
+                return array();
               }
               if (!isset($this->imgcache[$process['data_connector']][$process['data_src']])) {
                 $this->log('Image data field %datafield not found in connector %con (for item %item, field %src)',
                   array(
                     '%datafield' => $process['data_src'],
                     '%con' => $process['data_connector'],
-                    '%item' => $this->src_item[$this->results['import_src_pkey']],
+                    '%item' => $this->src_item[$this->context['import_src_pkey']],
                     '%src' => $src
                   ), WATCHDOG_ERROR);
-                return;
+                return array();
               }
               $data = $this->imgcache[$process['data_connector']][$process['data_src']];
             }
@@ -228,7 +214,7 @@ class AfasImportJob extends BatchQueueEntityImportJob {
                 $this->log('Directory %dir could not be created; file %file (from Item %item, field %src) could not be saved to destination %dest.',
                   array(
                     '%dir'  => $dirname,
-                    '%item' => $this->src_item[$this->results['import_src_pkey']],
+                    '%item' => $this->src_item[$this->context['import_src_pkey']],
                     '%file' => $value,
                     '%dest' => $dest_uri,
                     '%src' => $src
@@ -249,7 +235,7 @@ class AfasImportJob extends BatchQueueEntityImportJob {
                 else {
                   $this->log('File %file (from Item %item, field %source_field) could not be saved to destination %dest. See other errors for details.',
                     array(
-                      '%item' => $this->src_item[$this->results['import_src_pkey']],
+                      '%item' => $this->src_item[$this->context['import_src_pkey']],
                       '%file' => $value,
                       '%dest' => $dest_uri,
                       '%src' => $src
@@ -262,28 +248,28 @@ class AfasImportJob extends BatchQueueEntityImportJob {
         } // endif 'folder' defined (else fall through)
 
         if ($file) {
-          $added_values[] = array(
+          return array(array(
             'fid'   => $file->fid,
-            // alt & title attributes are apparently '' by default, even though the fields are nullable.
-            // So always fill them.
-            // TODO if fid already exists, then the default value should not be <empty>, but
-            // <the value currently in Drupal>
+            // alt & title attributes are apparently '' by default, even though
+            // the fields are nullable. So always fill them.
+            // TODO if fid already exists, then the default value should not be
+            //      <empty>, but <the value currently in Drupal>
             'alt'   => !empty($process['alt_src']) && isset($this->src_item[$process['alt_src']])
               ? $this->src_item[$process['alt_src']] : '',
             'title' => !empty($process['title_src']) && isset($this->src_item[$process['title_src']])
               ? $this->src_item[$process['title_src']] : '',
-          );
+          ));
         }
         break;
 
       default:
 
-        parent::addApiFieldValue($added_values, $value, $source_field);
+        return parent::buildApiFieldValues($value, $current_built_value, $source_field);
 
     }
-  }
 
-  /// Private helper functions.
+    return array();
+  }
 
   /**
    * Checks if a file in a certain folder exists; return file object.
@@ -294,7 +280,7 @@ class AfasImportJob extends BatchQueueEntityImportJob {
    * @return bool|object
    *   Drupal file object (from database table), or false.
    */
-  private function checkFile($dest_uri) {
+  protected function checkFile($dest_uri) {
     $file = FALSE;
 
     // Check if the file is already managed by Drupal.

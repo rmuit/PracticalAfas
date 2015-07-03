@@ -10,7 +10,7 @@
  * Example of GetConnector, useful for fetching and viewing data;
  * processItem() does nothing.
  *
- * At the moment this is a Job class, implementing BatchQueueJob because that
+ * At the moment this is a Job class, implementing DrunkinsJob because that
  * still has the 'display' options/settingsFormSubmit() functionality;
  * - the UI does not yet support fetching / displaying data from fetcher
  *   classes
@@ -20,14 +20,14 @@
  * When we fix this, this class can be deleted because we'll be able to use
  * AfasGetConnector for its purpose.
  */
-class AfasGetConnectorDisplay extends BatchQueueJob {
+class AfasGetConnectorDisplay extends DrunkinsJob {
 
-  public function __construct($settings = array()) {
+  public function __construct(array $settings = array()) {
 
-    if (!isset($this->settings['batchqueue_fetcher_class'])) {
+    if (!isset($this->settings['drunkins_fetcher_class'])) {
       // We're an AFAS job. Obviously we want to set the AFAS Fetcher, at least
       // as a default.
-      $this->settings['batchqueue_fetcher_class'] = 'AfasGetConnector';
+      $this->settings['drunkins_fetcher_class'] = 'AfasGetConnector';
     }
 
     parent::__construct($settings);
@@ -52,7 +52,7 @@ class AfasGetConnectorDisplay extends BatchQueueJob {
     );
     if (!empty($form['selection']['cache_items']) && module_exists('ctools')) {
       ctools_include('object-cache');
-      $items = ctools_object_cache_get('batchqueue_items', $this->settings['job_id']);
+      $items = ctools_object_cache_get('drunkins_items', $this->settings['job_id']);
       if (is_array($items) && $items) {
         $form['source']['#description'] = t('This section will not have effect if using cached items.');
       }
@@ -76,18 +76,18 @@ class AfasGetConnectorDisplay extends BatchQueueJob {
   }
 
   /**
-   * Implements BatchQueueJobInterface::processItem
+   * Implements DrunkinsJobInterface::processItem
    */
-  public function processItem($item, &$context) {
+  public function processItem($item, array &$context) {
     // Do nothing.
-    $context['results']['counter']++;
+    $context['counter']++;
   }
 
   /**
-   * Implements BatchQueueJobInterface::finish()
+   * Implements DrunkinsJobInterface::finish()
    */
-  public function finish(&$results) {
-    return format_plural($results['counter'],
+  public function finish(array &$context) {
+    return format_plural($context['counter'],
       '1 item was not processed.', '@count items were not processed.');
   }
 }

@@ -9,16 +9,16 @@
  *
  * Fetches data through an AFAS GET connector. Other modules can create jobs and
  * make them available to cron / the admin UI, by
- * - installing the 'batchqueue' Drupal contrib module;
+ * - installing the 'drunkins' Drupal contrib module;
  * - using this class as a fetcher inside their job class (by e.g. subclassing
- *   BatchQueueJob), or subclassing this class,
+ *   DrunkinsJob), or subclassing this class,
  * - exposing their class through hook_queue_info().
  */
-class AfasGetConnector extends BatchQueueFetcher {
+class AfasGetConnector extends DrunkinsFetcher {
 
   /* Settings in $this->settings, used by this class:
    * - job_id:              defined in parent
-
+   *
    * - afas_connector (string):
    *   the name of the GET connector to use for fetching data.
    * - afas_filter (array):
@@ -59,18 +59,18 @@ class AfasGetConnector extends BatchQueueFetcher {
   // @deprecated - use settings[afas_filter].
   protected $extra_filter;
 
-  public function __construct($settings = array()) {
+  public function __construct(array $settings = array()) {
     parent::__construct($settings);
 
     if (!isset($this->settings['opt_afas_adv_filter'])) {
-      $this->settings['opt_afas_adv_filter'] = user_access('access batchqueue advanced');
+      $this->settings['opt_afas_adv_filter'] = user_access('access drunkins advanced');
     }
   }
 
   /// Interface functions
 
   /**
-   * Extends BatchQueueImportJob::settingsForm()
+   * Extends DrunkinsImportJob::settingsForm()
    */
   public function settingsForm() {
     $form = parent::settingsForm();
@@ -78,7 +78,7 @@ class AfasGetConnector extends BatchQueueFetcher {
     if (!empty($this->settings['opt_afas_adv_filter'])) {
 
       // There's a slight chance that the fieldset has not been defined yet
-      // (creating #weight isseus), see BatchQueueFetcher.
+      // (creating #weight isseus), see DrunkinsFetcher.
       if (!isset($form['selection'])) {
         $form['selection'] = array(
           '#type'   => 'fieldset',
@@ -102,11 +102,11 @@ One example, to get only products that changed in the past week:<br/><em>array(<
         '#weight'        => 12,
       );
 
-      // Extend the description of the 'cache' options (from BatchQueueFetcher),
+      // Extend the description of the 'cache' options (from DrunkinsFetcher),
       // IF there are cached items.
       if (!empty($form['selection']['cache_items']) && module_exists('ctools')) {
         ctools_include('object-cache');
-        $items = ctools_object_cache_get('batchqueue_items', $this->settings['job_id']);
+        $items = ctools_object_cache_get('drunkins_items', $this->settings['job_id']);
         if (is_array($items) && $items) {
           if (!empty($form['selection']['fetcher_single_item'])) {
             $form['selection']['cache_items']['#description']
@@ -136,12 +136,12 @@ One example, to get only products that changed in the past week:<br/><em>array(<
   /**
    * {@inheritdoc}
    */
-  public function feedIsComplete(&$context) {
+  public function feedIsComplete(array &$context) {
     return parent::feedIsComplete($context) && !$this->inputFilter($context);
   }
 
   /**
-   * Implements BatchQueueFetcher::fetchItems().
+   * Implements DrunkinsFetcher::fetchItems().
    * Modifiers:
    * - afas_return_xml in context (nonempty value returns SimpleXML, not array)
    * - afas_include_empty_fields setting
@@ -149,7 +149,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
    * @return array|string
    *   Items from AFAS, or error message.
    */
-  protected function fetchItems(&$context) {
+  protected function fetchItems(array &$context) {
 
     $connection = new AfasSoapConnection();
     $items = FALSE;
@@ -164,7 +164,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
       }
       $items = $connection->getData($this->settings['afas_connector'],
         $this->inputFilter($context),
-        !empty($context['results']['afas_return_xml']) ?  'get_simplexml' : 'get',
+        !empty($context['afas_return_xml']) ?  'get_simplexml' : 'get',
         !empty($this->settings['afas_include_empty_fields'])
           ? array('options' => array('Outputoptions' => 3)) : array()
       );
@@ -214,7 +214,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
    *   'filters array' that can be used for calling
    *   AfasSoapConnection::getData().
    */
-  public function inputFilter($context) {
+  public function inputFilter(array $context) {
     // This supports 'simple' (array key being the field name) and 'deeper'
     // array arguments.
     $filters = isset($this->settings['afas_filter']) && is_array($this->settings['afas_filter'])
@@ -227,7 +227,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
     }
 
     // This filter too.
-    if (!empty($context['results']['fetcher_timestamp_from'])
+    if (!empty($context['fetcher_timestamp_from'])
         && empty($this->settings['afas_disable_updated_auto_filter'])) {
       if (empty($this->settings['afas_updated_field'])) {
         $this->log('Updated-timestamp field is not specified for AFAS connector; no automatic filtering will be done!', array(), WATCHDOG_WARNING);
@@ -237,7 +237,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
         // 'lose' information and have to be careful we get dates in our own
         // timezone instead of UTC. Then it's simpler to use format_date().
         $filters[] = array(
-          $this->settings['afas_updated_field'] => format_date($context['results']['fetcher_timestamp_from'], 'custom', 'Y-m-d\TH:i:s'),
+          $this->settings['afas_updated_field'] => format_date($context['fetcher_timestamp_from'], 'custom', 'Y-m-d\TH:i:s'),
           '#op' => '>=',
         );
       }
