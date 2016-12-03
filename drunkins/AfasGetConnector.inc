@@ -141,13 +141,11 @@ One example, to get only products that changed in the past week:<br/><em>array(<
   }
 
   /**
-   * Implements DrunkinsFetcher::fetchItems().
+   * {@inheritdoc}
+   *
    * Modifiers:
    * - afas_return_xml in context (nonempty value returns SimpleXML, not array)
    * - afas_include_empty_fields setting
-   *
-   * @return array|string
-   *   Items from AFAS, or error message.
    */
   protected function fetchItems(array &$context) {
 
@@ -190,7 +188,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
       // our own drupal_set_message. Don't set 'print_errors' in
       // AfasSoapConnection; just ignore $this->print_errors.
       // More details are always logged to watchdog.
-      $items = $connection->getLastCallInfo('error');
+      $error = $connection->getLastCallInfo('error');
       $er = $connection->getErrorReporting();
       if ($er & AFAS_LOG_ERROR_DETAILS_WATCHDOG
           && !($er & AFAS_LOG_ERROR_DETAILS_SCREEN)) {
@@ -198,8 +196,9 @@ One example, to get only products that changed in the past week:<br/><em>array(<
         // if there are any details (like with 'AFAS environment is not set',
         // there are none.) Maybe set a counter for number of logs, or remember
         // all? Think this over.
-        $items .= ' (' . t('See Recent Log Messages for more details.') . ')';
+        $error .= ' (' . t('See Recent Log Messages for more details.') . ')';
       }
+      throw new \Exception($error);
     }
 
     return $items;
@@ -254,10 +253,11 @@ One example, to get only products that changed in the past week:<br/><em>array(<
 
   /**
    * Checks for/evaluates a comma separated list of arrays in
-   * $this->settings['filters'].
-   * This is used for the 'Filter' textarea value in the batch form.
+   * $this->settings['afas_adv_filter']. This is used for the 'Filter' textarea
+   * value in the batch form.
    *
-   * @return Array of filters, or empty array.
+   * @return array
+   *   The evaluated filters, or empty array if nothing set / error encountered.
    */
   private function evalFilterInput() {
     static $filters;
