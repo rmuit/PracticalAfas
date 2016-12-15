@@ -38,7 +38,7 @@ class AfasGetConnector extends DrunkinsFetcher {
    *   from forgetting this. But it needs to know the name of the 'updated'
    *   field for this.
    *   If not filled, a message will be logged.
-   * - afas_disable_updated_auto_filter (boolean):
+   * - fetcher_timestamp_ignore (boolean): <-- @TODO might need to be moved to parent
    *   Set to TRUE to suppress the above filter on 'updated' and messages about
    *   a missing 'updated' field.
    *
@@ -75,6 +75,20 @@ class AfasGetConnector extends DrunkinsFetcher {
   public function settingsForm() {
     $form = parent::settingsForm();
 
+    // @todo think about whether this option should be general. And document it.
+    $last_sync = variable_get('drunkins_fetcher_ts_' . $this->settings['job_id'], 0);
+    $form['selection']['fetcher_timestamp_ignore'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Ignore "changed since"'),
+      '#default_value' => empty($last_sync), '#weight' => 2,
+    );
+    $from_date_enabled = isset($form['selection']['fetcher_timestamp_from_date']);
+    if ($from_date_enabled) {
+      // 'enabled' state may or may not be set by the parent already. We are
+      // just adding another 'and' condition to restrict enabled-ness.
+      $form['selection']['fetcher_timestamp_from_date']['#states']['enabled'][':input[name="fetcher_timestamp_ignore"]'] =  array('checked' => FALSE);
+    }
+
     if (!empty($this->settings['opt_afas_adv_filter'])) {
 
       // There's a slight chance that the fieldset has not been defined yet
@@ -110,11 +124,11 @@ One example, to get only products that changed in the past week:<br/><em>array(<
         if (is_array($items) && $items) {
           if (!empty($form['selection']['fetcher_single_item'])) {
             $form['selection']['cache_items']['#description']
-              .= ' ' . t('One cached item can be processed by with the \'!single_item\' option.');
+              .= ' ' . t('One cached item can be processed by with the \'!single_item\' option.',
+                         array('!single_item' => $form['selection']['fetcher_single_item']['#title']));
           }
           $form['selection']['cache_items']['#description']
-            .= ' ' . t('The Advanced filter will not have any effect when using cached items.',
-            array('!single_item' => t('Update only one specific item')));
+            .= ' ' . t('The Advanced filter will not have any effect when using cached items.');
         }
       }
     }
@@ -232,8 +246,11 @@ One example, to get only products that changed in the past week:<br/><em>array(<
     }
 
     // This filter too.
-    if (!empty($context['fetcher_timestamp_from'])
-        && empty($this->settings['afas_disable_updated_auto_filter'])) {
+    // (As long as 'fetcher_timestamp_ignore' is a setting from ourselves, not
+    // from the parent, we will assume it does not suppress the existence of the
+    // fetcher_timestamp_from context value. If we move this to the parent, we
+    // might be doing that differently. I don't know yet. @TODO )
+    if (!empty($context['fetcher_timestamp_from']) && empty($this->settings['fetcher_timestamp_ignore'])) {
       if (empty($this->settings['afas_updated_field'])) {
         throw new \Exception(t('Updated-timestamp field is not specified for AFAS connector, even though we are supposed to be fitering.'));
       }
