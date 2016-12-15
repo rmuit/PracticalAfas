@@ -209,9 +209,15 @@ One example, to get only products that changed in the past week:<br/><em>array(<
    * call this from your init(), before fetching items in whatever way.
    * (Or check the properties by yourself.)
    *
+   * @param array $context
+   *   The process context array.
+   *
    * @return array
    *   'filters array' that can be used for calling
    *   AfasSoapConnection::getData().
+   *
+   * @throws \Exception
+   *   If the filter or related settings are invalid.
    */
   public function inputFilter(array $context) {
     // This supports 'simple' (array key being the field name) and 'deeper'
@@ -229,7 +235,7 @@ One example, to get only products that changed in the past week:<br/><em>array(<
     if (!empty($context['fetcher_timestamp_from'])
         && empty($this->settings['afas_disable_updated_auto_filter'])) {
       if (empty($this->settings['afas_updated_field'])) {
-        $this->log('Updated-timestamp field is not specified for AFAS connector; no automatic filtering will be done!', array(), WATCHDOG_WARNING);
+        throw new \Exception(t('Updated-timestamp field is not specified for AFAS connector, even though we are supposed to be fitering.'));
       }
       else {
         // Since we won't use the timezone in our date expression below, we
@@ -258,6 +264,9 @@ One example, to get only products that changed in the past week:<br/><em>array(<
    *
    * @return array
    *   The evaluated filters, or empty array if nothing set / error encountered.
+   *
+   * @throws \Exception
+   *   If this filter does not evaluate to valid PHP array structures.
    */
   private function evalFilterInput() {
     static $filters;
@@ -277,14 +286,15 @@ One example, to get only products that changed in the past week:<br/><em>array(<
               // Just disregard filter-parts which are empty arrays.
             }
             else {
-              $this->log("Invalid 'filter' (part) setting passed to inputFilter(): %p",
-                array('%p' => print_r($filter, TRUE)), WATCHDOG_ERROR, FALSE);
+              // t() in Exception?
+              throw new \Exception(t("Invalid 'filter' (part) setting passed to inputFilter(): %p",
+                array('%p' => print_r($filter, TRUE))));
             }
           }
         }
         else {
-          $this->log("Invalid 'afas_adv_filter' setting passed to inputFilter(): %p",
-            array('%p' => print_r($this->settings['afas_adv_filter'], TRUE)), WATCHDOG_ERROR, FALSE);
+          throw new \Exception(t("Invalid 'afas_adv_filter' setting passed to inputFilter(): %p",
+            array('%p' => print_r($this->settings['afas_adv_filter'], TRUE))));
         }
       }
     }
