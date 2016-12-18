@@ -1,14 +1,19 @@
 <?php
 /**
- * @file
- * Contains AfasApiHelper.
+ * This file is part of the SimpleAfas package.
+ *
+ * (c) Roderik Muit <rm@wyz.biz>
+ *
+ * For the full copyright and license information, please view the LICENSE file
+ * that was distributed with this source code.
  */
 
+namespace SimpleAfas;
+
 /**
- * Class AfasApiHelper.
+ * A collection of standalone helper methods for AFAS data manipulation.
  *
- * This is a collection of standalone helper methods for data manipulation,
- * which are mainly useful before sending data into AFAS. It's split out from
+ * These are mainly useful before sending data into AFAS. It's split out from
  * AfasSoapConnection to protect the stability of the AfasSoapConnection
  * 'interface' a bit: this collection will probably see change over time.
  * (Plus: the data definitions in here are just too big for AfasSoapConnection.)
@@ -18,7 +23,7 @@
  *
  * All methods are static so far.
  */
-class AfasApiHelper {
+class Helper {
 
   /**
    * Maps ISO to AFAS country code.
@@ -544,8 +549,7 @@ class AfasApiHelper {
   }
 
   /**
-   * Construct XML representing one or more AFAS 'items', which is suitable for
-   * sending through an AFAS UpdateConnector.
+   * Construct XML representing one or more AFAS 'items'.
    *
    * xmlTypeInfo() is an evolving function containing lots of (maybe incomplete)
    * hardcoded logic and comment fragments from incomplete info in AFAS'
@@ -556,10 +560,10 @@ class AfasApiHelper {
    * AfasSoapConnection::getData(CONNECTOR, array(), 'data') can be used for
    * getting more XSD schema info to make this function more robust. The
    * information from those XSD schemas may be more complete, so if you want to
-   * use those schemas to construct XML for sending through sendXml() instead of
-   * using this function with sendData(), that's fine. This function exists for
-   * those who would like to construct array data with more descriptive keys,
-   * instead of an XML string with hard to remember tag names.
+   * use those schemas to construct XML instead of using this function, that's
+   * fine. This function exists for those who would like to construct array data
+   * with more descriptive keys, instead of an XML string with hard to remember
+   * tag names.
    *
    * We hope that the below code catches all strange/dangerous combinations of
    * 'id' /  $fields_action / AutoNum / MatchXXX values and 'embedding items',
@@ -586,32 +590,34 @@ class AfasApiHelper {
    *   An item can have two other key-value pairs that do not represent real
    *   item values:
    *   - #id: the 'id attribute' of an item in XML. Only some item types have
-   *     'id attributes' (most have id numbers in separate tags).
+   *     'id attributes'. (Most have id numbers in separate tags).
    *   - #action: the 'fields action' (see $fields_action) to perform for a
    *     nested item, if that is different from $fields_action. This must never
    *     be set for an 'outer' item; use $fields_action parameter instead.
    * @param string $fields_action
-   *   Action to fill in 'Fields' tag; can be "insert", "update", "delete", "".
-   *   In cases where specifying "insert" in the XML does not make AFAS'
-   *   behavior different from not specifying anything, it may still be
-   *   important because this module will only add default field values if
+   *   (optional) Action to fill in 'Fields' tag; can be "insert", "update",
+   *   "delete", "". In cases where specifying "insert" in the XML does not make
+   *   AFAS' behavior different from not specifying anything, it may still be
+   *   important because this method will only add default field values if
    *   "insert" is explicitly specified.
    *   Combination of $fields_action "insert" and non-empty id is allowed
    *   (probably you have autonumbering turned off, if you do this).
    *   Combination of $fields_action "update" and empty id is logical only
    *   when the item has a 'MatchXXX' property; see xmlTypeInfo().
    * @param string $parent_type
-   *   If nonempty, the generated XML will be a fragment suitable for embedding
-   *   within the parent type, which is slightly different from standalone XML.
+   *   (optional) If nonempty, the generated XML will be a fragment suitable for
+   *   embedding within the parent type, which is slightly different from
+   *   standalone XML.
    * @param int $indent
-   *   Add spaces before each tag and end each line except the last one with
-   *   newline, unless $indent < 0 (then do not add any spaces or newlines).
-   *   (Default: -1.)
+   *   (optional) Add spaces before each tag and end each line except the last
+   *   one with newline, unless $indent < 0 (then do not add anything).
    *
    * @return string
-   *   The constructed XML. All values in $data get XML-encoded/escaped.
+   *   The constructed XML, which is suitable for sending through an AFAS
+   *   UpdateConnector.. All values in $data get XML-encoded/escaped.
    *
-   * @throws Exception
+   * @throws \InvalidArgumentException
+   *   If arguments have an unrecognized / invalid format.
    *
    * @see xmlTypeInfo()
    */
@@ -621,8 +627,7 @@ class AfasApiHelper {
     // because we need to call the method in extending classes.)
 
     if (!in_array($fields_action, array('insert', 'update', 'delete', ''), TRUE)) {
-      throw new Exception(t('Unknown value %value for fields_action parameter',
-        array('%value' => $fields_action, '@type' => $type)));
+      throw new \InvalidArgumentException("Unknown value $fields_action for fields_action parameter.");
     }
 
     // We set tab width in a variable even though we never change it.
@@ -637,14 +642,13 @@ class AfasApiHelper {
       // enter inside a tag. See below.
       $extra_spaces = str_repeat(' ', $tab_width);
 
-      // This is the initial value _after_ the outer XML line. While being built,
-      // the last line in $xml will not end with a newline:
+      // This is the initial value _after_ the outer XML line. While being
+      // built, the last line in $xml will not end with a newline:
       $indent_str = "\n" . str_repeat(' ', $indent + $tab_width);
 
       $xml = str_repeat(' ', $indent);
     }
-    $xml .= '<' . $type . ($parent_type ? '>'
-        : ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">');
+    $xml .= '<' . $type . ($parent_type ? '>' : ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">');
 
     // Determine if $element holds a single item or an array of items:
     // if one item, we must have at least one scalar value; if several, all
@@ -663,8 +667,7 @@ class AfasApiHelper {
       // the loop, because $info can differ with $element.)
       $info = static::xmlTypeInfo($type, $parent_type, $element, $fields_action);
       if (empty($info)) {
-        throw new Exception(t('No XML definition present for item type @type.',
-          array('@type' => $type)));
+        throw new \InvalidArgumentException("No XML definition present for item type $type.");
       }
       /* About the field definitions:
        * - if required = TRUE and default is given, then
@@ -680,13 +683,12 @@ class AfasApiHelper {
         if (empty($parent_type)) {
           // This really is an override and we want to keep it that way.
           // When possible, people must specify a correct $fields_action.
-          throw new Exception(t('#action override is only allowed in embedded objects.'));
+          throw new \InvalidArgumentException('#action override is only allowed in embedded objects.');
         }
         // Not sure whether '' makes sense as an override?
         // Also maybe we should disallow deletes inside inserts etc?
         if (!in_array($element['#action'], array('insert', 'update', 'delete'), TRUE)) {
-          throw new Exception(t('Unknown value %value for #action inside @type',
-            array('%value' => $element['#action'], '@type' => $type)));
+          throw new \InvalidArgumentException("Unknown value {$element['#action']} for #action inside $type.");
         }
         $action = $element['#action'];
         unset($element['#action']);
@@ -696,8 +698,7 @@ class AfasApiHelper {
       }
 
       if (!empty($element['#id']) && empty($info['id_field'])) {
-        throw new Exception(t('Id value provided but no id-field defined for item @type.',
-          array('@type' => $type)));
+        throw new \InvalidArgumentException("Id value provided but no id-field defined for item $type.");
       }
 
       $xml .= $indent_str . '<Element'
@@ -721,8 +722,7 @@ class AfasApiHelper {
         $value_exists_by_alias = isset($map_properties['alias']) && array_key_exists($map_properties['alias'], $element);
         if (array_key_exists($tag, $element)) {
           if ($value_exists_by_alias) {
-            throw new Exception(t('Item @type has a value provided by both its property name @property and alias @alias.',
-              array('@type' => $type, '@property' => $tag, '@alias' =>$map_properties['alias'])));
+            throw new \InvalidArgumentException("Item $type has a value provided by both its property name $tag and alias $map_properties[alias].");
           }
           $value = $element[$tag];
           unset($element[$tag]);
@@ -741,8 +741,8 @@ class AfasApiHelper {
         // Required fields will disallow non-passed values, or passed null values.
         if (!empty($map_properties['required'])
             && (!$value_present || !isset($value))) {
-          throw new Exception(t('No value given for item @type, required property @property.',
-            array('@type' => $type, '@property' => $tag . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : ''))));
+          $property = $tag . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
+          throw new \InvalidArgumentException("No value given for item $type, required property $property.");
         }
 
         if ($value_present) {
@@ -754,12 +754,12 @@ class AfasApiHelper {
               case 'long':
               case 'decimal':
                 if (!is_numeric($value)) {
-                  throw new Exception(t('Property @property in item @type must be numeric.',
-                    array('@type' => $type, '@property' => $tag . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : ''))));
+                  $property = $tag . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
+                  throw new \InvalidArgumentException('Property $property in item $type must be numeric.');
                 }
                 if ($map_properties['type'] === 'long' && strpos((string) $value, '.') !== FALSE) {
-                  throw new Exception(t("Property @property in item @type must be a 'long'.",
-                    array('@type' => $type, '@property' => $tag . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : ''))));
+                  $property = $tag . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
+                  throw new \InvalidArgumentException("Property $property in item $type must be a 'long'.");
                 }
                 // For decimal, we could also check total/fraction digits, but
                 // we're not going that far yet.
@@ -790,8 +790,7 @@ class AfasApiHelper {
           // throw an exception.
           if (array_key_exists($tag, $element)) {
             if (array_key_exists($alias, $element)) {
-              throw new Exception(t('Item @type has a value provided by both its property name @property and alias @alias.',
-                array('@type' => $type, '@property' => $tag, '@alias' => $alias)));
+              throw new \InvalidArgumentException("Item $type has a value provided by both its property name $tag and alias $alias.");
             }
             $value = $element[$tag];
             unset($element[$tag]);
@@ -806,8 +805,8 @@ class AfasApiHelper {
 
           if ($value_present) {
             if (!is_array($value)) {
-              throw new Exception(t('Value for object @property in item @type must be array.',
-                array('@type' => $type, '@property' => $tag . (isset($alias) ? " ($alias)" : ''))));
+              $property = $tag . (isset($alias) ? " ($alias)" : '');
+              throw new \InvalidArgumentException("Value for object $property in item $type must be array.");
             }
             $xml .= ($indent < 0 ? '' : "\n") . self::constructXml(
                 $tag,
@@ -823,8 +822,8 @@ class AfasApiHelper {
 
       // Throw error for unknown item data (for which we have not seen a tag).
       if (!empty($element)) {
-        throw new Exception(t('Unmapped data values provided for item type @type: keys are @keys.',
-          array('@type' => $type, '@keys' => "'" . implode(', ', array_keys($element)) . "'")));
+        $keys = "'" . implode(', ', array_keys($element)) . "'";
+        throw new \InvalidArgumentException("Unmapped data values provided for item type $type: keys are $keys.");
       }
 
       // Add closing XML tags.
@@ -850,6 +849,7 @@ class AfasApiHelper {
 
   /**
    * Prepare a value for inclusion in XML: trim and encode.
+   *
    * @param string $text
    * @return string
    */
@@ -880,8 +880,6 @@ class AfasApiHelper {
    * @return array
    *   Array with possible keys: 'id_field', 'fields' and 'objects'. See
    *   the code.
-   *
-   * @throws Exception
    *
    * @see constructXml()
    */

@@ -1,8 +1,11 @@
 <?php
+
+use SimpleAfas\Connection;
+
 /**
- * @file
- * Class providing some helper functions for Drunkins jobs importing data
- * through an AFAS GET connector. See drunkins module.
+ * Class providing some helper functions for Drunkins jobs importing AFAS data.
+ *
+ * See drunkins module.
  *
  * This should actually be some kind of 'plugin' functionality (in the way the
  * fetcher is plugin-ish), instead of a child class. Because we don't know
@@ -14,7 +17,7 @@ class AfasImportJob extends DrunkinsEntityImportJob {
   /* Settings in $this->settings, used by this class:
    *
    * - opt_skip_images (boolean, TRUE by default / if not set):
-   *   Enables 'unpub_after_finish' setting in settingsForm.
+   *   Enables 'skip_images' setting in settingsForm.
    * - skip_images (boolean):
    *   See settingsForm() description.
    */
@@ -70,7 +73,7 @@ class AfasImportJob extends DrunkinsEntityImportJob {
   /**
    * {@inheritdoc}
    */
-  protected function buildApiFieldValues($value, array $current_built_value = array(), $source_field) {
+  protected function buildApiFieldValues($value, array $current_built_value = array(), $source_field = '') {
 
     // We handle type 'image' here, and refer to the parent for other types.
 
@@ -163,8 +166,16 @@ class AfasImportJob extends DrunkinsEntityImportJob {
 
               if (!isset($this->imgcache[$process['data_connector']])) {
                 // Image data for this item is not cached yet; get it.
+                module_load_include('php', 'afas_api', 'lib/src/Connection');
+                $client_class = !empty($this->settings['afas_client_class']) ? $this->settings['afas_client_class']
+                  : variable_get('afas_api_client_class', 'DrupalSoapNtlmClient');
+                $client_options = isset($this->settings['afas_client_options']) && is_array($this->settings['afas_client_options']) ? $this->settings['afas_client_options'] : array();
+                if (!empty($this->settings['fetcher_timeout']) && is_numeric($this->settings['fetcher_timeout'])) {
+                  // Option only works for AfasNusoapClient but that's fine.
+                  $client_options['response_timeout'] = $this->settings['fetcher_timeout'];
+                }
+                $connection = new Connection($client_class, $client_options);
 
-                $connection = new AfasSoapConnection();
                 if (!$items = $connection->getData($process['data_connector'],
                   array('Itemcode' => $this->src_item[$this->context['import_src_pkey']]),
                   'get_simplexml')

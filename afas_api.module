@@ -3,28 +3,15 @@
  * @file 
  * Functionality for communicating with AFAS SOAP service.
  *
- * There are no helper functions in this module file, only some menu entries for
- * config screens. Most needed functionality can be found in AfasSoapConnection.
- * Example to retrieve data from a Get Connector which you've defined in your
- * AFAS environment:
- *   $connection = new AfasSoapConnection();
- *   $result_rows = $connection->getData($your_connector_name);
- * For more functionality (like error handling, calling Update connectors),
- * please see the class' methods.
- *
- * Helper methods to e.g. format data arrays before sending them into AFAS
- * using an Update Connector can be found in AfasApiHelper.
- * D7 non-OO developers: these are all static methods, so you can just call them
- * from your code like any other function; their names are just a bit longer:
- *  $result = AfasApiHelper::methodName($arg1, ...);
- *
- * @see AfasSoapConnection
- * @see AfasApiHelper
+ * There are two helper functions in this module file: afas_api_get_data() and
+ * afas_api_send_data(). They hopefully speak for themselves, and can serve as
+ * an example in case someone wants to use the SimpleAFAS library classes with
+ * a different configuration than can be configured through Drupal's admin
+ * screens.
  */
 
-// Constants used by the connection classes are defined here, so they are
-// recognized in external code without having to explicitly include the class
-// file. (Because Drupal 7 autoload is built to not include classes explicitly.)
+use SimpleAfas\Connection;
+use SimpleAfas\Helper;
 
 /**
  * Errors reported by the AFAS endpoint or this code are logged to watchdog.
@@ -63,8 +50,8 @@ function afas_api_menu() {
     'page callback' => 'system_admin_menu_block_page',
     // @todo add permission(s)
     'access arguments' => array('administer site configuration'),
-    'file' => 'system.admin.inc',
     'file path' => 'modules/system',
+    'file' => 'includes/afas_api.admin.inc',
   );
   $menu['admin/config/services/afas/general'] = array(
     'title' => 'General configuration',
@@ -81,7 +68,7 @@ function afas_api_menu() {
     'page callback' => 'drupal_get_form',
     'page arguments' => array('afas_api_schema_form'),
     'access arguments' => array('administer site configuration'),
-    'file' => 'afas_api.admin.inc',
+    'file' => 'includes/afas_api.admin.inc',
     'weight' => 9,
   );
   return $menu;
@@ -116,9 +103,9 @@ function afas_api_libraries_info() {
  * Implements hook_afas_api_client_info().
  */
 function afas_api_afas_api_client_info() {
-
-  $classes['AfasSoapClient'] = t('Client using standard PHP5 SOAP extension. Does not work with WSDL.');
-  $classes['AfasNusoapClient'] = t('Client using NuSOAP library. This can be used if the (preferred) PHP SOAP extension is not compiled/enabled on your server.')
+//  $classes['AfasAppSoapClient'] = t('Client using App connector and standard PHP5 SOAP extension.'); // @todo test wsdl?
+  $classes['DrupalSoapNtlmClient'] = t('Client using NTLM authentication and standard PHP5 SOAP extension. Does not work with WSDL.');
+  $classes['DrupalNusoapNtlmClient'] = t('Client using NTLM authentication and NuSOAP library. This can be used if the (preferred) PHP SOAP extension is not compiled/enabled on your server.')
                                 . '<br>' . t("nuSOAP v0.9.5 only works when using WSDL; if you want to turn off WSDL, you need sources from https://github.com/rmuit/NuSOAP, or the AfasNusoapClient class needs to be fixed.");
   return $classes;
 }
@@ -127,7 +114,6 @@ function afas_api_afas_api_client_info() {
  * Implements hook_queue_info().
  */
 function afas_api_queue_info() {
-
   // This requires drunkins module. See admin/config/workflow/drunkins.
   $queues['afas_getconnector_display'] = array(
     'title'      => t('Fetch/display/export data from GetConnector (no processing).'),
@@ -138,4 +124,323 @@ function afas_api_queue_info() {
   );
 
   return $queues;
+}
+
+/**
+ * Gets data from AFAS using the client that is configured in our admin screen.
+ *
+ * Returns FALSE for error, after already having logged the error. Code which
+ * does not need the error handling can just copy the two relevant lines inside
+ * the try block instead of calling this function.
+ *
+ * @param string|int $data_id
+ *   Identifier for the data. (Usually the name of the AFAS 'get connector',
+ *   but this can differ with $data_type.)
+ * @param array $filters
+ *   (optional) Filters to apply before returning data
+ * @param string $data_type
+ *   (optional) Type of data to retrieve and, for get connectors, the format
+ *   in which to return it.
+ *   'get':        $data_id is a get connector; return data as array.
+ *   'get_simplexml: $data_id is a get connector; return data as
+ *                   SimpleXMLElement. This is slightly faster than 'get'
+ *   'report':     $data_id is the report ID for a report connector.
+ *   'attachment': $data_id is the 'subject ID' (int) for a subject connector.
+ *   'data':       $data_id is the function name for which to retrieve the XSD
+ *                 schema. (This used to be called "DataConnector"; in 2014
+ *                 that term has disappeared from the online documentation.)
+ * @param array $extra_arguments
+ *   (optional) Other arguments to pass to the soap call, besides the ones
+ *   hardcoded in parseGetDataArguments() for convenience. Specifying these is
+ *   usually unnecessary. To see what it can be used for, check the code in
+ *   parseGetDataArguments() and/or the WSDL/documentation of the AFAS
+ *   endpoint.
+ * @param int $error_reporting
+ *   (optional) Error reporting constants. By default, the logging configuration
+ *   from Drupal's admin screen is adhered to.
+ *
+ * @return string|array|SimpleXMLElement|false
+ *   See $data_type.
+ *
+ * @see \SimpleAfas\Connection::getData()
+ */
+function afas_api_get_data($data_id, array $filters = array(), $data_type = 'get', array $extra_arguments = array(), $error_reporting = NULL) {
+  global $afas_api_last_call_info;
+  global $afas_api_error_reporting;
+
+  $afas_api_error_reporting = isset($error_reporting) ? $error_reporting :
+    variable_get('afas_api_log_screen', 0) + variable_get('afas_api_log_watchdog', AFAS_LOG_ERRORS_WATCHDOG);
+  $afas_api_last_call_info = array(
+    'data_id' => $data_id,
+    'arguments' => $filters,
+    'data_type' => $data_type,
+    'extra_arguments' => $extra_arguments,
+  );
+
+  try {
+    $connection = afas_api_connection();
+    $result = $connection->getData($data_id, $filters, $data_type, $extra_arguments);
+  }
+  catch (Exception $e) {
+    _afas_api_handle_error(array(
+      'error_code' => $e->getCode(),
+      'error' => $e->getMessage(),
+      'error_detail' => (string) $e,
+    ));
+    $result = FALSE;
+  }
+
+  return $result;
+}
+
+/**
+ * Sends data to AFAS using the client that is configured in our admin screen.
+ *
+ * Returns FALSE for error, after already having logged the error. Code which
+ * does not need the error handling can just copy the relevant lines inside the
+ * try block instead of calling this function.
+ *
+ * @param $connector_name
+ *   Name of the UpdateConnector.
+ * @param string|array $xml
+ *   XML string as specified by AFAS, or array to be passed through.
+ *   Helper::constructXML($connector_name, ...) to get that SML string. See AFAS
+ *   XSD Schemas.
+ * @param int $error_reporting
+ *   (optional) Error reporting constants. By default, the logging configuration
+ *   from Drupal's admin screen is adhered to.
+ *
+ * @return string|false
+ *   Response from SOAP call or FALSE for error. Be careful when checking only
+ *   this return value for errors; some successful calls return an empty string.
+ *
+ * @see \SimpleAfas\Helper::constructXML()
+ */
+function afas_api_send_data($connector_name, $xml, $error_reporting = NULL) {
+  global $afas_api_last_call_info;
+  global $afas_api_error_reporting;
+
+  $afas_api_error_reporting = isset($error_reporting) ? $error_reporting :
+    variable_get('afas_api_log_screen', 0) + variable_get('afas_api_log_watchdog', AFAS_LOG_ERRORS_WATCHDOG);
+  $afas_api_last_call_info = array(
+    'data_id' => $connector_name,
+    'arguments' => $xml,
+    'data_type' => 'update',
+  );
+
+  try {
+    $connection = afas_api_connection();
+    if (is_array($xml)) {
+      module_load_include('php', 'afas_api', 'lib/src/Helper');
+      $xml = Helper::constructXml($connector_name, $xml);
+    }
+    $result = $connection->sendXml($connector_name, $xml);
+  }
+  catch (Exception $e) {
+    _afas_api_handle_error(array(
+      'error_code' => $e->getCode(),
+      'error' => $e->getMessage(),
+      'error_detail' => (string) $e,
+    ));
+    $result = FALSE;
+  }
+
+  return $result;
+}
+
+/**
+ * Gets a SimpleAFAS connection object with client that uses standard config.
+ *
+ * This depends on the module having been properly configured through its admin
+ * screen.
+ *
+ * Since constructing new objects is not expensive, we keep it simple and return
+ * new ones on every call.
+ *
+ * @return \SimpleAfas\Connection
+ *   A connection object.
+ */
+function afas_api_connection() {
+  module_load_include('php', 'afas_api', 'lib/src/Connection');
+
+  // $current_classname is a Drupal specific class which extends a class from
+  // the SimpleAFAS library. The SimpleAFAS class does not know where to get its
+  // configuration from, which is why the Drupal specific class overrides the
+  // constructor to fill values from the admin screen.
+  $current_classname = variable_get('afas_api_client_class', 'DrupalSoapNtlmClient');
+  return new Connection($current_classname);
+}
+
+/**
+ * Returns meta info about the last SOAP call or other errors.
+ *
+ * This is the way to get error information from code that called
+ * afas_api_get_data() or afas_api_send_data(), got FALSE returned and needs to
+ * know why.
+ *
+ * @param string $type
+ *   Type of information to return. Can be:
+ *   - empty: see return value
+ *   - time:            string; timestamp for error.
+ *   - error_code:      int; error code
+ *   - error:           string; error message
+ *   - error_detail:    string; detailed error info
+ *   - error_temporary: bool: whether the error is temporary. (This is not
+ *                      necessarily correct in 100% of cases; see code.)
+ *   - data_id:         string; get/update connector or other ID; see getData().
+ *   - data_type:       string: data type. (Usually get connector but can be
+ *                      "get_simplexml" for get connector too.) See getData().
+ *   - arguments:       If data_type = 'update': XML string OR array.
+ *                      Else: filters array
+ *   - extra_arguments: array: extra arguments to getData() call.
+ *
+ * @return mixed
+ *  If $type is empty, all these values are returned in an encompassing array.
+ *  In that case, not all elements are guaranteed to be set (see param).
+ *
+ * @see _afas_api_handle_error()
+ * @see \SimpleAfas\Connection::getData()
+ */
+function afas_api_last_call_info($type = '') {
+  global $afas_api_last_call_info;
+
+  if (!empty($type)) {
+    return isset($afas_api_last_call_info[$type]) ? $afas_api_last_call_info[$type] : '';
+  }
+  return $afas_api_last_call_info;
+}
+
+/**
+ * Handles errors: does logging/printing on screen according to configuration.
+ *
+ * Works only for calls made through afas_api_get_data() / afas_api_send_data().
+ *
+ * @param array $error_info
+ *   Error info to remember/handle; see getLastCallInfo() for details.
+ *
+ * @see afas_api_last_call_info()
+ *
+ * @todo option to throw errors in case of error, instead of logging/printing?
+ * @todo or totally redo this. I don't know yet. This was hastily converted.
+ *       We should just pass the exception in, and look at the type...
+ * @todo Move the 'error_temporary' logic into Helper, into a function that
+ *       operates on the exception (not just a description string).
+ */
+function _afas_api_handle_error($error_info) {
+  global $afas_api_last_call_info;
+  global $afas_api_error_reporting;
+
+  // Set info for other code. Keep existing function name if it's set; the
+  // class may have detected an error after another call was done.
+  if (empty($afas_api_last_call_info)) {
+    $afas_api_last_call_info = array();
+  }
+  $afas_api_last_call_info = array_intersect_key($afas_api_last_call_info, array_flip(array(
+      'data_id',
+      'data_type',
+      'arguments',
+      'extra_arguments',
+    ))) + $error_info;
+  // This is equivalent to date('r') except it does not emit warnings if
+  // the current timezone is not set in php.ini.
+  $afas_api_last_call_info['time'] = date_format(date_create(), 'r');
+
+  // Set whether the error is temporary.
+  if (!isset($error_info['error_temporary'])) {
+    // Deduce 'temporary' ourselves. AFAS always returns error code 0 (through
+    // SoapFaults or other exceptions), so we'll need to be imperfect and just
+    // keep adding any descriptions we see. Until now, we've erred on the side
+    // of marking "temporary". The most probable effect, for processes checking
+    // this, is that less calls get silently discarded, and more calls get
+    // silently regularly re-tried when that doesn't really make sense.
+    // To be re-evaluated whenever necessary.
+    $afas_api_last_call_info['error_temporary'] =
+      (strpos($error_info['error'], 'Operation timed out') !== FALSE
+       || strpos($error_info['error'], 'connection timeout') !== FALSE
+       || strpos($error_info['error'], 'error parsing WSDL') !== FALSE
+       || strpos($error_info['error'], 'System.OutOfMemoryException') !== FALSE
+       // MS SQL Server errors:
+       || strpos($error_info['error'], 'insufficient disk space') !== FALSE
+       || strpos($error_info['error'], 'tempdb is probably out of space') !== FALSE
+       // We've observed (intermittent) 403s (access denied) on AFAS server/
+       // load problems. 403s should not normally be encountered, so marking
+       // 'temporary' should be safe.
+       || strpos($error_info['error'], 'HTTP response status 403') !== FALSE
+       // This one's more doubtful. (We've seen it on temporary errors, but
+       // probably there are permanent errors too which cause this.
+       || strpos($error_info['error'], 'Response not of type text/xml') !== FALSE
+       // And this one's even more doubtful: [ANTA WARNING] are very generic.
+       // We should really be looking at the error_detail instead, to make a
+       // distinction there, because some [ANTA WARNING]s are permanent.
+       || strpos($error_info['error'], '[ANTA WARNING]') !== FALSE
+    );
+  }
+
+  // Log to watchdog, error plus (optionally) details into one message.
+  if ($afas_api_error_reporting & AFAS_LOG_ERROR_DETAILS_WATCHDOG) {
+    $details = afas_api_last_call_info('error_detail');
+    $function = afas_api_last_call_info('function');
+    if ($function) {
+      // $details contains newlines which we want to honor when viewing
+      // watchdog logs on screen. But we also do not want to assume its value
+      // is safe. So we cannot replace newlines by <br> because those will be
+      // escaped with the rest of the value. (Unless we sanitize all of
+      // $details before saving.) Therefore: enclose in <pre>.
+      // Since we're already doing that for $details, do for $args too.
+      watchdog('afas_api', "Error: @error<br>Function: @function<br>Arguments:<br><pre>@args</pre><br><strong>Error details:</strong><br><pre>@detail</pre>",
+        array(
+          '@error' => afas_api_last_call_info('error'),
+          '@function' => afas_api_last_call_info('function'),
+          '@args' => json_encode(afas_api_last_call_info('arguments')),
+          '@detail' => $details ? $details : '-'),
+        WATCHDOG_ERROR);
+    }
+    else {
+      watchdog('afas_api', "Error: @error<br>Error details:<br><pre>@detail</pre>",
+        array(
+          '@error' => afas_api_last_call_info('error'),
+          '@detail' => $details ? $details : '-'),
+        WATCHDOG_ERROR);
+    }
+  }
+  elseif ($afas_api_error_reporting & AFAS_LOG_ERRORS_WATCHDOG) {
+    $function = afas_api_last_call_info('function');
+    if ($function) {
+      watchdog('afas_api', "Error: @error<br/>Function: @function<br/>Arguments: @args",
+        array(
+          '@error' => afas_api_last_call_info('error'),
+          '@function' => afas_api_last_call_info('function'),
+          '@args' => json_encode(afas_api_last_call_info('arguments'))), WATCHDOG_ERROR);
+    }
+    else {
+      watchdog('afas_api', "Error: @error", array('@error' => afas_api_last_call_info('error')), WATCHDOG_ERROR);
+    }
+  }
+
+  // Log to screen,(optionally) details in separate message.
+  if ($afas_api_error_reporting & (AFAS_LOG_ERRORS_SCREEN | AFAS_LOG_ERROR_DETAILS_SCREEN)) {
+    // You can't just print arguments; one argument may be the full XML which is too long.
+    $details = afas_api_last_call_info('error_detail');
+    $data_type = afas_api_last_call_info('data_type');
+    $function =  "{$data_type}Connector:" . afas_api_last_call_info('data_id');
+    $args = json_encode(afas_api_last_call_info('arguments'));
+    if ($args) {
+      $arg = (strlen($args) < 100) ? $args : (substr($args, 0, 100) . '...');
+      $function .= '(' . check_plain($arg) . '): ';
+    }
+    $message = $function . check_plain(afas_api_last_call_info('error'));
+    if ($details
+        && $afas_api_error_reporting & AFAS_LOG_ERROR_DETAILS_WATCHDOG
+        && !($afas_api_error_reporting & AFAS_LOG_ERROR_DETAILS_SCREEN)) {
+      $message .= '<br/>See Recent Log Messages for more details.';
+    }
+    drupal_set_message($message, 'error');
+
+    if ($details && $afas_api_error_reporting & AFAS_LOG_ERROR_DETAILS_SCREEN) {
+      // We can replace newlines by <br> but since some of the AFAS error
+      // details are formatted for display in a monospace font, enclose in
+      // <pre> instead.
+      drupal_set_message('Error details:<br><pre>' . check_plain($details) . '</pre>', 'error');
+    }
+  }
 }

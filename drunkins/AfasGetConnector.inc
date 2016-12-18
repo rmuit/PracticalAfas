@@ -1,28 +1,33 @@
 <?php
-/**
- * @file
- * Contains AfasGetConnector.
- */
+
+use SimpleAfas\Connection;
 
 /**
- * Class AfasGetConnector
+ * Fetches data through an AFAS GET connector.
  *
- * Fetches data through an AFAS GET connector. Other modules can create jobs and
- * make them available to cron / the admin UI, by
+ * Other modules can create jobs and make them available to cron / admin UI, by
  * - installing the 'drunkins' Drupal contrib module;
  * - using this class as a fetcher inside their job class (by e.g. subclassing
  *   DrunkinsJob), or subclassing this class,
- * - exposing their class through hook_queue_info().
+ * - exposing their job through hook_queue_info().
  */
 class AfasGetConnector extends DrunkinsFetcher {
 
   /* Settings in $this->settings, used by this class:
    * - job_id:              defined in parent
    *
+   * - afas_api_client_class (string):
+   *   The name of the client class to use. Optional; by default the one from
+   *   Drupal's global AFAS API admin screen will be taken.
+   * - afas_client_options (array):
+   *   Configuration options for the client. Optional ONLY IF the class'
+   *   constructor knows where to find its own configuration. (Which is the case
+   *   for standard Drupal-admin configured client classes.)
+   *
    * - afas_connector (string):
-   *   the name of the GET connector to use for fetching data.
+   *   The name of the GET connector to use for fetching data.
    * - afas_filter (array):
-   *   filter to use. See comments (all types are supported) at
+   *   Filter to use. See comments (all types are supported) at
    *   AfasSoapConnection::normalizeArguments().
    * - afas_adv_filter (string):
    *   Filter to use (one 'array level' only), as PHP code. This is only useful
@@ -42,12 +47,14 @@ class AfasGetConnector extends DrunkinsFetcher {
    *   Set to TRUE to suppress the above filter on 'updated' and messages about
    *   a missing 'updated' field.
    *
-   * - afas_include_empty_fields (boolean): include empty fields in AFAS output.
+   * - afas_include_empty_fields (boolean):
+   *   include empty fields in AFAS output.
    *
-   * - fetcher_timeout (int): response_timeout to set for AfasNusoapClient.
-   *   (Has no effect on AfasSoapClient. It doesn't matter, as long as we keep
-   *   using CURL for that one.)
-   * - fetcher_tries (int): number of times to try connecting at timeout.
+   * - fetcher_timeout (int):
+   *   response_timeout to set for AfasNusoapClient. (Has no effect on
+   *   AfasSoapClient. It doesn't matter, as long as we keep using CURL for it.)
+   * - fetcher_tries (int): <==== NOT FUNCTIONING AT THE MOMENT.
+   *   number of times to try connecting at timeout.
    *
    */
 
@@ -59,6 +66,9 @@ class AfasGetConnector extends DrunkinsFetcher {
   // @deprecated - use settings[afas_filter].
   protected $extra_filter;
 
+  /**
+   * {@inheritdoc}
+   */
   public function __construct(array $settings = array()) {
     parent::__construct($settings);
 
@@ -70,7 +80,7 @@ class AfasGetConnector extends DrunkinsFetcher {
   /// Interface functions
 
   /**
-   * Extends DrunkinsImportJob::settingsForm()
+   * {@inheritdoc}
    */
   public function settingsForm() {
     $form = parent::settingsForm();
@@ -133,14 +143,14 @@ One example, to get only products that changed in the past week:<br/><em>array(<
       }
     }
 
-    $form['fetcher_tries'] = array(
-      '#type'          => 'textfield',
-      '#title'         => t('Tries'),
-      '#description'   => 'The number of times to repeatedly try fetching AFAS data, in case of timeouts',
-      '#default_value' => 1,
-      '#size'          => 3,
-      '#weight'        => 97,
-    );
+//    $form['fetcher_tries'] = array(
+//      '#type'          => 'textfield',
+//      '#title'         => t('Tries'),
+//      '#description'   => 'The number of times to repeatedly try fetching AFAS data, in case of timeouts',
+//      '#default_value' => 1,
+//      '#size'          => 3,
+//      '#weight'        => 97,
+//    );
 
     return $form;
   }
@@ -162,56 +172,47 @@ One example, to get only products that changed in the past week:<br/><em>array(<
    * - afas_include_empty_fields setting
    */
   protected function fetchItems(array &$context) {
-    $client_options = array();
+    module_load_include('php', 'afas_api', 'lib/src/Connection');
+    $client_class = !empty($this->settings['afas_client_class']) ? $this->settings['afas_client_class']
+      : variable_get('afas_api_client_class', 'DrupalSoapNtlmClient');
+    $client_options = isset($this->settings['afas_client_options']) && is_array($this->settings['afas_client_options']) ? $this->settings['afas_client_options'] : array();
     if (!empty($this->settings['fetcher_timeout']) && is_numeric($this->settings['fetcher_timeout'])) {
       // Option only works for AfasNusoapClient but that's fine.
       $client_options['response_timeout'] = $this->settings['fetcher_timeout'];
     }
-    $connection = new AfasSoapConnection('default', $client_options);
+    $connection = new Connection($client_class, $client_options);
 
-    $items = FALSE;
-    $tries_left = !empty($this->settings['fetcher_tries']) ? $this->settings['fetcher_tries'] : 1;
-    while ($items === FALSE && --$tries_left >= 0) {
+    // @todo while the retry-on-timeout was very necessary in 2012, we shouldn't
+    // be doing retry-loops like this inside an HTTP request. We have
+    // 'drunkins_process_more' since 2015 so we should set that instead. On top
+    // of that, getData() throws exceptions instead of returning FALSE now. So
+    // we'll just comment things out for now. If we start seeing timeouts again
+    // that are so many they're unmanageable / just failing the job won't fly...
+    // then we'll need to test handling them at that moment.
+//    $items = FALSE;
+//    $tries_left = !empty($this->settings['fetcher_tries']) ? $this->settings['fetcher_tries'] : 1;
+//    while ($items === FALSE && --$tries_left >= 0) {
       $items = $connection->getData($this->settings['afas_connector'],
         $this->inputFilter($context),
         !empty($context['afas_return_xml']) ?  'get_simplexml' : 'get',
-        !empty($this->settings['afas_include_empty_fields'])
-          ? array('options' => array('Outputoptions' => 3)) : array()
+        !empty($this->settings['afas_include_empty_fields']) ? array('options' => array('Outputoptions' => 3)) : array()
       );
 
-      if ($items === FALSE) {
-        // Retry if timeout
-        $error = $connection->getLastCallInfo('error');
-        if (strpos($error, 'cURL ERROR: 28') !== FALSE) {
-          if ($tries_left) {
-            // Do 'error' only because it positions this message in between
-            // the other messages, if this is called from the batch form.
-            $this->log('AFAS timeout occurred; retrying, #@try', array('@try' => $this->settings['fetcher_tries'] - $tries_left), WATCHDOG_ERROR);
-          }
-        }
-        else {
-          $tries_left = 0;
-        }
-      }
-    }
-    if ($items === FALSE) {
-      // The caller always does a drupal_set_message (for Batch API form runs
-      // that generate errors). So return a string to there, instead of doing
-      // our own drupal_set_message. Don't set 'print_errors' in
-      // AfasSoapConnection; just ignore $this->print_errors.
-      // More details are always logged to watchdog.
-      $error = $connection->getLastCallInfo('error');
-      $er = $connection->getErrorReporting();
-      if ($er & AFAS_LOG_ERROR_DETAILS_WATCHDOG
-          && !($er & AFAS_LOG_ERROR_DETAILS_SCREEN)) {
-        // @todo this is better than not checking the above, but we do not know
-        // if there are any details (like with 'AFAS environment is not set',
-        // there are none.) Maybe set a counter for number of logs, or remember
-        // all? Think this over.
-        $error .= ' (' . t('See Recent Log Messages for more details.') . ')';
-      }
-      throw new \Exception($error);
-    }
+//      if ($items === FALSE) {
+//        // Retry if timeout
+//        $error = $connection->getLastCallInfo('error');
+//        if (strpos($error, 'cURL ERROR: 28') !== FALSE) {
+//          if ($tries_left) {
+//            // Do 'error' only because it positions this message in between
+//            // the other messages, if this is called from the batch form.
+//            $this->log('AFAS timeout occurred; retrying, #@try', array('@try' => $this->settings['fetcher_tries'] - $tries_left), WATCHDOG_ERROR);
+//          }
+//        }
+//        else {
+//          $tries_left = 0;
+//        }
+//      }
+//    }
 
     return $items;
   }

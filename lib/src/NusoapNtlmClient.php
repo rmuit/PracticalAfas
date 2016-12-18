@@ -1,22 +1,30 @@
 <?php
 /**
- * @file
- * Contains AfasNusoapClient.
+ * This file is part of the SimpleAfas package.
+ *
+ * (c) Roderik Muit <rm@wyz.biz>
+ *
+ * For the full copyright and license information, please view the LICENSE file
+ * that was distributed with this source code.
  */
+
+namespace SimpleAfas;
 
 /**
  * Wrapper around client specific details of making a remote AFAS call.
  *
- * This class contains one public method: callAfas(), and uses the standard PHP
- * external (older) NuSOAP library. It can be used if the (preferred) PHP SOAP
- * extension is not compiled/enabled on your server.
+ * This class contains one public method: callAfas(), and uses:
+ * - the external (older) NuSOAP library. It can be used if the (preferred) PHP
+ *   SOAP extension is not compiled/enabled on your server.
+ * - NTLM authentication, as opposed to a more modern "app connector". (NTLM
+ *   authentication is supposedly phased out by AFAS on 2017-01-01.)
  *
  * Note v0.9.5 of the nuSOAP library cannot deal with AFAS servers without WSDL;
  * you need to call the constructor with $options =array('useWSDL' => TRUE) or
  * (since WSDL introduces overhead which is unnecessary with AFAS' simple call
  * structure) you need sources from https://github.com/rmuit/NuSOAP.
  */
-class AfasNusoapClient extends AfasSoapClient {
+class NusoapNtlmClient extends SoapNtlmClient {
 
   /**
    * Returns a SOAP client object, configured with options previously set.

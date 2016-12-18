@@ -1,14 +1,7 @@
 <?php
-/**
- * @file
- * Contains AfasGetConnectorDisplay.
- */
 
 /**
- * Class AfasGetConnectorDisplay
- *
- * Example of GetConnector, useful for fetching and viewing data;
- * processItem() does nothing.
+ * Example GetConnector, useful for fetching / viewing data; empty processItem()
  *
  * At the moment this is a Job class, implementing DrunkinsJob because that
  * still has the 'display' options/settingsFormSubmit() functionality;
@@ -22,6 +15,9 @@
  */
 class AfasGetConnectorDisplay extends DrunkinsJob {
 
+  /**
+   * {@inheritdoc}
+   */
   public function __construct(array $settings = array()) {
 
     if (!isset($this->settings['drunkins_fetcher_class'])) {
@@ -36,10 +32,7 @@ class AfasGetConnectorDisplay extends DrunkinsJob {
   }
 
   /**
-   * Extends AfasGetConnector::settingsForm().
-   *
-   * The settings are used by the Fetcher's fetchItems() method, which is called
-   * from parent::init() -> Fetcher::init().
+   * {@inheritdoc}
    */
   public function settingsForm() {
 
@@ -76,7 +69,7 @@ class AfasGetConnectorDisplay extends DrunkinsJob {
   }
 
   /**
-   * Implements DrunkinsJobInterface::processItem
+   * {@inheritdoc}
    */
   public function processItem($item, array &$context) {
     // Do nothing.
@@ -84,10 +77,10 @@ class AfasGetConnectorDisplay extends DrunkinsJob {
   }
 
   /**
-   * Implements DrunkinsJobInterface::finish()
+   * {@inheritdoc}
    */
   public function finish(array &$context) {
-    return format_plural($context['counter'],
-      '1 item was not processed.', '@count items were not processed.');
+    return format_plural($context['counter'], '1 item was not processed.', '@count items were not processed.')
+      . ' ' . t('Press "Display" instead.');
   }
 }

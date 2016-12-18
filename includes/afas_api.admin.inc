@@ -9,22 +9,59 @@
  */
 function afas_api_settings_form($form, &$form_state) {
 
-  $form['help'] = array(
-    '#markup' => t('These configuration options are used by the standard AfasSoapConnection class.')
+  $form['logging'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Logging'),
+    '#description' => t('These logging settings are followed by code which uses the standard functions in afas_api.module.'),
+  );
+  // These are various combinations of the 'watchdog' + 'watchdog_extra' options
+  // for the logger class.
+  $form['logging']['afas_api_log_watchdog'] = array(
+    '#type' => 'select',
+    '#title' => t('Log AFAS errors to watchdog'),
+    '#options' => array(
+      0 => t('No'),
+      AFAS_LOG_ERRORS_WATCHDOG => t('Log errors'),
+      AFAS_LOG_ERRORS_WATCHDOG+AFAS_LOG_ERROR_DETAILS_WATCHDOG => t('Log all messages including all context info + backtrace'),
+    ),
+    '#default_value' => variable_get('afas_api_log_watchdog', 1),
+  );
+  $form['logging']['afas_api_log_screen'] = array(
+    '#type' => 'select',
+    '#title' => t('Show AFAS errors on screen'),
+    '#options' => array(
+      0 => t('No'),
+      AFAS_LOG_ERRORS_SCREEN => t('Log errors'),
+      AFAS_LOG_ERRORS_SCREEN+AFAS_LOG_ERROR_DETAILS_SCREEN => t('Log all messages including all context info + backtrace'),
+    ),
+    '#default_value' => variable_get('afas_api_log_screen', 0),
   );
 
-  $info = module_invoke_all('afas_api_client_info');
   $form['class'] = array(
     '#type' => 'fieldset',
     '#title' => t('Client class'),
     '#collapsible' => TRUE,
     '#collapsed' => TRUE,
   );
+  // Get class name from submitted AJAX form on reload, so the right form gets
+  // displayed.
+  if (!empty($form_state['values']['afas_api_client_class'])) {
+    $current_classname = $form_state['values']['afas_api_client_class'];
+  }
+  else {
+    $current_classname = variable_get('afas_api_client_class', 'DrupalSoapNtlmClient');
+  }
+  $info = module_invoke_all('afas_api_client_info');
   $form['class']['afas_api_client_class'] = array(
     '#type' => 'select',
     '#title' => t('The name of the AFAS soap client class to use'),
     '#options' => array_combine(array_keys($info), array_keys($info)),
-    '#default_value' => variable_get('afas_api_client_class', 'AfasSoapClient'),
+    '#default_value' => $current_classname,
+    '#ajax' => array(
+      'callback' => 'afas_api_admin_class_options_callback',
+      'wrapper' => 'class-specific',
+      'method' => 'replace',
+    ),
   );
   $form['class']['info'] = array(
     '#markup' => '<p>' . t('More information:') . '</p><p>',
@@ -37,60 +74,16 @@ function afas_api_settings_form($form, &$form_state) {
   }
   $form['class']['info']['#markup'] .= '</p>';
 
-  $form['afas_api_url'] = array(
-    '#type' => 'textfield',
-    '#title' => t('URL of Web Service'),
-    '#description' => t('Starting with http(s):// ; no trailing slash.'),
-    '#default_value' => variable_get('afas_api_url', 'https://profitweb.afasonline.nl/profitservices'),
+  $form['class_specific'] = array(
+    '#type' => 'fieldset',
+    '#prefix' => '<div id="class-specific">',
+    '#suffix' => '</div>',
+    '#title' => t('Client specific options'),
+    '#collapsible' => FALSE,
+    '#description' => t("Changing an option for one class may have an effect on other classes' configuration too."),
   );
-  $form['afas_api_use_wsdl'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Use WSDL'),
-    '#description' => t('Not using WSDL is faster / simpler; AFAS calls are simple/static enough not to need WSDL.'),
-    '#default_value' => variable_get('afas_api_use_wsdl', FALSE),
-  );
-  $form['afas_api_cache_wsdl'] = array(
-    '#type' => 'select',
-    '#title' => t('Cache WSDL file'),
-    '#description' => t('How long to keep the WSDL file cached locally / before downloading a fresh copy from the server. This setting has effect if \'Use WSDL\' is on.'),
-    '#options' => array(
-      0 => 'Do not cache',
-      300 => '5 minutes',
-      1800 => '30 minutes',
-      3600 => '1 hour',
-      14400 => '4 hours',
-      86400 => '1 day',
-      604800 => '1 week',
-      2502000 => '30 days',
-    ),
-    '#default_value' => variable_get('afas_api_cache_wsdl', 86400),
-  );
-  $form['afas_api_environment'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Environment ID'),
-    '#default_value' => variable_get('afas_api_environment', ''),
-    '#size' => 20,
-  );
-  $form['afas_api_domain'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Domain'),
-    '#default_value' => variable_get('afas_api_domain', 'AOL'),
-    '#size' => 20,
-  );
-  $form['afas_api_user'] = array(
-    '#type' => 'textfield',
-    '#title' => t('User ID'),
-    '#default_value' => variable_get('afas_api_user', ''),
-    '#size' => 20,
-  );
-  $form['afas_api_pw'] = array(
-    '#type' => 'password',
-    '#title' => t('Password'),
-    '#size' => 20,
-  );
-  $password = variable_get('afas_api_pw');
-  if ($password) {
-    $form['afas_api_pw']['#description'] = t('To change the password, enter the new password here.');
+  if (method_exists($current_classname, 'settingsForm')) {
+    $form['class_specific'] += $current_classname::settingsForm();
   }
 
   $form['#validate'][] = 'afas_api_settings_form_validate';
@@ -99,13 +92,24 @@ function afas_api_settings_form($form, &$form_state) {
 }
 
 /**
+ * AJAX form callback for the settings form.
+ */
+function afas_api_admin_class_options_callback($form, $form_state) {
+  return $form['class_specific'];
+}
+
+/**
  * Validate function for our global settings form.
  */
 function afas_api_settings_form_validate($form, &$form_state) {
-
-  if (empty($form_state['values']['afas_api_pw'])) {
-    // Do not let an empty password overwrite an already existing one.
-    unset($form_state['values']['afas_api_pw']);
+  if (!empty($form_state['values']['afas_api_client_class'])) {
+    $current_classname = $form_state['values']['afas_api_client_class'];
+  }
+  else {
+    $current_classname = variable_get('afas_api_client_class', 'DrupalSoapNtlmClient');
+  }
+  if (method_exists($current_classname, 'settingsFormValidate')) {
+    $current_classname::settingsFormValidate($form, $form_state);
   }
 }
 
@@ -150,10 +154,8 @@ function afas_api_schema_form($form, &$form_state) {
  * Form submit callback for schema retriever form.
  */
 function afas_api_schema_form_submit(&$form, &$form_state) {
-  // Retrieve / display XSD.
-  $connection = new AfasSoapConnection();
-  $connection->setErrorReporting(AFAS_LOG_ERROR_DETAILS_SCREEN);
-  $ret = $connection->getData($form_state['values']['function'], array(), 'data', array());
+  // Retrieve / display XSD;
+  $ret = afas_api_get_data($form_state['values']['function'], array(), 'data', array(), AFAS_LOG_ERROR_DETAILS_SCREEN);
   if ($ret) {
 
     /* We got an XML string returned, with the XSD encoded into one of the
