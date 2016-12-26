@@ -162,18 +162,16 @@ One example, to get only products that changed in the past week:<br/><em>array(<
    * - afas_include_empty_fields setting
    */
   protected function fetchItems(array &$context) {
+    $client_options = array();
+    if (!empty($this->settings['fetcher_timeout']) && is_numeric($this->settings['fetcher_timeout'])) {
+      // Option only works for AfasNusoapClient but that's fine.
+      $client_options['response_timeout'] = $this->settings['fetcher_timeout'];
+    }
+    $connection = new AfasSoapConnection('default', $client_options);
 
-    $connection = new AfasSoapConnection();
     $items = FALSE;
     $tries_left = !empty($this->settings['fetcher_tries']) ? $this->settings['fetcher_tries'] : 1;
     while ($items === FALSE && --$tries_left >= 0) {
-
-      if (!empty($this->settings['fetcher_timeout'])
-          && is_numeric($this->settings['fetcher_timeout'])) {
-        $connection->setOptions(
-          array('fetcher_timeout' => $this->settings['fetcher_timeout'])
-        );
-      }
       $items = $connection->getData($this->settings['afas_connector'],
         $this->inputFilter($context),
         !empty($context['afas_return_xml']) ?  'get_simplexml' : 'get',
