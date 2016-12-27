@@ -103,7 +103,7 @@ function afas_api_libraries_info() {
  * Implements hook_afas_api_client_info().
  */
 function afas_api_afas_api_client_info() {
-//  $classes['AfasAppSoapClient'] = t('Client using App connector and standard PHP5 SOAP extension.'); // @todo test wsdl?
+  $classes['DrupalSoapAppClient'] = t('Client using App connector and standard PHP5 SOAP extension.'); // @todo test wsdl?
   $classes['DrupalSoapNtlmClient'] = t('Client using NTLM authentication and standard PHP5 SOAP extension. Does not work with WSDL.');
   $classes['DrupalNusoapNtlmClient'] = t('Client using NTLM authentication and NuSOAP library. This can be used if the (preferred) PHP SOAP extension is not compiled/enabled on your server.')
                                 . '<br>' . t("nuSOAP v0.9.5 only works when using WSDL; if you want to turn off WSDL, you need sources from https://github.com/rmuit/NuSOAP, or the AfasNusoapClient class needs to be fixed.");
@@ -267,7 +267,7 @@ function afas_api_connection() {
   // the SimpleAFAS library. The SimpleAFAS class does not know where to get its
   // configuration from, which is why the Drupal specific class overrides the
   // constructor to fill values from the admin screen.
-  $current_classname = variable_get('afas_api_client_class', 'DrupalSoapNtlmClient');
+  $current_classname = variable_get('afas_api_client_class', 'DrupalSoapAppClient');
   $client = new $current_classname();
 
   module_load_include('php', 'afas_api', 'lib/src/Connection');

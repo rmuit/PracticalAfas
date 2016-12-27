@@ -168,7 +168,7 @@ class AfasImportJob extends DrunkinsEntityImportJob {
                 // Image data for this item is not cached yet; get it.
                 module_load_include('php', 'afas_api', 'lib/src/Connection');
                 $client_class = !empty($this->settings['afas_client_class']) ? $this->settings['afas_client_class']
-                  : variable_get('afas_api_client_class', 'DrupalSoapNtlmClient');
+                  : variable_get('afas_api_client_class', 'DrupalSoapAppClient');
                 $client_options = isset($this->settings['afas_client_options']) && is_array($this->settings['afas_client_options']) ? $this->settings['afas_client_options'] : array();
                 if (!empty($this->settings['fetcher_timeout']) && is_numeric($this->settings['fetcher_timeout'])) {
                   // Option only works for AfasNusoapClient but that's fine.

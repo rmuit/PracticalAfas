@@ -49,7 +49,7 @@ function afas_api_settings_form($form, &$form_state) {
     $current_classname = $form_state['values']['afas_api_client_class'];
   }
   else {
-    $current_classname = variable_get('afas_api_client_class', 'DrupalSoapNtlmClient');
+    $current_classname = variable_get('afas_api_client_class', 'DrupalSoapAppClient');
   }
   $info = module_invoke_all('afas_api_client_info');
   $form['class']['afas_api_client_class'] = array(
@@ -106,7 +106,7 @@ function afas_api_settings_form_validate($form, &$form_state) {
     $current_classname = $form_state['values']['afas_api_client_class'];
   }
   else {
-    $current_classname = variable_get('afas_api_client_class', 'DrupalSoapNtlmClient');
+    $current_classname = variable_get('afas_api_client_class', 'DrupalSoapAppClient');
   }
   if (method_exists($current_classname, 'settingsFormValidate')) {
     $current_classname::settingsFormValidate($form, $form_state);
@@ -138,13 +138,40 @@ function afas_api_schema_form($form, &$form_state) {
   $form['function'] = array(
     '#type' => 'textfield',
     '#title' => 'UpdateConnector name',
-    '#required' => TRUE,
+//    '#required' => TRUE,
     '#weight' => 9,
   );
   $form['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Get XSD'),
     '#weight' => 10,
+  );
+
+  $form['get_token'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Get new token'),
+    '#description' => t("Only works with newer 'app connector' clients."),
+    '#weight' => 11,
+  );
+  $form['get_token']['get_token_user_id'] = array(
+    '#type' => 'textfield',
+    '#title' => t('User ID'),
+  );
+  $form['get_token']['get_token_api_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('API key'),
+  );
+  $form['get_token']['get_token_environment_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Environment key'),
+  );
+  $form['get_token']['get_token_description'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Description'),
+  );
+  $form['get_token']['get_token_submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Get Token'),
   );
 
   return $form;
@@ -154,6 +181,19 @@ function afas_api_schema_form($form, &$form_state) {
  * Form submit callback for schema retriever form.
  */
 function afas_api_schema_form_submit(&$form, &$form_state) {
+  $ok = $ret = FALSE;
+
+  switch ($form_state['clicked_button']['#value']) {
+    case t('Get Token'):
+      $extra_args = array(
+        'apiKey' => $form_state['values']['get_token_api_key'],
+        'environmentKey' => $form_state['values']['get_token_environment_key'],
+        'description' => $form_state['values']['get_token_description'],
+      );
+      $ret = afas_api_get_data($form_state['values']['get_token_user_id'], array(), 'token', $extra_args, AFAS_LOG_ERROR_DETAILS_SCREEN);
+      break;
+
+    case t('Get XSD'):
   // Retrieve / display XSD;
   $ret = afas_api_get_data($form_state['values']['function'], array(), 'data', array(), AFAS_LOG_ERROR_DETAILS_SCREEN);
   if ($ret) {
@@ -185,24 +225,29 @@ function afas_api_schema_form_submit(&$form, &$form_state) {
      * Let's decode that. If we find the schema, we will only print that and
      * silently ignore the rest.
      */
-    $ok = FALSE;
-    $doc_element = new SimpleXMLElement($ret);
-    if (isset($doc_element->ConnectorData->Schema)) {
-      $ret = strval($doc_element->ConnectorData->Schema);
-      // This value was not already interpreted as XML. So to pretty print it,
-      // we need to make a document from it.
-      $doc_element = new DomDocument('1,0');
-      if ($doc_element->loadXML($ret)) {
-        $doc_element->formatOutput = TRUE;
-        $ret = $doc_element->saveXML();
-        $ok = TRUE;
+      $doc_element = new SimpleXMLElement($ret);
+      if (isset($doc_element->ConnectorData->Schema)) {
+        $ret = strval($doc_element->ConnectorData->Schema);
+        // This value was not already interpreted as XML. So to pretty print it,
+        // we need to make a document from it.
+        $doc_element = new DomDocument('1,0');
+        if ($doc_element->loadXML($ret)) {
+          $doc_element->formatOutput = TRUE;
+          $ret = $doc_element->saveXML();
+          $ok = TRUE;
+        }
       }
     }
+    break;
+  }
+
+  if ($ret) {
     $form['result'] = array(
       '#markup' => $ok ? '<pre>' . check_plain($ret) . '</pre>' : check_plain($ret),
       '#weight' => -99,
     );
     // Do not redirect; print the value directly into the form.
     $form_state['redirect'] = FALSE;
+
   }
 }

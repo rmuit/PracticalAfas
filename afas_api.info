@@ -7,4 +7,5 @@ files[] = drunkins/AfasGetConnector.inc
 files[] = drunkins/AfasGetConnectorDisplay.inc
 files[] = drunkins/AfasImportJob.inc
 files[] = includes/DrupalNusoapNtlmClient.inc
+files[] = includes/DrupalSoapAppClient.inc
 files[] = includes/DrupalSoapNtlmClient.inc

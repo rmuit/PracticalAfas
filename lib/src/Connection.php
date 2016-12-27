@@ -105,12 +105,13 @@ class Connection {
    *   'data':       $data_id is the function name for which to retrieve the XSD
    *                 schema. (This used to be called "DataConnector"; in 2014
    *                 that term has disappeared from the online documentation.)
+   *   'token':      $data_id is the user ID for whom the token is requested.
    * @param array $extra_arguments
    *   (optional) Other arguments to pass to the soap call, besides the ones
    *   hardcoded in parseGetDataArguments() for convenience. Specifying these is
-   *   usually unnecessary. To see what it can be used for, check the code in
-   *   parseGetDataArguments() and/or the WSDL/documentation of the AFAS
-   *   endpoint.
+   *   usually unnecessary, except for 'token'. To see what it can be used for,
+   *   check the code in parseGetDataArguments() and/or the WSDL/documentation
+   *   of the AFAS endpoint.
    *
    * @return string|array|SimpleXMLElement
    *   See $data_type.
@@ -196,44 +197,54 @@ class Connection {
       switch (strtolower($data_type)) {
         case 'get':
         case 'get_simplexml':
+          $connector_type = 'get';
+          $function = 'GetDataWithOptions';
           $extra_arguments['connectorId'] = $data_id;
           if (!empty($filters)) {
             $extra_arguments['filtersXml'] = static::parseFilters($filters);
           }
-          $connector_type = 'get';
-          $function = 'GetDataWithOptions';
+          // For 'options' argument, see below the switch statement.
           break;
 
         case 'report':
+          $function = 'Execute';
           $extra_arguments['reportID'] = $data_id;
           if (!empty($filters)) {
             $extra_arguments['filtersXml'] = static::parseFilters($filters);
           }
-          $connector_type = 'report';
-          $function = 'Execute';
           break;
 
         case 'attachment':
-          $extra_arguments['subjectID'] = $data_id;
           $connector_type = 'subject';
           $function = 'GetAttachment';
+          $extra_arguments['subjectID'] = $data_id;
           break;
 
         case 'data':
-          // Oct 2014: I finally saw the first example of a 'DataConnector' in the
-          // latest version of the online documentation, at
+          // Oct 2014: I finally saw the first example of a 'DataConnector' in
+          // the latest version of the online documentation, at
           // http://profitdownload.afas.nl/download/Connector-XML/DataConnector_SOAP.xml
           // (on: Connectors > Call a Connector > SOAP call > UpdateConnector,
           //  which is https://static-kb.afas.nl/datafiles/help/2_9_5/SE/EN/index.htm#App_Cnnctr_Call_SOAP_Update.htm)
           // Funny thing is: there is NO reference of "DataConnector" in the
           // documentation anymore!
           // dataID is apparently hardcoded (as far as we know there is no other
-          // function for the so-called 'DataConnector' that getting XML schema):
+          // function for the so-called 'DataConnector' than getting XML schema)
+          $function = 'Execute';
           $extra_arguments['dataID'] = 'GetXmlSchema';
           $extra_arguments['parametersXml'] = "<DataConnector><UpdateConnectorId>$data_id</UpdateConnectorId><EncodeBase64>false</EncodeBase64></DataConnector>";
-          $connector_type = 'data';
-          $function = 'Execute';
+          break;
+
+        case 'token':
+          $function = 'GenerateOTP';
+          // apiKey & environmentKey are required; description maybe.
+          // @todo should we throw an exception here if apiKey & environmentKey
+          //   are not present? Depends on the verbosity of the SOAP endpoint.
+          $extra_arguments['userId'] = $data_id;
       }
+    }
+    if (!$connector_type) {
+      $connector_type = $data_type;
     }
     if (!$function) {
       throw new \InvalidArgumentException('Unknown data_type value: ' . json_encode($data_type), 32);

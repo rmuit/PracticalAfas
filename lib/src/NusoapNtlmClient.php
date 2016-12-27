@@ -19,6 +19,10 @@ namespace SimpleAfas;
  * - NTLM authentication, as opposed to a more modern "app connector". (NTLM
  *   authentication is supposedly phased out by AFAS on 2017-01-01.)
  *
+ * $this->soapClient and $this->connectorType are not used. That is, we do not
+ * cache the actual soapclient across calls but reinitialize it with each call
+ * to callAfas(). Whoever feels inclined to change that: feel free.
+ *
  * Note v0.9.5 of the nuSOAP library cannot deal with AFAS servers without WSDL;
  * you need to call the constructor with $options =array('useWSDL' => TRUE) or
  * (since WSDL introduces overhead which is unnecessary with AFAS' simple call

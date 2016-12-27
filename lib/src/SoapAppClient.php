@@ -10,6 +10,7 @@
 
 namespace SimpleAfas;
 
+use \SoapClient;
 use \SoapParam;
 use \SoapVar;
 
@@ -18,10 +19,9 @@ use \SoapVar;
  *
  * This class contains one public method: callAfas(), and uses
  * - the SOAP library bundled with PHP5;
- * - NTLM authentication, as opposed to a more modern "app connector". (NTLM
- *   authentication is supposedly phased out by AFAS on 2017-01-01.)
+ * - An 'app connetor' for authentication.
  */
-class SoapNtlmClient {
+class SoapAppClient {
 
   /**
    * Configuration options.
@@ -55,14 +55,11 @@ class SoapNtlmClient {
    *   NtlmSoapClient class; some are used as standard arguments in each SOAP
    *   call, some are used for both. Keys used:
    *   Required:
-   *   - urlBase:     AFAS endpoint URL (without the variable last part).
-   *                  uses 'afas_api_url' config variable if not set.
-   *   - environmentId: AFAS environment name; uses 'afas_api_environment' config
+   *   - urlBase:     AFAS endpoint URL, without the connector specific part.
+   *   - appToken:    Token used for the App connector.
    *                  variable if not set.
-   *   - domain       AFAS (NTLM) domain name; uses 'afas_api_domain' config
-   *                  variable if not set.
-   *   - userId:      user id; uses 'afas_api_user' config variable if not set.
-   *   - password:    password; uses 'afas_api_pw' config variable if not set.
+@TODO work out if token is environment specific?
+   *
    *   Optional:
    *   - useWSDL:     TRUE/FALSE for using WSDL; uses 'afas_api_use_wsdl' config
    *                  variable if not set. MUST be FALSE/unspecified, so far.
@@ -75,7 +72,8 @@ class SoapNtlmClient {
    *   If something else went wrong / option values are unsupported.
    */
   public function __construct(array $options) {
-    foreach (array('urlBase', 'environmentId', 'domain', 'userId', 'password') as $required_key) {
+//@todo 'environmentId',
+    foreach (array('urlBase', 'appToken') as $required_key) {
       if (empty($options[$required_key])) {
         $classname = get_class($this);
         throw new \InvalidArgumentException("Required configuration parameter for $classname missing: $required_key.", 1);
@@ -98,7 +96,14 @@ class SoapNtlmClient {
    *   If we failed to construct a SoapClient class.
    */
   protected function getSoapClient($type) {
-    $endpoint = trim($this->options['urlBase'], '/') . '/' . strtolower($type) . 'connector.asmx';
+    // If we support the token connector, this needs to change.
+    if ($type === 'token') {
+      $connector_path = strtolower($type). 'connector';
+    }
+    else {
+      $connector_path = 'appconnector' . strtolower($type);
+    }
+    $endpoint = trim($this->options['urlBase'], '/') . "/$connector_path.asmx";
 
     if (!empty($this->soapClient)) {
       // We can reuse the SOAP client object if we have the same connector type
@@ -118,13 +123,16 @@ class SoapNtlmClient {
 
     // Get options from this class; add defaults for the SOAP client.
     $options = $this->options + array(
-      'login' => $this->options['domain'] . '\\' . $this->options['userId'],
+//      'login' => $this->options['domain'] . '\\' . $this->options['userId'],
+//@TODO yes or no?
+//      'login' => 'AOL\\53478.YGR',
       'encoding' => 'utf-8',
       // We did this in Drupal's afas_api v2.x, but are throwing exceptions now
       // because that's much cleaner. The caller will need to interpret them.
       //'exceptions' => FALSE,
     );
 
+// @TODO change this? And reinstate caching?
     $wsdl_endpoint = NULL;
     if (empty($options['useWSDL'])) {
       $options += array(
@@ -135,11 +143,14 @@ class SoapNtlmClient {
       );
     }
     else {
-      $wsdl_endpoint = 'public://afas_api_wsdl/' . strtolower($type) . 'connector.wsdl';
-      if (!file_exists($wsdl_endpoint)) {
-        $wsdl_endpoint = drupal_realpath($wsdl_endpoint);
-        throw new \Exception("$wsdl_endpoint not present. You must download the WSDL definition from $endpoint?WSDL to that location manually (or turn off WSDL, or change the NtlmSoapClient class), because NtlmSoapClient unfortunately cannot deal with the needed authentication at the WSDL stage (yet).", 8);
-      }
+      // TRYING:
+      $wsdl_endpoint = $endpoint . '?WSDL';
+
+//      $wsdl_endpoint = "public://afas_api_app_wsdl/$connector_path.wsdl";
+//      if (!file_exists($wsdl_endpoint)) {
+//        $wsdl_endpoint = drupal_realpath($wsdl_endpoint);
+//        throw new \Exception("$wsdl_endpoint not present. You must download the WSDL definition from $endpoint?WSDL to that location manually (or turn off WSDL, or extend the NTLMSoapClient class), because NTLMSoapClient unfortunately cannot deal with the needed authentication at the WSDL stage (yet).", 8);
+//      }
       // If we ever start supporting WSDL, it will be through a locally cached
       // file, because NtlmSoapClient just cannot reach the WSDL file directly,
       // before it(s parent SoapClient) needs it. So setting caching option with
@@ -151,10 +162,12 @@ class SoapNtlmClient {
       //      then implement caching timeout here; remove the file ourselves.
     }
 
-    // Since $options contains both SOAPClient / NtlmSoapClient options and
-    // call/argument options used by this class, filter only known
-    // (Ntlm)SoapClient options.
-    $this->soapClient = new NtlmSoapClient($wsdl_endpoint,
+    // Since $options contains both SOAPClient options and call/argument options
+    // used by this class, filter only known SoapClient options.
+    // @todo There are probably still curl specific options between the below
+    //       which are unnecessary. Filter out at some point?
+    $this->soapClient = new TestSoapClient($wsdl_endpoint,
+//    $this->soapClient = new SoapClient($wsdl_endpoint,
       array_intersect_key($options, array_flip(array(
         'location',
         'uri',
@@ -199,11 +212,15 @@ class SoapNtlmClient {
    *   SOAP function name to call.
    */
   protected function normalizeArguments(&$arguments, $function) {
-    $arguments = array_merge(array(
-      'environmentId' => $this->options['environmentId'],
-      'userId' => $this->options['userId'],
-      'password' => $this->options['password'],
-    ), $arguments);
+    // To get a token, we don't need a token.
+    if ($this->connectorType !== 'token') {
+      $arguments['token'] = '<token><version>1</version><data>' . $this->options['appToken'] . '</data></token>';
+    }
+    //      //@TODO DELETE
+    //      'environmentId' => 'O53478AA',
+    //      'userId' => $this->options['userId'],
+    //      'password' => $this->options['password'],
+  //      ), $arguments);
   }
 
   /**
@@ -234,7 +251,8 @@ class SoapNtlmClient {
     // Even though this may not be necessary, we want to restrict the connector
     // types to those we know. When adding a new one, we want to carefully check
     // whether we're not missing any arguments that we should be preprocessing.
-    if (!in_array($connector_type, array('get', 'update', 'report', 'subject', 'data'))) {
+    // @todo support token? versioninfo?
+    if (!in_array($connector_type, array('get', 'update', 'report', 'subject', 'data', 'token'))) {
       throw new \InvalidArgumentException("Invalid connector type $connector_type", 18);
     }
     // This might ideally be checked inside the constructor already but we do it
@@ -277,6 +295,60 @@ class SoapNtlmClient {
     else {
       throw new \UnexpectedValueException('Unknown response format: ' . json_encode($response), 17);
     }
+  }
+
+}
+class TestSoapClient extends \SoapClient {
+
+  private $options;
+
+  /**
+   * @inheritdoc
+   */
+  public function __construct($wsdl, $options = array()) {
+    $this->options = $options;
+    parent::__construct($wsdl, $options);
+  }
+
+  protected function callCurl($data, $url, $action) {
+    $handle = curl_init();
+    curl_setopt($handle, CURLOPT_HEADER, FALSE);
+    curl_setopt($handle, CURLOPT_URL, $url);
+    curl_setopt($handle, CURLOPT_HTTPHEADER, array(
+      'User-Agent: PHP SOAP-NTLM Client',
+      // This is always utf-8, does not follow $this->options['encoding']:
+      'Content-Type: text/xml; charset=utf-8',
+      "SOAPAction: $action",
+      'Content-Length:' . strlen($data),
+    ) );
+    curl_setopt($handle, CURLOPT_RETURNTRANSFER, TRUE);
+    curl_setopt($handle, CURLOPT_POSTFIELDS, $data);
+    if (!empty($this->options['proxy_login'])) {
+      curl_setopt($handle, CURLOPT_PROXYUSERPWD, $this->options['proxy_login'] . ':' . $this->options['proxy_password']);
+      $host = (empty($this->options['proxy_host']) ? 'localhost' : $this->options['proxy_host']);
+      $port = (empty($this->options['proxy_port']) ? 8080 : $this->options['proxy_port']);
+      curl_setopt($handle, CURLOPT_PROXY, "$host:$port");
+//      curl_setopt($handle, CURLOPT_PROXYAUTH, CURLAUTH_NTLM);
+    }
+//    elseif (!empty($this->options['login'])) {
+//      curl_setopt($handle, CURLOPT_USERPWD, $this->options['login'] . ':' . $this->options['password']);
+//      curl_setopt($handle, CURLOPT_HTTPAUTH, CURLAUTH_NTLM);
+//    }
+
+    $response = curl_exec($handle);
+    if (empty($response)) {
+      throw new \RuntimeException('CURL error: '. curl_error($handle), curl_errno($handle));
+    }
+    curl_close($handle);
+    return $response;
+  }
+
+  /**
+   * @inheritdoc
+   */
+  public function __doRequest($request, $location, $action, $version, $one_way = 0) {
+//    return $this->callCurl($request, $location, $action);
+    return parent::__doRequest($request, $location, $action, $version, $one_way);
   }
 
 }
