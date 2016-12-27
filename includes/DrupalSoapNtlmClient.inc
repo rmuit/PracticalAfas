@@ -14,7 +14,7 @@ class DrupalSoapNtlmClient extends SoapNtlmClient {
   /**
    * {@inheritdoc}
    */
-  public function __construct(array $options) {
+  public function __construct(array $options = array()) {
     // If options are not provided (which in practice will be always), fill them
     // from our global Drupal configuration variables.
     foreach (array(

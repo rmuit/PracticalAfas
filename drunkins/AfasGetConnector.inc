@@ -180,7 +180,8 @@ One example, to get only products that changed in the past week:<br/><em>array(<
       // Option only works for AfasNusoapClient but that's fine.
       $client_options['response_timeout'] = $this->settings['fetcher_timeout'];
     }
-    $connection = new Connection($client_class, $client_options);
+    $client = new $client_class($client_options);
+    $connection = new Connection($client);
 
     // @todo while the retry-on-timeout was very necessary in 2012, we shouldn't
     // be doing retry-loops like this inside an HTTP request. We have

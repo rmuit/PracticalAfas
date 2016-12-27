@@ -27,15 +27,30 @@ class Connection {
   /**
    * Constructor function.
    *
-   * @param string $client_class_name
-   *   The name of the class to use which contains soap-client specific
-   *   functionality in a call() method.
-   * @param array $options
-   *   Configuration options for the client, and standard arguments to each SOAP
-   *   call it will perform.
+   * @param object $client
+   *   A SimpleAfas client object.
    */
-  public function __construct($client_class_name, array $options = array()) {
-    $this->client = new $client_class_name($options);
+  public function __construct($client) {
+    $this->setClient($client);
+  }
+
+  /**
+   * Returns the AFAS client object.
+   *
+   * @return object
+   */
+  public function getClient() {
+    return $this->client;
+  }
+
+  /**
+   * Sets the client used for the connection.
+   *
+   * @param object $client
+   *   An AFAS client object.
+   */
+  public function setClient($client) {
+    $this->client = $client;
   }
 
   /**

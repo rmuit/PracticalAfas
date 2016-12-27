@@ -261,14 +261,15 @@ function afas_api_send_data($connector_name, $xml, $error_reporting = NULL) {
  *   A connection object.
  */
 function afas_api_connection() {
-  module_load_include('php', 'afas_api', 'lib/src/Connection');
-
   // $current_classname is a Drupal specific class which extends a class from
   // the SimpleAFAS library. The SimpleAFAS class does not know where to get its
   // configuration from, which is why the Drupal specific class overrides the
   // constructor to fill values from the admin screen.
   $current_classname = variable_get('afas_api_client_class', 'DrupalSoapNtlmClient');
-  return new Connection($current_classname);
+  $client = new $current_classname();
+
+  module_load_include('php', 'afas_api', 'lib/src/Connection');
+  return new Connection($client);
 }
 
 /**

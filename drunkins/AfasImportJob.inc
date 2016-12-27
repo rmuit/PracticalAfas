@@ -174,7 +174,8 @@ class AfasImportJob extends DrunkinsEntityImportJob {
                   // Option only works for AfasNusoapClient but that's fine.
                   $client_options['response_timeout'] = $this->settings['fetcher_timeout'];
                 }
-                $connection = new Connection($client_class, $client_options);
+                $client = new $client_class($client_options);
+                $connection = new Connection($client);
 
                 if (!$items = $connection->getData($process['data_connector'],
                   array('Itemcode' => $this->src_item[$this->context['import_src_pkey']]),

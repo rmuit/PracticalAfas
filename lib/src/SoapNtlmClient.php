@@ -54,6 +54,7 @@ class SoapNtlmClient {
    *   Configuration options. Some of them are used for configuring the actual
    *   NtlmSoapClient class; some are used as standard arguments in each SOAP
    *   call, some are used for both. Keys used:
+   *   Required:
    *   - urlBase:     AFAS endpoint URL (without the variable last part).
    *                  uses 'afas_api_url' config variable if not set.
    *   - environmentId: AFAS environment name; uses 'afas_api_environment' config
@@ -62,8 +63,9 @@ class SoapNtlmClient {
    *                  variable if not set.
    *   - userId:      user id; uses 'afas_api_user' config variable if not set.
    *   - password:    password; uses 'afas_api_pw' config variable if not set.
+   *   Optional:
    *   - useWSDL:     TRUE/FALSE for using WSDL; uses 'afas_api_use_wsdl' config
-   *                  variable if not set. MUST be FALSE, so far.
+   *                  variable if not set. MUST be FALSE/unspecified, so far.
    *   Other options (which are usually not camelCased but under_scored) are
    *   client specific; for all valid ones, see initClient().
    *
