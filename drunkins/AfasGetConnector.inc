@@ -86,14 +86,14 @@ class AfasGetConnector extends DrunkinsFetcher {
     $form = parent::settingsForm();
 
     // @todo think about whether this option should be general. And document it.
-    $last_sync = variable_get('drunkins_fetcher_ts_' . $this->settings['job_id'], 0);
-    $form['selection']['fetcher_timestamp_ignore'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Ignore "changed since"'),
-      '#default_value' => empty($last_sync), '#weight' => 2,
-    );
     $from_date_enabled = isset($form['selection']['fetcher_timestamp_from_date']);
     if ($from_date_enabled) {
+      $last_sync = variable_get('drunkins_fetcher_ts_' . $this->settings['job_id'], 0);
+      $form['selection']['fetcher_timestamp_ignore'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Ignore "changed since"'),
+        '#default_value' => empty($last_sync), '#weight' => 2,
+      );
       // 'enabled' state may or may not be set by the parent already. We are
       // just adding another 'and' condition to restrict enabled-ness.
       $form['selection']['fetcher_timestamp_from_date']['#states']['enabled'][':input[name="fetcher_timestamp_ignore"]'] =  array('checked' => FALSE);

@@ -118,8 +118,10 @@ function afas_api_queue_info() {
   $queues['afas_getconnector_display'] = array(
     'title'      => t('Fetch/display/export data from GetConnector (no processing).'),
     'drunkins' => array(
-      'class'         => 'AfasGetConnectorDisplay',
-      'fetcher_class' => 'AfasGetConnector',
+      'runner_settings' => array(
+        'class'         => 'AfasGetConnectorDisplay',
+        'fetcher_class' => 'AfasGetConnector',
+      ),
     ),
   );
 

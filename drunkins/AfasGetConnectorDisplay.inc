@@ -28,7 +28,7 @@ class AfasGetConnectorDisplay extends DrunkinsJob {
 
     parent::__construct($settings);
 
-    $this->opt_list = TRUE;
+    $this->settings['opt_list'] = TRUE;
   }
 
   /**
@@ -38,6 +38,9 @@ class AfasGetConnectorDisplay extends DrunkinsJob {
 
     $form = parent::settingsForm();
 
+    $form['warning'] = array(
+      '#markup' => '<h2><strong>' . t("Don't use the 'Start Batch' button; it does nothing. Use 'Display'.") . '</strong></h2>'
+    );
     $form['source'] = array(
       '#type'   => 'fieldset',
       '#title'  => t('Data source'),
