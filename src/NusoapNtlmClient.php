@@ -185,15 +185,6 @@ class NusoapNtlmClient {
     if (!in_array($connector_type, array('get', 'update', 'report', 'subject', 'data'))) {
       throw new \InvalidArgumentException("Invalid connector type $connector_type", 40);
     }
-    // This might ideally be checked inside the constructor already but we do it
-    // here for easier subclassing. It doesn't matter much in practice anyway.
-    $library = libraries_load('nusoap');
-    if (empty($library['installed'])) {
-      throw new \Exception('The required NuSOAP library is not installed.', 21);
-    }
-    if (empty($library['loaded'])) {
-      throw new \RuntimeException('The required NuSOAP library could not be loaded.', 22);
-    }
 
     $client = $this->getSoapClient($connector_type);
 
