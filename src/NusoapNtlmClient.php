@@ -1,6 +1,6 @@
 <?php
 /**
- * This file is part of the SimpleAfas package.
+ * This file is part of the PracticalAfas package.
  *
  * (c) Roderik Muit <rm@wyz.biz>
  *
@@ -8,7 +8,7 @@
  * that was distributed with this source code.
  */
 
-namespace SimpleAfas;
+namespace PracticalAfas;
 
 /**
  * Wrapper around client specific details of making a remote AFAS call.

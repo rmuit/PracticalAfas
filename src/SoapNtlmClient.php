@@ -1,6 +1,6 @@
 <?php
 /**
- * This file is part of the SimpleAfas package.
+ * This file is part of the PracticalAfas package.
  *
  * (c) Roderik Muit <rm@wyz.biz>
  *
@@ -8,7 +8,7 @@
  * that was distributed with this source code.
  */
 
-namespace SimpleAfas;
+namespace PracticalAfas;
 
 use \SoapParam;
 use \SoapVar;
@@ -72,7 +72,7 @@ class SoapNtlmClient extends SoapAppClient {
     $options += array(
       'encoding' => 'utf-8',
       'login' => $options['domain'] . '\\' . $options['userId'],
-      'soapClientClass' => '\SimpleAfas\NtlmSoapClient',
+      'soapClientClass' => '\PracticalAfas\NtlmSoapClient',
     );
 
     $this->options = $options;

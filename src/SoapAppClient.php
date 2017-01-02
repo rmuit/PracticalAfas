@@ -1,6 +1,6 @@
 <?php
 /**
- * This file is part of the SimpleAfas package.
+ * This file is part of the PracticalAfas package.
  *
  * (c) Roderik Muit <rm@wyz.biz>
  *
@@ -8,7 +8,7 @@
  * that was distributed with this source code.
  */
 
-namespace SimpleAfas;
+namespace PracticalAfas;
 
 use \SoapParam;
 use \SoapVar;
@@ -32,7 +32,7 @@ class SoapAppClient {
   /**
    * The SOAP client.
    *
-   * @var \SimpleAfas\NtlmSoapClient
+   * @var \PracticalAfas\NtlmSoapClient
    */
   protected $soapClient;
 

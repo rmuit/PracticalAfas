@@ -1,6 +1,6 @@
 <?php
 
-namespace SimpleAfas;
+namespace PracticalAfas;
 
 /**
  * A subclass of SoapClient with support for NTLM authentication, using curl.

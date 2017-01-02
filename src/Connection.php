@@ -1,6 +1,6 @@
 <?php
 /**
- * This file is part of the SimpleAfas package.
+ * This file is part of the PracticalAfas package.
  *
  * (c) Roderik Muit <rm@wyz.biz>
  *
@@ -8,7 +8,7 @@
  * that was distributed with this source code.
  */
 
-namespace SimpleAfas;
+namespace PracticalAfas;
 
 use \SimpleXMLElement;
 
@@ -75,7 +75,7 @@ class Connection {
   const GET_METADATA_YES = 1;
 
   /**
-   * The SimpleAfas client we use to execute actual AFAS calls.
+   * The PracticalAfas client we use to execute actual AFAS calls.
    *
    * @var object
    */
@@ -85,7 +85,7 @@ class Connection {
    * Constructor function.
    *
    * @param object $client
-   *   A SimpleAfas client object.
+   *   A PracticalAfas client object.
    */
   public function __construct($client) {
     $this->setClient($client);
