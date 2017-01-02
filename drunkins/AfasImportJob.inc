@@ -146,9 +146,8 @@ class AfasImportJob extends DrunkinsEntityImportJob {
             // 'data_src' represents a field in either this, or a separate,
             //  data set. Fetch data with separate connector if not done yet.
             if (empty($process['data_connector'])) {
-              // File data should come from this same get connector.
-              // If it's not here, that's an error (since the filename _is_
-              // defined.)
+              // File data should come from this same GetConnector. If it's not
+              // here, that's an error (since the filename _is_ defined.)
               if (!isset($this->src_item[$process['data_src']])) {
                 $this->log("Image data field %datafield not found (for item %item), and no 'data_connector' property defined in mapping for %dst destination field. (source field: %src)",
                   array(
@@ -162,7 +161,7 @@ class AfasImportJob extends DrunkinsEntityImportJob {
               $data = $this->src_item[$process['data_src']];
             }
             else {
-              // File data should come from different get connector.
+              // File data should come from different GetConnector.
 
               if (!isset($this->imgcache[$process['data_connector']])) {
                 // Image data for this item is not cached yet; get it.

@@ -17,6 +17,63 @@ use \SimpleXMLElement;
  */
 class Connection {
 
+  // Constants for data type, named after connector names.
+  const DATA_TYPE_GET = 'get';
+  const DATA_TYPE_REPORT = 'report';
+  const DATA_TYPE_SUBJECT = 'subject';
+  const DATA_TYPE_DATA = 'data';
+  const DATA_TYPE_TOKEN = 'token';
+  const DATA_TYPE_VERSION_INFO = 'versioninfo';
+  // 'alias' constants that are more descriptive than the connector names.
+  const DATA_TYPE_ATTACHMENT = 'subject';
+  const DATA_TYPE_SCHEMA = 'data';
+
+  // Constants for filter operators.
+  const OP_EQUAL = 1;
+  const OP_LARGER_OR_EQUAL = 2;
+  const OP_SMALLER_OR_EQUAL = 3;
+  const OP_LARGER_THAN = 4;
+  const OP_SMALLER_THAN = 5;
+  const OP_LIKE = 6;
+  const OP_NOT_EQUAL = 7;
+  const OP_EMPTY = 8;
+  const OP_NOT_EMPTY = 9;
+  const OP_STARTS_WITH = 19;
+  const OP_NOT_LIKE = 11;
+  const OP_NOT_STARTS_WITH = 12;
+  const OP_ENDS_WITH = 13;
+  const OP_NOT_ENDS_WITH = 4;
+  // 'alias' constants because "like" is a bit ambiguous.
+  const OP_CONTAINS = 6;
+  const OP_NOT_CONTAINS = 11;
+
+  // Constants representing the 'Outputmode' option for GetConnectors. There are
+  // numeric values which are supported as-is by the AFAS endpoint, and other
+  // values which represent us needing to process the returned (XML) value to
+  // some other format. Default is ARRAY.
+  const GET_OUTPUTMODE_ARRAY = 'Array';
+  const GET_OUTPUTMODE_SIMPLEXML = 'SimpleXMLElement';
+  const GET_OUTPUTMODE_XML = 1;
+  // TEXT is defined here, but not supported by this class!
+  const GET_OUTPUTMODE_TEXT = 2;
+
+  // Constants representing the (XML) 'Outputoptions' option for GetConnectors.
+  // EXCLUDE means that empty column values will not be present in the row
+  // representation. (This goes for all 'XML' output modes i.e. also for ARRAY.)
+  const GET_OUTPUTOPTIONS_XML_EXCLUDE_EMPTY = 2;
+  const GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY = 3;
+  // For text mode, this is what the documentation says and what we have not
+  // implemented:
+  // "1 = Puntkomma (datums en getallen in formaat van regionale instellingen)
+  //  2 = Tab       (datums en getallen in formaat van regionale instellingen)
+  //  3 = Puntkomma (datums en getallen in vast formaat)
+  //  4 = Tab       (datums en getallen in vast formaat)
+  //  Vast formaat betekent: dd-mm-yy voor datums en punt als decimaal scheidingteken voor getallen."
+
+  // Constants representing the 'Metadata' option for GetConnectors.
+  const GET_METADATA_NO = 0;
+  const GET_METADATA_YES = 1;
+
   /**
    * The SimpleAfas client we use to execute actual AFAS calls.
    *
@@ -87,34 +144,32 @@ class Connection {
   }
 
   /**
-   * Retrieves data from AFAS through a GET connector.
+   * Retrieves data from AFAS.
    *
    * @param string|int $data_id
-   *   Identifier for the data. (Usually the name of the AFAS 'get connector',
-   *   but this can differ with $data_type.)
+   *   Identifier for the data, dependent on $data_type:
+   *   DATA_TYPE_GET (default)      : the name of a GetConnector.
+   *   DATA_TYPE_REPORT             : report ID for a ReportConnector.
+   *   DATA_TYPE_SUBJECT/ATTACHMENT : 'subject ID' (int) for a SubjectConnector.
+   *   DATA_TYPE_DATA/SCHEMA        : the function name for which to retrieve
+   *                                  the XSD schema.
+   *   DATA_TYPE_TOKEN              : the user ID to request the token for.
+   *   DATA_TYPE_VERSION_INFO       : this argument is ignored.
    * @param array $filters
    *   (optional) Filters to apply before returning data
    * @param string $data_type
-   *   (optional) Type of data to retrieve and, for get connectors, the format
-   *   in which to return it.
-   *   'get':        $data_id is a get connector; return data as array.
-   *   'get_simplexml: $data_id is a get connector; return data as
-   *                   SimpleXMLElement. This is slightly faster than 'get'
-   *   'report':     $data_id is the report ID for a report connector.
-   *   'attachment': $data_id is the 'subject ID' (int) for a subject connector.
-   *   'data':       $data_id is the function name for which to retrieve the XSD
-   *                 schema. (This used to be called "DataConnector"; in 2014
-   *                 that term has disappeared from the online documentation.)
-   *   'token':      $data_id is the user ID for whom the token is requested.
+   *   (optional) Type of data to retrieve. See the DATA_TYPE_ constants.
    * @param array $extra_arguments
    *   (optional) Other arguments to pass to the soap call, besides the ones
-   *   hardcoded in parseGetDataArguments() for convenience. Specifying these is
-   *   usually unnecessary, except for 'token'. To see what it can be used for,
-   *   check the code in parseGetDataArguments() and/or the WSDL/documentation
-   *   of the AFAS endpoint.
+   *   in $data_id / hardcoded in parseGetDataArguments() for convenience.
+   *   Specifying these is usually unnecessary, except for DATA_TYPE_TOKEN. To
+   *   see what it can be used for, check the code in parseGetDataArguments()
+   *   and this function, and/or the WSDL/documentation of the AFAS endpoint.
    *
-   * @return string|array|SimpleXMLElement
-   *   See $data_type.
+   * @return mixed
+   *   Output; format is dependent on data type and extra arguments. The default
+   *   output format is a two-dimensional array of rows/columns of data from the
+   *   GetConnector; for other connectors it's a string.
    *
    * @throws \InvalidArgumentException
    *   If input arguments have an illegal value / unrecognized structure.
@@ -126,12 +181,17 @@ class Connection {
    *
    * @see parseGetDataArguments()
    */
-  public function getData($data_id, array $filters = array(), $data_type = 'get', array $extra_arguments = array()) {
-    list($function, $arguments, $connector_type) = static::parseGetDataArguments($data_id, $filters, $data_type, $extra_arguments);
+  public function getData($data_id, array $filters = array(), $data_type = self::DATA_TYPE_GET, array $extra_arguments = array()) {
+    // Just in case the user specified something other than a constant:
+    if (!is_string($data_type)) {
+      throw new \InvalidArgumentException('Unknown data_type value: ' . json_encode($data_type), 32);
+    }
+    $data_type = strtolower($data_type);
+
+    list($connector_type, $function, $arguments) = static::parseGetDataArguments($data_id, $filters, $data_type, $extra_arguments);
 
     // Check the arguments which influence the output format.
-    if ($function === 'GetDataWithOptions' && isset($extra_arguments['options']['Outputmode'])
-        && $extra_arguments['options']['Outputmode'] == 2) {
+    if ($function === 'GetDataWithOptions' && isset($extra_arguments['options']['Outputmode']) && $extra_arguments['options']['Outputmode'] == self::GET_OUTPUTMODE_TEXT) {
       // We don't support text output. There seems to be no reason for it, but
       // if you see one, feel free to create/test/send in a patch. (Possibly
       // implementing $data_type = 'get_text' in parseGetDataArguments()?)
@@ -145,38 +205,37 @@ class Connection {
       throw new \UnexpectedValueException('Received empty response from AFAS call.', 31);
     }
 
-    // What to return?
-    switch (strtolower($data_type)) {
-      case 'get':
+    // Data needs to be processed if we provided any of our custom output modes
+    // for a GetConnector. The default for Get is to return an array.
+    if ($data_type === self::DATA_TYPE_GET && (!isset($extra_arguments['options']['Outputmode']) || !is_numeric($extra_arguments['options']['Outputmode']))) {
+      $doc_element = new SimpleXMLElement($data);
+      if ($extra_arguments['options']['Outputmode'] === self::GET_OUTPUTMODE_SIMPLEXML) {
+        $data = $doc_element;
+      }
+      else {
         // Walk through the SimpleXMLElement to create array of arrays (items)
         // of string values (fields). We assume each first-level XML element
         // is a row containing fields without any further nested tags.
-        $doc_element = new SimpleXMLElement($data);
-        $items = array();
+        $data = array();
 
-        if (isset($extra_arguments['options']['Outputoptions'])
-            && $extra_arguments['options']['Outputoptions'] == 3) {
+        if (isset($extra_arguments['options']['Outputoptions']) && $extra_arguments['options']['Outputoptions'] == self::GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY) {
           // The XML may contain empty tags. These are empty SimpleXMLElements
           // but we want to convert them to empty strings.
           foreach ($doc_element as $row_element) {
-            $items[] = array_map('strval', (array) $row_element);
+            $data[] = array_map('strval', (array) $row_element);
           }
         }
         else {
           // All fields inside an 'item' are strings; we just need to convert
           // the item (SimpleXMLElement) itself.
           foreach ($doc_element as $row_element) {
-            $items[] = (array) $row_element;
+            $data[] = (array) $row_element;
           }
         }
-        return $items;
-
-      case 'get_simplexml':
-        return new SimpleXMLElement($data);
-
-      default:
-        return $data;
+      }
     }
+
+    return $data;
   }
 
   /**
@@ -192,59 +251,65 @@ class Connection {
    * @see getData().
    */
   protected static function parseGetDataArguments($data_id, array $filters = array(), $data_type = 'get', array $extra_arguments = array()) {
-    $function = $connector_type = '';
-    if (is_string($data_type)) {
-      switch (strtolower($data_type)) {
-        case 'get':
-        case 'get_simplexml':
-          $connector_type = 'get';
-          $function = 'GetDataWithOptions';
-          $extra_arguments['connectorId'] = $data_id;
-          if (!empty($filters)) {
-            $extra_arguments['filtersXml'] = static::parseFilters($filters);
-          }
-          // For 'options' argument, see below the switch statement.
-          break;
+    $function = '';
+    switch ($data_type) {
+      case self::DATA_TYPE_GET:
+        // We don't support the 'GetData' function. It seems to not have any
+        // advantages.
+        $function = 'GetDataWithOptions';
+        $extra_arguments['connectorId'] = $data_id;
+        if (!empty($filters)) {
+          $extra_arguments['filtersXml'] = static::parseFilters($filters);
+        }
+        // For more on the 'options' argument, see below the switch statement.
+        break;
 
-        case 'report':
-          $function = 'Execute';
-          $extra_arguments['reportID'] = $data_id;
-          if (!empty($filters)) {
-            $extra_arguments['filtersXml'] = static::parseFilters($filters);
-          }
-          break;
+      case self::DATA_TYPE_REPORT:
+        $function = 'Execute';
+        $extra_arguments['reportID'] = $data_id;
+        if (!empty($filters)) {
+          $extra_arguments['filtersXml'] = static::parseFilters($filters);
+        }
+        break;
 
-        case 'attachment':
-          $connector_type = 'subject';
-          $function = 'GetAttachment';
-          $extra_arguments['subjectID'] = $data_id;
-          break;
+      case self::DATA_TYPE_SUBJECT:
+        $function = 'GetAttachment';
+        $extra_arguments['subjectID'] = $data_id;
+        break;
 
-        case 'data':
-          // Oct 2014: I finally saw the first example of a 'DataConnector' in
-          // the latest version of the online documentation, at
-          // http://profitdownload.afas.nl/download/Connector-XML/DataConnector_SOAP.xml
-          // (on: Connectors > Call a Connector > SOAP call > UpdateConnector,
-          //  which is https://static-kb.afas.nl/datafiles/help/2_9_5/SE/EN/index.htm#App_Cnnctr_Call_SOAP_Update.htm)
-          // Funny thing is: there is NO reference of "DataConnector" in the
-          // documentation anymore!
-          // dataID is apparently hardcoded (as far as we know there is no other
-          // function for the so-called 'DataConnector' than getting XML schema)
-          $function = 'Execute';
-          $extra_arguments['dataID'] = 'GetXmlSchema';
-          $extra_arguments['parametersXml'] = "<DataConnector><UpdateConnectorId>$data_id</UpdateConnectorId><EncodeBase64>false</EncodeBase64></DataConnector>";
-          break;
+      case self::DATA_TYPE_DATA:
+        // Oct 2014: I finally saw the first example of a 'DataConnector' in
+        // the latest version of the online documentation, at
+        // http://profitdownload.afas.nl/download/Connector-XML/DataConnector_SOAP.xml
+        // (on: Connectors > Call a Connector > SOAP call > UpdateConnector,
+        //  which is https://static-kb.afas.nl/datafiles/help/2_9_5/SE/EN/index.htm#App_Cnnctr_Call_SOAP_Update.htm)
+        // Funny thing is: there is NO reference of "DataConnector" in the
+        // documentation anymore!
+        // dataID is apparently hardcoded (as far as we know there is no other
+        // function for the so-called 'DataConnector' than getting XML schema)
+        $function = 'Execute';
+        $extra_arguments['dataID'] = 'GetXmlSchema';
+        $extra_arguments['parametersXml'] = "<DataConnector><UpdateConnectorId>$data_id</UpdateConnectorId><EncodeBase64>false</EncodeBase64></DataConnector>";
+        break;
 
-        case 'token':
-          $function = 'GenerateOTP';
-          // apiKey & environmentKey are required; description maybe.
-          // @todo should we throw an exception here if apiKey & environmentKey
-          //   are not present? Depends on the verbosity of the SOAP endpoint.
-          $extra_arguments['userId'] = $data_id;
-      }
-    }
-    if (!$connector_type) {
-      $connector_type = $data_type;
+      case 'token':
+        $function = 'GenerateOTP';
+        // apiKey & environmentKey are required. AFAS is not famous for its
+        // understandable error messages (e.g. if one of them is missing then
+        // we get the notorious "Er is een onverwachte fout opgetreden") so
+        // we'll take over that task and throw exceptions.
+        if (empty($extra_arguments['apiKey']) || empty($extra_arguments['environmentKey'])) {
+          throw new \InvalidArgumentException("Required extra arguments 'apiKey' and 'environmentKey' not both provided.", 34);
+        }
+        if (!is_string($extra_arguments['apiKey']) || strlen($extra_arguments['apiKey']) != 32
+            || !is_string($extra_arguments['environmentKey']) || strlen($extra_arguments['environmentKey']) != 32) {
+          throw new \InvalidArgumentException("Extra arguments 'apiKey' and 'environmentKey' should both be 32-character strings.", 34);
+        }
+        $extra_arguments['userId'] = $data_id;
+        break;
+
+      case 'versioninfo':
+        $function = 'GetProductVersion';
     }
     if (!$function) {
       throw new \InvalidArgumentException('Unknown data_type value: ' . json_encode($data_type), 32);
@@ -256,21 +321,17 @@ class Connection {
       // If $extra_arguments['options'] is not an array, it's silently ignored.
       $options = (isset($extra_arguments['options']) && is_array($extra_arguments['options'])) ? $extra_arguments['options'] : array();
       $options += array(
-        // From AFAS docs:
-        // Outputmode: 1=XML, 2=Text
-        'Outputmode' => 1,
-        // Metadata: 0=No, 1=Yes
-        'Metadata' => 0,
-        // Outputoptions: For XML: 2(Microsoft Data set) or 3(Data set including empty values). Default value is 2.
-        /* For text, "outputoption 1, 2 ,3 and 4 are valid values, just like in the existing GetData:
-          1 = Puntkomma (datums en getallen in formaat van regionale instellingen)
-          2 = Tab       (datums en getallen in formaat van regionale instellingen)
-          3 = Puntkomma (datums en getallen in vast formaat)
-          4 = Tab       (datums en getallen in vast formaat)
-          Vast formaat betekent: dd-mm-yy voor datums en punt als decimaal scheidingteken voor getallen."
-        */
-        'Outputoptions' => 2,
+        'Outputmode' => self::GET_OUTPUTMODE_XML,
+        'Metadata' => self::GET_METADATA_NO,
+        'Outputoptions' => self::GET_OUTPUTOPTIONS_XML_EXCLUDE_EMPTY,
       );
+
+      // See getData(); we may support our custom output formats. These are
+      // based on XML output, so we adjust the option to "XML" here:
+      if (!is_numeric($options['Outputmode'])) {
+        $options['Outputmode'] = self::GET_OUTPUTMODE_XML;
+      }
+
       $options_str = '';
       foreach ($options as $option => $value) {
         $options_str .= "<$option>$value</$option>";
@@ -278,7 +339,7 @@ class Connection {
       $extra_arguments['options'] = "<options>$options_str</options>";
     }
 
-    return array($function, $extra_arguments, $connector_type);
+    return array($data_type, $function, $extra_arguments);
   }
 
   /**
@@ -297,8 +358,9 @@ class Connection {
    *        array(FIELD3 => VALUE3, ..., [ '#op' => operator2  ]),
    *      )
    *     This supports multiple operators but is harder to write/read. All
-   *     sub-arrays are AND'ed together; AFAS get connectors do not support the
+   *     sub-arrays are AND'ed together; AFAS GetConnectors do not support the
    *     'OR' operator here.
+   * @TODO or do they? I've seen mention of ORs in new examples...
    *   We want to keep supporting 1 for easier readability (and 2 for backward
    *   compatibility), but to prevent strange errors, we'll also support '#op'
    *   in the first array level; this overrides 'filter_operator'. We also
@@ -309,8 +371,7 @@ class Connection {
    *     'key_is_ignored' => array(FIELD3 => VALUE3, ..., [ '#op' => operator2  ]),
    *     '#op' => operator1,
    *   )
-   *   Operators can be numeric (AFAS like) as well as our custom values which
-   *   are easier to work with (see source code).
+   *   For the operator values, see the OP_* constants defined in this class.
    *
    * @return string
    *   The filters formatted as 'FiltersXML' argument.
@@ -321,104 +382,31 @@ class Connection {
   protected static function parseFilters(array $filters) {
     $filters_str = '';
     if ($filters) {
-      /* Operators from AFAS documentation:
-        1 = Gelijk aan
-        2 = Groter dan of gelijk aan
-        3 = Kleiner dan of gelijk aan
-        4 = Groter dan
-        5 = Kleiner dan
-        6 = Bevat
-        7 = Ongelijk aan
-        8 = Moet leeg zijn
-        9 = Mag niet leeg zijn
-        10 = Begint met
-        11 = Bevat niet
-        12 = Begint niet met
-        13 = eindigt met tekst
-        14 = eindigt niet met tekst
-      */
-      // The non-numeric array values below are added by us, to make the input
-      // array less cryptic. To prevent errors, we'll have several 'signs'
-      // resolve to the same op.
-      $operators = array(
-        '=' => 1,
-        '==' => 1,
-        '>=' => 2,
-        '<=' => 3,
-        '>' => 4,
-        '<' => 5,
-        'LIKE' => 6,      // Note: does NOT resolve to 'starts with'!
-        'CONTAINS' => 6,
-        '!=' => 7,
-        '<>' => 7,
-        'NULL' => 8,
-        'IS NULL' => 8,
-        'NOT NULL' => 9,
-        'IS NOT NULL' => 9,
-        'STARTS' => 10,
-        'STARTS WITH' => 10,
-        'NOT LIKE' => 11,
-        'NOT CONTAINS' => 11,
-        'DOES NOT CONTAIN' => 11,
-        'NOT STARTS' => 12,
-        'DOES NOT START WITH' => 12,
-        'ENDS' => 13,
-        'ENDS WITH' => 13,
-        'NOT ENDS' => 14,
-        'DOES NOT END WITH' => 14,
-      );
       $operator = !empty($filters['#op']) ? $filters['#op'] : '';
       if (!$operator) {
-        $operator = !empty($arguments['filter_operator']) ? $arguments['filter_operator'] : 1;
+        $operator = !empty($arguments['filter_operator']) ? $arguments['filter_operator'] : self::OP_EQUAL;
       }
-      if (is_numeric($operator)) {
-        if (array_search($operator, $operators) === FALSE) {
-          throw new \InvalidArgumentException("Unknown filter operator: $operator", 33);
-        }
-      }
-      else {
-        if (!isset($operators[$operator])) {
-          throw new \InvalidArgumentException("Unknown filter operator: $operator", 33);
-        }
-        $operator = $operators[$operator];
+      if (!is_numeric($operator) || $operator < 1 || $operator > 14) {
+        throw new \InvalidArgumentException('Unknown filter operator: ' . json_encode($operator), 33);
       }
 
-      // Some old code commented: we used to normalize the format of $filters.
-      // We could still do that if a caller needs it, but not sure to what end.
-//      unset($filters['#op']);
-//      unset($filters['filter_operator']);
-      foreach ($filters as $outerfield => $filter) { // &filter
+      foreach ($filters as $outerfield => $filter) {
         if (is_array($filter)) {
-          // Process extra layer
-
-          // Get operator; normalize $filters for reference by callers.
+          // Process extra layer.
           $op = (!empty($filter['#op'])) ? $filter['#op'] : $operator;
-          if (!is_numeric($op)) {
-            $op = !empty($operators[$op]) ? $operators[$op] : 1;
-          }
-          $filter['#op'] = $op;
-
-          // Construct filter(s) in this sections
           foreach ($filter as $key => $value) {
-            if ($key != '#op') {
-              $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . static::xmlValue($value) . '</Field>';
-            }
+            $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . static::xmlValue($value) . '</Field>';
           }
         }
         else {
           // Construct 1 filter in this section, with standard operator.
           $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . static::xmlValue($filter) . '</Field>';
-//          // Normalize $filters for reference by callers.
-//          $filter = array(
-//            $outerfield => $filter,
-//            '#op' => $operator,
-//          );
         }
       }
     }
 
     // There can be multiple 'Filter' tags with multiple FilterIds. We only need
-    // to use one, it can contain all our filtered fields...
+    // to use one, it can contain all our filtered fields.
     return '<Filters><Filter FilterId="Filter1">' . $filters_str . '</Filter></Filters>';
   }
 

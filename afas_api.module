@@ -135,28 +135,33 @@ function afas_api_queue_info() {
  * does not need the error handling can just copy the two relevant lines inside
  * the try block instead of calling this function.
  *
+ * The constants mentioned below unfortunately are not recognized (so you cannot
+ * use them as the first argument) unless library/src/Connection.php is loaded
+ * first. If specifying the first argument is necessary, there are 3 options:
+ * - load the file first;
+ * - install the registry_autoload module, which will load it automatically;
+ * - use the literal value, e.g. 'token' instead of Connection::DATA_TYPE_TOKEN.
+ *
  * @param string|int $data_id
- *   Identifier for the data. (Usually the name of the AFAS 'get connector',
- *   but this can differ with $data_type.)
+ *   (optional) Identifier for the data, dependent on $data_type:
+ *   DATA_TYPE_GET (default)      : the name of a GetConnector.
+ *   DATA_TYPE_REPORT             : report ID for a ReportConnector.
+ *   DATA_TYPE_SUBJECT/ATTACHMENT : 'subject ID' (int) for a SubjectConnector.
+ *   DATA_TYPE_DATA/SCHEMA        : the function name for which to retrieve
+ *                                  the XSD schema.
+ *   DATA_TYPE_TOKEN              : the user ID to request the token for.
+ *   DATA_TYPE_VERSION_INFO       : this argument is ignored.
  * @param array $filters
  *   (optional) Filters to apply before returning data
  * @param string $data_type
- *   (optional) Type of data to retrieve and, for get connectors, the format
- *   in which to return it.
- *   'get':        $data_id is a get connector; return data as array.
- *   'get_simplexml: $data_id is a get connector; return data as
- *                   SimpleXMLElement. This is slightly faster than 'get'
- *   'report':     $data_id is the report ID for a report connector.
- *   'attachment': $data_id is the 'subject ID' (int) for a subject connector.
- *   'data':       $data_id is the function name for which to retrieve the XSD
- *                 schema. (This used to be called "DataConnector"; in 2014
- *                 that term has disappeared from the online documentation.)
+ *   (optional) Type of data to retrieve. See the DATA_TYPE_ constants.
  * @param array $extra_arguments
  *   (optional) Other arguments to pass to the soap call, besides the ones
- *   hardcoded in parseGetDataArguments() for convenience. Specifying these is
- *   usually unnecessary. To see what it can be used for, check the code in
- *   parseGetDataArguments() and/or the WSDL/documentation of the AFAS
- *   endpoint.
+ *   in $data_id / hardcoded in parseGetDataArguments() for convenience.
+ *   Specifying these is usually unnecessary, except for DATA_TYPE_TOKEN. To
+ *   see what it can be used for, check the code in parseGetDataArguments()
+ *   and this function, and/or the WSDL/documentation of the AFAS endpoint.
+
  * @param int $error_reporting
  *   (optional) Error reporting constants. By default, the logging configuration
  *   from Drupal's admin screen is adhered to.
@@ -291,8 +296,7 @@ function afas_api_connection() {
  *   - error_temporary: bool: whether the error is temporary. (This is not
  *                      necessarily correct in 100% of cases; see code.)
  *   - data_id:         string; get/update connector or other ID; see getData().
- *   - data_type:       string: data type. (Usually get connector but can be
- *                      "get_simplexml" for get connector too.) See getData().
+ *   - data_type:       string: data type. (Usually 'get'.)
  *   - arguments:       If data_type = 'update': XML string OR array.
  *                      Else: filters array
  *   - extra_arguments: array: extra arguments to getData() call.

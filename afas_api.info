@@ -9,3 +9,11 @@ files[] = drunkins/AfasImportJob.inc
 files[] = includes/DrupalNusoapNtlmClient.inc
 files[] = includes/DrupalSoapAppClient.inc
 files[] = includes/DrupalSoapNtlmClient.inc
+; Install registry_autoload.module if you want to use the library classes
+; in your own code, or want to call afas_api_get_data() using the predefined
+; class constants (instead of plain strings) as function arguments, without
+; having to explicitly include the files first. Outdated (i.e. NTLM related)
+; files are not registered.
+registry_autoload_files[] = library/src/Connection.php
+registry_autoload_files[] = library/src/Helper.php
+registry_autoload_files[] = library/src/SoapAppClient.php

@@ -557,13 +557,12 @@ class Helper {
    * structure; the function will throw exceptions when e.g. required data is
    * not present, present data is not recognized, ...
    *
-   * AfasSoapConnection::getData(CONNECTOR, array(), 'data') can be used for
-   * getting more XSD schema info to make this function more robust. The
-   * information from those XSD schemas may be more complete, so if you want to
-   * use those schemas to construct XML instead of using this function, that's
-   * fine. This function exists for those who would like to construct array data
-   * with more descriptive keys, instead of an XML string with hard to remember
-   * tag names.
+   * Connection::getData(CONNECTOR, array(), 'data') can be used for getting XSD
+   * schema info to make this function more robust. The information from those
+   * XSD schemas may be more complete, so if you want to use those schemas to
+   * construct XML instead of using this function, that's fine. This function
+   * exists for those who would like to construct array data with more
+   * descriptive keys, instead of an XML string with hard to remember tag names.
    *
    * We hope that the below code catches all strange/dangerous combinations of
    * 'id' /  $fields_action / AutoNum / MatchXXX values and 'embedding items',
@@ -862,11 +861,11 @@ class Helper {
   }
 
   /**
-   * Return info for a certain XML type (dataConnectorId) definition.
+   * Return info for a certain type (dataConnectorId) definition.
    *
    * @param string $type
    *   The type of item; this (usually?) corresponds to the outer tag in the XML
-   *   string / an 'updateConnectorId' The function throws an exception if the
+   *   string / an 'updateConnectorId'. The function throws an exception if the
    *   type is not known by this function.
    * @param string $parent_type
    *   If nonempty, the generated XML will be a fragment suitable for embedding
@@ -1335,7 +1334,7 @@ class Helper {
           ),
         );
 
-        // first name is not required if initials are filled.
+        // First name is not required if initials are filled.
         if (!empty($data['In']) || !empty($data['initials'])) {
           unset($info['fields']['FiNm']['required']);
         }

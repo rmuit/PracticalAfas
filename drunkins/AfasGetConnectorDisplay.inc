@@ -57,7 +57,7 @@ class AfasGetConnectorDisplay extends DrunkinsJob {
     $form['source']['afas_connector'] = array(
       '#type'        => 'textfield',
       '#title'       => t('Connector name'),
-      '#description' => t('The name of a GET connector, as defined in your AFAS enviroment'),
+      '#description' => t('The name of a GetConnector, as defined in your AFAS enviroment'),
       '#weight'      => 1,
     );
 

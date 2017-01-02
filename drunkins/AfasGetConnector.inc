@@ -3,7 +3,7 @@
 use SimpleAfas\Connection;
 
 /**
- * Fetches data through an AFAS GET connector.
+ * Fetches data through an AFAS GetConnector.
  *
  * Other modules can create jobs and make them available to cron / admin UI, by
  * - installing the 'drunkins' Drupal contrib module;
@@ -25,10 +25,10 @@ class AfasGetConnector extends DrunkinsFetcher {
    *   for standard Drupal-admin configured client classes.)
    *
    * - afas_connector (string):
-   *   The name of the GET connector to use for fetching data.
+   *   The name of the GetConnector to use for fetching data.
    * - afas_filter (array):
    *   Filter to use. See comments (all types are supported) at
-   *   AfasSoapConnection::normalizeArguments().
+   *   \SimpleAfas\Connection::parseFilters().
    * - afas_adv_filter (string):
    *   Filter to use (one 'array level' only), as PHP code. This is only useful
    *   for the per-process settingsForm; use 'afas_filter' instead.
@@ -193,11 +193,13 @@ One example, to get only products that changed in the past week:<br/><em>array(<
 //    $items = FALSE;
 //    $tries_left = !empty($this->settings['fetcher_tries']) ? $this->settings['fetcher_tries'] : 1;
 //    while ($items === FALSE && --$tries_left >= 0) {
-      $items = $connection->getData($this->settings['afas_connector'],
-        $this->inputFilter($context),
-        !empty($context['afas_return_xml']) ?  'get_simplexml' : 'get',
-        !empty($this->settings['afas_include_empty_fields']) ? array('options' => array('Outputoptions' => 3)) : array()
-      );
+
+    $arguments = empty($this->settings['afas_include_empty_fields']) ? array() :
+      array('options' => array('Outputoptions' => Connection::GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY));
+    if (!empty($context['afas_return_xml'])) {
+      $arguments['options']['Outputmode'] = Connection::GET_OUTPUTMODE_SIMPLEXML;
+    }
+    $items = $connection->getData($this->settings['afas_connector'], $this->inputFilter($context), Connection::DATA_TYPE_GET, $arguments);
 
 //      if ($items === FALSE) {
 //        // Retry if timeout
