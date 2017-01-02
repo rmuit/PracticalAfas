@@ -160,7 +160,7 @@ class SoapAppClient {
   }
 
   /**
-   * 'normalizes' / completes arguments for an AFAS SOAP function call.
+   * Validates / completes arguments for an AFAS SOAP function call.
    *
    * Split out from callAfas() for more convenient subclassing. Not meant to be
    * called from anywhere except callAfas().
@@ -170,15 +170,43 @@ class SoapAppClient {
    * typically be for e.g. authentication rather than data manipulation.
    *
    * @param array $arguments
-   *   Arguments for function; passed by reference; will be normalized.
+   *   Arguments for function.
    * @param string $function
    *   SOAP function name to call.
+   *
+   * @return array
+   *   The arguments, possibly changed.
+   *
+   * @throws \InvalidArgumentException
+   *   For invalid function arguments.
    */
-  protected function normalizeArguments(&$arguments, $function) {
+  protected function validateArguments($arguments, $function) {
     // To get a token, we don't need a token.
     if ($this->connectorType !== 'token') {
       $arguments['token'] = '<token><version>1</version><data>' . $this->options['appToken'] . '</data></token>';
     }
+    if ($this->connectorType === 'get') {
+      if (empty($arguments['take'])) {
+        // For get connectors (both getData and getDataWithOptions), there is an
+        // issue with the skip & take arguments. The WSDL suggests they are both
+        // required, though testing says that the 'skip' argument is perfectly
+        // OK to leave out. However if 'take' is left out, nothing is returned,
+        // which suggests that it defaults to '0' (which returns no data). This
+        // class is not in the business of forcing any logic on the arguments,
+        // but since the behavior of returning nothing by default is so
+        // confusing, we'll throw an exception if this is about to happen (which
+        // we do here, not in Connection, so people can't miss it).
+        throw new \InvalidArgumentException("'take' argument must not be empty/zero, otherwise no results are returned.", 41);
+      }
+      if (!is_numeric($arguments['take']) || $arguments['take'] < 0) {
+        throw new \InvalidArgumentException("'take' argument must be a positive number.", 42);
+      }
+      if (!empty($arguments['skip']) && (!is_numeric($arguments['skip']) || $arguments['skip'] < 0)) {
+        throw new \InvalidArgumentException("'skip' argument must be a positive number.", 43);
+      }
+    }
+
+    return $arguments;
   }
 
   /**
@@ -214,7 +242,7 @@ class SoapAppClient {
 
     $client = $this->getSoapClient($connector_type);
 
-    $this->normalizeArguments($arguments, $function);
+    $arguments = $this->validateArguments($arguments, $function);
 
     $params = array();
     foreach ($arguments as $name => $value) {

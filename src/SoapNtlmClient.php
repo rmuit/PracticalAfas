@@ -93,8 +93,8 @@ class SoapNtlmClient extends SoapAppClient {
   /**
    * {@inheritdoc}
    */
-  protected function normalizeArguments(&$arguments, $function) {
-    $arguments = array_merge(array(
+  protected function validateArguments($arguments, $function) {
+    return array_merge(array(
       'environmentId' => $this->options['environmentId'],
       'userId' => $this->options['userId'],
       'password' => $this->options['password'],

@@ -140,15 +140,15 @@ class NusoapNtlmClient {
   }
 
   /**
-   * 'normalizes' / completes arguments for an AFAS SOAP function call.
+   * Validates / completes arguments for an AFAS SOAP function call.
    *
    * Same as SoapNtlmClient::normalizeArguments, but we didn't want to set up
    * too long an 'extends' chain just for this one.
    *
-   * @see SoapNtlmClient::normalizeArguments()
+   * @see SoapAppClient::validateArguments()
    */
-  protected function normalizeArguments(&$arguments, $function) {
-    $arguments = array_merge(array(
+  protected function validateArguments($arguments, $function) {
+    return array_merge(array(
       'environmentId' => $this->options['environmentId'],
       'userId' => $this->options['userId'],
       'password' => $this->options['password'],

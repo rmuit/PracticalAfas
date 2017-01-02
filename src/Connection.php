@@ -169,7 +169,9 @@ class Connection {
    * @return mixed
    *   Output; format is dependent on data type and extra arguments. The default
    *   output format is a two-dimensional array of rows/columns of data from the
-   *   GetConnector; for other connectors it's a string.
+   *   GetConnector; for other connectors it's a string. PLEASE NOTE that by
+   *   default, a call to a GET connector returns maximum 1000 rows, which can
+   *   be changed with the 'take' argument.
    *
    * @throws \InvalidArgumentException
    *   If input arguments have an illegal value / unrecognized structure.
@@ -337,6 +339,16 @@ class Connection {
         $options_str .= "<$option>$value</$option>";
       }
       $extra_arguments['options'] = "<options>$options_str</options>";
+
+      // For get connectors that are called through App Connectors, there are
+      // 'skip/take' arguments, and we make the 'take' argument mandatory: if
+      // it is not specified, the output will be empty. (Further general
+      // validation is done in the connector classes, but the job of hardcoding
+      // a capped value does not belong in there. For NTLM Connectors, this is
+      // not tested, but they are not functional anymore anyway.)
+      if (!isset($extra_arguments['take'])) {
+        $extra_arguments['take'] = 1000;
+      }
     }
 
     return array($data_type, $function, $extra_arguments);
