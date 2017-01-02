@@ -17,7 +17,9 @@ namespace SimpleAfas;
  * - the external (older) NuSOAP library. It can be used if the (preferred) PHP
  *   SOAP extension is not compiled/enabled on your server.
  * - NTLM authentication, as opposed to a more modern "app connector". (NTLM
- *   authentication is supposedly phased out by AFAS on 2017-01-01.)
+ *   authentication is supposedly phased out by AFAS on 2017-01-01. This code
+ *   will stay around in case someone wants to port it to a Nusoap + App
+ *   connector client.)
  *
  * $this->soapClient and $this->connectorType are not used. That is, we do not
  * cache the actual soapclient across calls but reinitialize it with each call
@@ -28,7 +30,37 @@ namespace SimpleAfas;
  * (since WSDL introduces overhead which is unnecessary with AFAS' simple call
  * structure) you need sources from https://github.com/rmuit/NuSOAP.
  */
-class NusoapNtlmClient extends SoapNtlmClient {
+class NusoapNtlmClient {
+  /**
+   * Constructor.
+   *
+   * Since there is no other way of setting options, we check them inside the
+   * constructor and throw an exception if we know any AFAS calls will fail.
+   *
+   * @param array $options
+   *   Configuration options. see SoapNtlmClient::__construct() for values,
+   *   except 'soapClientClass'.
+   *
+   * @throws \InvalidArgumentException
+   *   If some option values are missing / incorrect.
+   */
+  public function __construct(array $options) {
+    foreach (array('urlBase', 'environmentId', 'domain', 'userId', 'password') as $required_key) {
+      if (empty($options[$required_key])) {
+        $classname = get_class($this);
+        throw new \InvalidArgumentException("Required configuration parameter for $classname missing: $required_key.", 1);
+      }
+    }
+
+    // Add defaults for the SOAP client.
+    $options += array(
+      'soap_defencoding' => 'utf-8',
+      'xml_encoding' => 'utf-8',
+      'decode_utf8' => FALSE,
+    );
+
+    $this->options = $options;
+  }
 
   /**
    * Returns a SOAP client object, configured with options previously set.
@@ -55,22 +87,16 @@ class NusoapNtlmClient extends SoapNtlmClient {
       date_default_timezone_set($timezone);
     }
 
-    // Get options from this class; add defaults for the SOAP client.
-    $options = $this->options + array(
-      'soap_defencoding' => 'utf-8',
-      'xml_encoding' => 'utf-8',
-      'decode_utf8' => FALSE,
-    );
-
     // available: get/update/report/subject/dataconnector.
-    $endpoint = trim($options['urlBase'], '/') . '/' . strtolower($type) . 'connector.asmx';
+    $endpoint = trim($this->options['urlBase'], '/') . '/' . strtolower($type) . 'connector.asmx';
 
+    $options = $this->options + array('useWSDL' => FALSE);
     if ($options['useWSDL']) {
       $endpoint .= '?WSDL';
 
-      if ($options['cacheWSDL']) {
+      if (!empty($this->options['cacheWSDL'])) {
         // Get cached WSDL
-        $cache = new \wsdlcache(file_directory_temp(), $options['cacheWSDL']);
+        $cache = new \wsdlcache(file_directory_temp(), $this->options['cacheWSDL']);
         $wsdl  = $cache->get($endpoint);
         if (is_null($wsdl)) {
           $wsdl = new \wsdl();
@@ -114,6 +140,22 @@ class NusoapNtlmClient extends SoapNtlmClient {
   }
 
   /**
+   * 'normalizes' / completes arguments for an AFAS SOAP function call.
+   *
+   * Same as SoapNtlmClient::normalizeArguments, but we didn't want to set up
+   * too long an 'extends' chain just for this one.
+   *
+   * @see SoapNtlmClient::normalizeArguments()
+   */
+  protected function normalizeArguments(&$arguments, $function) {
+    $arguments = array_merge(array(
+      'environmentId' => $this->options['environmentId'],
+      'userId' => $this->options['userId'],
+      'password' => $this->options['password'],
+    ), $arguments);
+  }
+
+  /**
    * Sets up a SOAP connection to AFAS and calls a remote function.
    *
    * @param string $connector_type
@@ -141,16 +183,16 @@ class NusoapNtlmClient extends SoapNtlmClient {
     // types to those we know. When adding a new one, we want to carefully check
     // whether we're not missing any arguments that we should be preprocessing.
     if (!in_array($connector_type, array('get', 'update', 'report', 'subject', 'data'))) {
-      throw new \InvalidArgumentException("Invalid connector type $connector_type", 18);
+      throw new \InvalidArgumentException("Invalid connector type $connector_type", 40);
     }
     // This might ideally be checked inside the constructor already but we do it
     // here for easier subclassing. It doesn't matter much in practice anyway.
     $library = libraries_load('nusoap');
     if (empty($library['installed'])) {
-      throw new \Exception('The required NuSOAP library is not installed.', 19);
+      throw new \Exception('The required NuSOAP library is not installed.', 21);
     }
     if (empty($library['loaded'])) {
-      throw new \Exception('The required NuSOAP library could not be loaded.', 20);
+      throw new \RuntimeException('The required NuSOAP library could not be loaded.', 22);
     }
 
     $client = $this->getSoapClient($connector_type);
@@ -184,13 +226,13 @@ class NusoapNtlmClient extends SoapNtlmClient {
       // We should ideally have an exception type where we can store debug
       // details in a separate property. But let's face it, noone is going
       // to use this anymore anyway.
-      throw new \RuntimeException("Error calling SOAP endpoint: $error. Debug details: $details", 16);
+      throw new \RuntimeException("Error calling SOAP endpoint: $error. Debug details: $details", 23);
     }
 
     if (isset($response[$function . 'Result'])) {
       return $response[$function . 'Result'];
     }
-    throw new \UnexpectedValueException('Unknown response format: ' . json_encode($response), 17);
+    throw new \UnexpectedValueException('Unknown response format: ' . json_encode($response), 24);
   }
 
 }

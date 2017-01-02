@@ -3,7 +3,6 @@
 use SimpleAfas\NusoapNtlmClient;
 
 // Since we don't (necessarily) have an autoloader that handles namespaces:
-module_load_include('php', 'afas_api', 'lib/src/SoapNtlmClient');
 module_load_include('php', 'afas_api', 'lib/src/NusoapNtlmClient');
 
 /**
