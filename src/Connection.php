@@ -135,9 +135,7 @@ class Connection {
       'update',
       'Execute',
       array(
-        'logonAs' => '',
         'connectorType' => $connector_name,
-        'connectorVersion' => '1',
         'dataXml' => $xml,
       )
     );
