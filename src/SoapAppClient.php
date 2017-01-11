@@ -54,8 +54,8 @@ class SoapAppClient {
    *   NtlmSoapClient class; some are used as standard arguments in each SOAP
    *   call, some are used for both. Keys used:
    *   Required:
-   *   - urlBase:     AFAS endpoint URL, without the connector specific part.
-   *   - appToken:    Token used for the App connector.
+   *   - customerId:      Customer ID, as used in the AFAS endpoint URL.
+   *   - appToken:        Token used for the App connector.
    *   Optional:
    *   - soapClientClass: classname for the actual Soap client to use. Should be
    *                      compatible with PHP's SoapClient.
@@ -70,7 +70,7 @@ class SoapAppClient {
    *   If something else went wrong / option values are unsupported.
    */
   public function __construct(array $options) {
-    foreach (array('urlBase', 'appToken') as $required_key) {
+    foreach (array('customerId', 'appToken') as $required_key) {
       if (empty($options[$required_key])) {
         $classname = get_class($this);
         throw new \InvalidArgumentException("Required configuration parameter for $classname missing: $required_key.", 1);
@@ -111,7 +111,7 @@ class SoapAppClient {
       else {
         $connector_path = 'appconnector' . strtolower($type);
       }
-      $endpoint = trim($this->options['urlBase'], '/') . "/$connector_path.asmx";
+      $endpoint = 'https://' . $this->options['customerId'] . ".afasonlineconnector.nl/profitservices/$connector_path.asmx";
     }
 
     if (!empty($this->soapClient)) {
