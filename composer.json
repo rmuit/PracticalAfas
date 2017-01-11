@@ -1,0 +1,18 @@
+{
+    "name": "practicalafas",
+    "type": "library",
+    "description": "A PHP library for communicating with AFAS Profit in a practical way.",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Roderik Muit",
+            "email": "rm@wyz.biz",
+            "homepage" : "http://wyz.biz/"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "PracticalAfas\\": "src"
+        }
+    }
+}

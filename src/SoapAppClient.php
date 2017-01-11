@@ -62,7 +62,7 @@ class SoapAppClient {
    *   - useWSDL:         boolean. (Suggestion: don't set it.)
    *   - cacheWSDL:       How long the WSDL should be cached locally in seconds.
    *   Other options (which are usually not camelCased but under_scored) are
-   *   client specific; for all valid ones, see initClient().
+   *   specific to the actual Soap client.
    *
    * @throws \InvalidArgumentException
    *   If some option values are missing / incorrect.
@@ -147,12 +147,12 @@ class SoapAppClient {
       }
     }
 
-    // $options contains both SOAPClient options and call/argument options used
+    // $options contains both SoapClient options and call/argument options used
     // by this class. We shouldn't be passing the latter ones to our client, so
     // we should be doing some filtering at this point. But since that's a bit
-    // hard to do generically, we'll get away with just passing everything, for
-    // now. (A previous version of the code contained a list of SoaoClient /
-    // Curl options.)
+    // hard to do generically now that we have a configurable soapClientClass,
+    // we'll try to get away with just passing everything, for now. (A previous
+    // version of the code contained a list of SoapClient / Curl options.)
     $this->soapClient = new $options['soapClientClass']($wsdl_endpoint, $options);
     $this->connectorType = $type;
 

@@ -45,7 +45,7 @@ class SoapNtlmClient extends SoapAppClient {
    *   - useWSDL:         boolean. (Suggestion: don't set it.)
    *   - cacheWSDL:       How long the WSDL should be cached locally in seconds.
    *   Other options (which are usually not camelCased but under_scored) are
-   *   client specific; for all valid ones, see initClient().
+   *   specific to the actual Soap client.
    *
    * @throws \InvalidArgumentException
    *   If some option values are missing / incorrect.

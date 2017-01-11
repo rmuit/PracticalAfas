@@ -248,7 +248,7 @@ class Connection {
    * @throws \InvalidArgumentException
    *   If the input arguments have an unrecognized structure.
    *
-   * @see getData().
+   * @see getData()
    */
   protected static function parseGetDataArguments($data_id, array $filters = array(), $data_type = 'get', array $extra_arguments = array()) {
     $function = '';
