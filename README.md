@@ -23,7 +23,7 @@ programmer, and throws documented exceptions.)
 
 (That said: this wasn't created because I was unhappy with other existing
 libraries. There may be good ones. I just inherited some procedural code at the
-end of 2011, which naturally evolved... and about 4 years and 3 rewrites later I
+end of 2011, which naturally evolved... and about 5 years and 3 rewrites later I
 finally got around to polishing it up for publication.)
 
 ## Using the classes

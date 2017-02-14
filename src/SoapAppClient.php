@@ -10,8 +10,8 @@
 
 namespace PracticalAfas;
 
-use \SoapParam;
-use \SoapVar;
+use SoapParam;
+use SoapVar;
 
 /**
  * Wrapper around client specific details of making a remote AFAS call.

@@ -401,16 +401,21 @@ class Connection {
       }
 
       foreach ($filters as $outerfield => $filter) {
-        if (is_array($filter)) {
-          // Process extra layer.
-          $op = (!empty($filter['#op'])) ? $filter['#op'] : $operator;
-          foreach ($filter as $key => $value) {
-            $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . static::xmlValue($value) . '</Field>';
+        if ($outerfield !== '#op' && $outerfield !== '#op' && 'filter_operator') {
+
+          if (is_array($filter)) {
+            // Process extra layer.
+            $op = (!empty($filter['#op'])) ? $filter['#op'] : $operator;
+            foreach ($filter as $key => $value) {
+              if ($key !== '#op') {
+                $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . static::xmlValue($value) . '</Field>';
+              }
+            }
           }
-        }
-        else {
-          // Construct 1 filter in this section, with standard operator.
-          $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . static::xmlValue($filter) . '</Field>';
+          else {
+            // Construct 1 filter in this section, with standard operator.
+            $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . static::xmlValue($filter) . '</Field>';
+          }
         }
       }
     }
