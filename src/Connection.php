@@ -209,7 +209,7 @@ class Connection {
     // for a GetConnector. The default for Get is to return an array.
     if ($data_type === self::DATA_TYPE_GET && (!isset($extra_arguments['options']['Outputmode']) || !is_numeric($extra_arguments['options']['Outputmode']))) {
       $doc_element = new SimpleXMLElement($data);
-      if ($extra_arguments['options']['Outputmode'] === self::GET_OUTPUTMODE_SIMPLEXML) {
+      if (isset($extra_arguments['options']['Outputmode']) && $extra_arguments['options']['Outputmode'] === self::GET_OUTPUTMODE_SIMPLEXML) {
         $data = $doc_element;
       }
       else {
