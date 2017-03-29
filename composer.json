@@ -1,5 +1,5 @@
 {
-    "name": "practicalafas",
+    "name": "wyz/practicalafas",
     "type": "library",
     "description": "A PHP library for communicating with AFAS Profit in a practical way.",
     "license": "MIT",

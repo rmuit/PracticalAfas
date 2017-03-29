@@ -10,8 +10,8 @@
 
 namespace PracticalAfas;
 
-use SoapParam;
-use SoapVar;
+use \SoapParam;
+use \SoapVar;
 
 /**
  * Wrapper around client specific details of making a remote AFAS call.
@@ -153,7 +153,7 @@ class SoapAppClient {
     // hard to do generically now that we have a configurable soapClientClass,
     // we'll try to get away with just passing everything, for now. (A previous
     // version of the code contained a list of SoapClient / Curl options.)
-    $this->soapClient = new $options['soapClientClass']($wsdl_endpoint, $options);
+    $this->soapClient = new TestSoapClient($wsdl_endpoint, $options);
     $this->connectorType = $type;
 
     return $this->soapClient;
@@ -249,13 +249,15 @@ class SoapAppClient {
 // We could specify integer values as 'int' like the below, but the examples
 // from AFAS' documentation do not do this either. It just bloats the XML with
 // namespaces. We can start doing it if ever necessary.
-//      if (is_int($value)) {
-//        $params[] = new SoapVar($value, XSD_STRING, 'int', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
+//      switch ($name) {
+//        case 'skip':
+//        case 'take':
+//          $params[] = new SoapVar($value, XSD_SHORT, 'short', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
+//        break;
+//        default:
+//          $params[] = new SoapVar($value, XSD_STRING, 'string', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
 //      }
-//      else {
-//        $params[] = new SoapVar($value, XSD_STRING, 'string', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
-//      }
-        $params[] = new SoapVar($value, XSD_STRING, NULL, NULL, $name, 'urn:Afas.Profit.Services');
+      $params[] = new SoapVar($value, XSD_STRING, NULL, NULL, $name, 'urn:Afas.Profit.Services');
     }
     $function_wrapper = new SoapVar($params, SOAP_ENC_OBJECT, NULL, NULL, $function, 'urn:Afas.Profit.Services');
     $function_param = new SoapParam($function_wrapper, $function);
@@ -283,6 +285,17 @@ class SoapAppClient {
     else {
       throw new \UnexpectedValueException('Unknown response format: ' . json_encode($response), 24);
     }
+  }
+
+}
+
+class TestSoapClient extends \SoapClient {
+
+  /**
+   * @inheritdoc
+   */
+  public function __doRequest($request, $location, $action, $version, $one_way = 0) {
+    return parent::__doRequest($request, $location, $action, $version, $one_way);
   }
 
 }
