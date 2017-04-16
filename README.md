@@ -82,10 +82,11 @@ use PracticalAfas\SoapAppClient;
 $client = new SoapAppClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
 $connection = new Connection($client);
 
-$result_as_array = $connection->getData('MyGetConnectorName', [
-  'filters' => [ 'SomeCategory' => 'CategName' ],
-  'options' => [ 'Outputoptions' => Connection::GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY ],
-]);
+$result_as_array = $connection->getData('MyGetConnectorName', 
+  [ 'SomeCategory' => 'CategName' ], 
+  Connection::DATA_TYPE_GET,
+  [ 'options' => [ 'Outputoptions' => Connection::GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY ]]
+);
 $attachment = $connection->getData(123, [], Connection::DATA_TYPE_SUBJECT);
 
 $connection->sendXml('KnOrganisation', '<KnOrganisation xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Element><Fields Action="insert"><MatchOga>0</MatchOga><Nm>MyCompany Ltd.</Nm></Fields></Element></KnOrganisation>' );

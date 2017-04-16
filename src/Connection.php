@@ -356,35 +356,27 @@ class Connection {
    * Constructs a 'FiltersXML' argument, usable by AFAS call.
    *
    * @param array $filters
-   *   Filters in our own custom format. Various formats have been introduced
-   *   over time:
-   *   1) array(FIELD1 => VALUE1, ...) - to filter on one or several values.
-   *      This is the simplest one, with a lot of use cases - and one which is
-   *      too 'natural' for coders to stop supporting it.
-   *   2) The same, but get the 'operator' from $arguments['filter_operator'].
-   *      Is ok, but only allows one and the same operator for all filters.
-   *   3) array(
-   *        array(FIELD1 => VALUE1, ..., [ '#op' => operator1  ]),
-   *        array(FIELD3 => VALUE3, ..., [ '#op' => operator2  ]),
-   *      )
-   *     This supports multiple operators but is harder to write/read. All
+   *   Filters in our own custom format:
+   *   1) [ FIELD1 => VALUE1, ...,  '#op' => operator ], to filter on one or
+   *      several values. The '#op' key is optional and defaults to OP_EQUAL.
+   *   2) [
+   *        [ FIELD1 => VALUE1, ..., '#op' => operator1 ],
+   *        [ FIELD2 => VALUE2, ..., '#op' => operator2 ],
+   *      ]
+   *     This supports different operators but is harder to write/read. All
    *     sub-arrays are AND'ed together; AFAS GetConnectors do not support the
    *     'OR' operator here.
    * @TODO or do they? I've seen mention of ORs in new examples...
-   *   We want to keep supporting 1 for easier readability (and 2 for backward
-   *   compatibility), but to prevent strange errors, we'll also support '#op'
-   *   in the first array level; this overrides 'filter_operator'. We also
-   *   support mixed instances of both, meaning the following array has the same
-   *   output as 3) above:
-   *   array(
-   *     FIELD1 => VALUE1,
-   *     'key_is_ignored' => array(FIELD3 => VALUE3, ..., [ '#op' => operator2  ]),
-   *     '#op' => operator1,
-   *   )
+   *   Mixing the formats up (that is: having array values _in the outer array_
+   *   which are both scalars and arrays) is allowed. If the values are arrays,
+   *   keys are ignored; if they are scalars, keys are the field values.
+   *
    *   For the operator values, see the OP_* constants defined in this class.
    *
    * @return string
-   *   The filters formatted as 'FiltersXML' argument.
+   *   The filters formatted as 'FiltersXML' argument. (If the input is empty,
+   *   then the XML will contain a few tags with no content; the effect of this
+   *   is untested. Just don't call this with empty input.)
    *
    * @throws \InvalidArgumentException
    *   If the input argument has an unrecognized structure.
@@ -392,16 +384,13 @@ class Connection {
   protected static function parseFilters(array $filters) {
     $filters_str = '';
     if ($filters) {
-      $operator = !empty($filters['#op']) ? $filters['#op'] : '';
-      if (!$operator) {
-        $operator = !empty($arguments['filter_operator']) ? $arguments['filter_operator'] : self::OP_EQUAL;
-      }
+      $operator = !empty($filters['#op']) ? $filters['#op'] : self::OP_EQUAL;
       if (!is_numeric($operator) || $operator < 1 || $operator > 14) {
         throw new \InvalidArgumentException('Unknown filter operator: ' . json_encode($operator), 33);
       }
 
       foreach ($filters as $outerfield => $filter) {
-        if ($outerfield !== '#op' && $outerfield !== '#op' && 'filter_operator') {
+        if ($outerfield !== '#op') {
 
           if (is_array($filter)) {
             // Process extra layer.
