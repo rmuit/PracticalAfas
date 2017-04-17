@@ -380,18 +380,18 @@ class Connection
      *     This supports different operators but is harder to write/read. All
      *     sub-arrays are AND'ed together; AFAS GetConnectors do not support the
      *     'OR' operator here.
-     * @TODO or do they? I've seen mention of ORs in new examples...
      *   Mixing the formats up (that is: having array values in the _outer_
      *   array which are both scalars and arrays) is allowed. If the values are
      *   arrays, keys are ignored; if they are scalars, keys are the field
-     *   values.
+     *   values. The end result is the same, regardless whether a field-value
+     *   pair is inside an inner array; the returned result is a one-dimensional
+     *   list of field-value-operator combinations.
      *   For the operator values, see the OP_* constants defined in this class.
      *
      * @return string
-     *   The filters formatted as 'FiltersXML' argument. (If the input is
-     *     empty,
+     *   The filters formatted as 'FiltersXML' argument. (If the input is empty,
      *   then the XML will contain a few tags with no content; the effect of
-     *     this is untested. Just don't call this with empty input.)
+     *   this is untested. Just don't call this with empty input.)
      *
      * @throws \InvalidArgumentException
      *   If the input argument has an unrecognized structure.
@@ -404,20 +404,23 @@ class Connection
             if (!is_numeric($operator) || $operator < 1 || $operator > 14) {
                 throw new InvalidArgumentException('Unknown filter operator: ' . json_encode($operator), 33);
             }
-
             foreach ($filters as $outerfield => $filter) {
                 if ($outerfield !== '#op') {
 
                     if (is_array($filter)) {
-                        // Process extra layer.
-                        $op = (!empty($filter['#op'])) ? $filter['#op'] : $operator;
+                        // Process all fields on an inner layer.
+                        $op = !empty($filter['#op']) ? $filter['#op'] : self::OP_EQUAL;
+                        if (!is_numeric($op) || $op < 1 || $op > 14) {
+                            throw new InvalidArgumentException('Unknown filter operator: ' . json_encode($operator), 33);
+                        }
                         foreach ($filter as $key => $value) {
                             if ($key !== '#op') {
+
                                 $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . static::xmlValue($value) . '</Field>';
                             }
                         }
                     } else {
-                        // Construct 1 filter in this section, with standard op.
+                        // Process 1 field on the outer layer.
                         $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . static::xmlValue($filter) . '</Field>';
                     }
                 }
