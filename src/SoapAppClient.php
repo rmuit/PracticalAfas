@@ -165,13 +165,13 @@ class SoapAppClient
     /**
      * Validates / completes arguments for an AFAS SOAP function call.
      *
-     * Split out from callAfas() for more convenient subclassing. Not meant to
-     * be called from anywhere except callAfas().
+     * Split out from callAfas() for more convenient subclassing.
      *
      * This class is not meant to make decisions about any actual data sent.
-     * (That kind of code would belong in Connection.) The arguments set here
-     * would typically be for e.g. authentication rather than data
-     * manipulation.
+     * (That kind of code would belong in Connection.) So while we can
+     * _validate_ many arguments here, _setting_ them is discouraged; the
+     * arguments set here would typically be for e.g. authentication rather than
+     * data manipulation.
      *
      * @param array $arguments
      *   Arguments for function.
@@ -219,13 +219,12 @@ class SoapAppClient
     /**
      * Sets up a SOAP connection to AFAS and calls a remote function.
      *
-     * @param string $connector_type
+     * @param string $type
      *   Type of connector: get / update / report / subject / data.
      * @param string $function
      *   Function name to call.
      * @param array $arguments
-     *   Function arguments. Integer values should actually be integers, not
-     *   strings.
+     *   Named function arguments. All values must be scalars.
      *
      * @return string
      *   The response from the SOAP endpoint.
@@ -239,17 +238,17 @@ class SoapAppClient
      * @throws \Exception
      *   For anything else that went wrong, e.g. initializing the SoapClient.
      */
-    public function callAfas($connector_type, $function, array $arguments)
+    public function callAfas($type, $function, array $arguments)
     {
         // Even though this may not be necessary, we want to restrict the
         // connector types to those we know. When adding a new one, we want to
         // carefully check whether we're not missing any arguments that we
         // should be preprocessing.
-        if (!in_array($connector_type, ['get', 'update', 'report', 'subject', 'data', 'token', 'versioninfo'])) {
-            throw new InvalidArgumentException("Invalid connector type $connector_type", 40);
+        if (!in_array($type, ['get', 'update', 'report', 'subject', 'data', 'token', 'versioninfo'])) {
+            throw new InvalidArgumentException("Invalid connector type $type", 40);
         }
 
-        $client = $this->getSoapClient($connector_type);
+        $client = $this->getSoapClient($type);
 
         $arguments = $this->validateArguments($arguments, $function);
 
