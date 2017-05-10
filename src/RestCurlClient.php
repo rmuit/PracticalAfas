@@ -66,8 +66,6 @@ class RestCurlClient
      *   Optional:
      *   - headers:         HTTP headers to pass to Curl: an array of key-value
      *                      pairs in the form of ['User-Agent' => 'Me', ...].
-     *                      To overwrite default headers, you must use the exact
-     *                      same case; see the code.
      *   - curlOptions:     Options to pass to Curl: an array of values keyed by
      *                      CURLOPT_ constants. Some options are overridden /
      *                      not possible to set through here.
@@ -84,18 +82,19 @@ class RestCurlClient
             }
         }
 
-        // Sanitize/set HTTPHEADER Curl option.
         $options += ['headers' => []];
         if (!is_array($options['headers'])) {
             $classname = get_class($this);
             throw new InvalidArgumentException("Non-array 'headers' option passed to $classname constructor.", 2);
         }
-        // If $options['headers'] contains our default headers in a different
-        // case, this will throw an exception. We'll live with that.
-        $options['curlOptions'][CURLOPT_HTTPHEADER] = $this->httpHeaders($options['headers'] + [
-                'User-Agent' => 'PHP Curl/PracticalAfas',
-                'Authorization' => 'AfasToken ' . base64_encode('<token><version>1</version><data>' . $options['appToken'] . '</data></token>')
-            ]);
+        // Determine default headers with names not present in the 'headers'
+        // option (case insensitive comparison).
+        $default_headers = array_diff_ukey([
+            'User-Agent' => 'PHP Curl/PracticalAfas',
+            'Authorization' => 'AfasToken ' . base64_encode('<token><version>1</version><data>' . $options['appToken'] . '</data></token>')
+        ], $options['headers'], 'strcasecmp');
+        // Sanitize/set HTTPHEADER Curl option.
+        $options['curlOptions'][CURLOPT_HTTPHEADER] = $this->httpHeaders($options['headers'] + $default_headers);
 
         // We will not use 'headers' and 'appToken' in our own code (because
         // they are contained in 'curlOptions'), but won't clean them out.
@@ -123,10 +122,9 @@ class RestCurlClient
         // We have the option of:
         // - passing through without checking: no.
         // - filtering invalid characters only: considered potentially unsafe.
-        // - encoding (potential candidate is quoted-printable because that
-        //   leaves most characters alone): possible, but it is unlikely that
-        //   the server does anything useful with it and "=" cannot be sent in
-        //   a non-ambiguous way.
+        // - encoding: possible, but it is unlikely that the server does
+        //   anything useful with it and 'escape sequences' cannot be sent in a
+        //   non-ambiguous way.
         // - throw exception when invalid characters are encountered.
         //   We'll do the last thing.
         $header_lines = [];
@@ -138,8 +136,7 @@ class RestCurlClient
             }
             $this->headersSeenOrDisallowed[$lower_name] = true;
 
-            // One way to check for non-ascii characters is to check whether
-            // quoted-printable changes the string in any way...
+            // Check for non-ascii characters.
             if (strpos($name, ' ') !== false || strpos($name, ':') !== false || preg_match('/[^\x20-\x7f]/', $name)) {
                 throw new InvalidArgumentException("Disallowed HTTP header name '$name'.", 2);
             }
