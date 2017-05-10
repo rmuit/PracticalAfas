@@ -197,11 +197,13 @@ class RestCurlClient
                 throw new InvalidArgumentException('Request body must not be provided for GET requests.', 40);
             }
 
-            if (isset($arguments['take']) && (!is_numeric($arguments['take']) || $arguments['take'] < 0)) {
+            if (isset($arguments['take']) && (!is_numeric($arguments['take']) || $arguments['take'] <= 0)) {
+                // A value of 0 would return 1 record (at least at the time we
+                // last tested). We disallow that to prevent possible confusion.
                 throw new InvalidArgumentException("'take' argument must be a positive number.", 42);
             }
             if (isset($arguments['skip']) && (!is_numeric($arguments['skip']) || $arguments['skip'] < 0)) {
-                throw new InvalidArgumentException("'skip' argument must be a positive number.", 43);
+                throw new InvalidArgumentException("'skip' argument must be a positive number or 0.", 43);
             }
         }
 

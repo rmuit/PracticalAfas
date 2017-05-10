@@ -785,6 +785,9 @@ class Connection
                         foreach ($filter as $key => $value) {
                             if ($key !== '#op') {
 
+                                if (is_array($value)) {
+                                    throw new InvalidArgumentException('Filter has more than two array dimensions: ' . json_encode($filters), 33);
+                                }
                                 $fields[] = $key;
                                 $values[] = $value;
                                 $operators[] = $op;
@@ -863,6 +866,9 @@ class Connection
                         foreach ($filter as $key => $value) {
                             if ($key !== '#op') {
 
+                                if (is_array($value)) {
+                                    throw new InvalidArgumentException('Filter has more than two array dimensions: ' . json_encode($filters), 33);
+                                }
                                 $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . static::xmlValue($value) . '</Field>';
                             }
                         }
