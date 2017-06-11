@@ -385,9 +385,15 @@ class Connection
      */
     public function getData($data_id, array $filters = [], $data_type = self::DATA_TYPE_GET, array $extra_arguments = [])
     {
+        // We're going to let AFAS report an error for wrong/empty scalar values
+        // of data_id (e.g. connector), but at least throw here for any
+        // non-scalar.
+        if ((!is_string($data_id) || $data_id === '') && !is_int($data_id)) {
+            throw new InvalidArgumentException("Invalid 'data_id' argument: " . json_encode($data_id), 32);
+        }
         // Just in case the user specified something other than a constant:
         if (!is_string($data_type)) {
-            throw new InvalidArgumentException('Unknown data_type value: ' . json_encode($data_type), 32);
+            throw new InvalidArgumentException("Invalid 'data_type' argument: " . json_encode($data_type), 32);
         }
         $data_type = strtolower($data_type);
 
@@ -432,7 +438,7 @@ class Connection
         }
 
         // 'Metadata' only makes sense for SOAP GetConnectors (where it
-        // influences API return value). but may make sense for all REST API
+        // influences API return value) but may make sense for all REST API
         // calls (because we process the return value ourselves).
         if ($this->clientType !== 'SOAP' || $data_type === self::DATA_TYPE_GET) {
             if (isset($extra_arguments['options']['Metadata'])) {
@@ -630,7 +636,7 @@ class Connection
         // If the 'options' argument holds an array, we assume these are values
         // compatible with a SOAP GetConnector (and e.g. set because we want
         // to return the literal return value from the REST endpoint instead of
-        // an array). We supports them but we don't want them to end up in the
+        // an array). We support these but we don't want them to end up in the
         // REST call.
         if (isset($extra_arguments['options']) && is_array($extra_arguments['options'])) {
             unset($extra_arguments['options']);
@@ -653,6 +659,14 @@ class Connection
      */
     protected static function parseGetDataArguments($data_id, array $filters = [], $data_type = self::DATA_TYPE_GET, array $extra_arguments = [])
     {
+        // $data_id and arguments are going to be encoded in the SOAP message,
+        // so on that level there are no security issues. But we have no idea
+        // what AFAS itself will do with badly formed IDs... (Experience
+        // suggests: probably give an unhelpful general error message.) So let's
+        // assume that all arguments/options are expected to be ASCII only, and
+        // encode them in some known format. We could take anything but let's
+        // do XML because it's easy...
+        $data_id = static::xmlValue($data_id);
         $function = '';
         switch ($data_type) {
             case self::DATA_TYPE_GET:
@@ -675,7 +689,7 @@ class Connection
                 // Turn 'options' argument (which is always set) into XML.
                 $options_str = '';
                 foreach ($extra_arguments['options'] as $option => $value) {
-                    $options_str .= "<$option>$value</$option>";
+                    $options_str .= "<$option>" . static::xmlValue($value) . "</$option>";
                 }
                 $extra_arguments['options'] = "<options>$options_str</options>";
                 // For get connectors that are called through App Connectors,
@@ -830,18 +844,22 @@ class Connection
      *     This supports different operators but is harder to write/read. All
      *     sub-arrays are AND'ed together; AFAS GetConnectors do not support the
      *     'OR' operator here.
+     *
      *   Mixing the formats up (that is: having array values in the _outer_
      *   array which are both scalars and arrays) is allowed. If the values are
      *   arrays, keys are ignored; if they are scalars, keys are the field
      *   values. The end result is the same, regardless whether a field-value
      *   pair is inside an inner array; the returned result is a one-dimensional
      *   list of field-value-operator combinations.
+     *   If an (outer or inner) array only contains one single '#op' value, it's
+     *   silently ignored.
      *   For the operator values, see the OP_* constants defined in this class.
      *
      * @return string
-     *   The filters formatted as 'FiltersXML' argument. (If the input is empty,
-     *   then the XML will contain a few tags with no content; the effect of
-     *   this is untested. Just don't call this with empty input.)
+     *   The filters formatted as 'FiltersXML' argument. (If the input is empty
+     *   or only contains an '#op',  then the XML will contain a few tags with
+     *   no content; the effect of this is untested. It seems nothing will go
+     *   wrong then, but it's better to just not call this with empty input.)
      *
      * @throws \InvalidArgumentException
      *   If the input argument has an unrecognized structure.
