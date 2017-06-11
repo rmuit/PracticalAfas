@@ -286,8 +286,14 @@ Connection class made sure to fill a value - it sets 1000 by default.)
 ### Helper
 
 This contains a bunch of static methods which I've found useful in exchanging
-data with other systems: Conversions to/from AFAS country codes, normalizing the
-structure of a Dutch phone number and/or a physical address.
+data with other systems: 
+
+- A getDataBatch() method to assist in fetching a data set in multiple batches
+  by calling the method repeatedly to get each batch. (This is useful for large
+  data sets, when we need to specify a maximum 'take' parameter to calls.)
+
+- Conversions to/from AFAS country codes, normalizing the structure of a Dutch 
+  phone number and/or a physical address.
 
 Also, it contains a method called constructXML, which takes as input an array
 (in a very strict format) and outputs the corresponding XML string to send to an
