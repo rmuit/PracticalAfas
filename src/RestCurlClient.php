@@ -293,7 +293,7 @@ class RestCurlClient
             throw new RuntimeException("CURL returned code: $curl_errno / error: \"$curl_error\" / response body: \"$response\"", $curl_error + 800);
         }
         // We'll start out strict, and cancel on all unexpected return codes.
-        if ($http_code != 200) {
+        if ($http_code != 200 && ($http_code != 201 || !in_array($type, ['POST', 'PUT'], true))) {
             // For e.g. code 500, we've seen a message in the response (at least
             // when we entered an invalid URL). For 401 (Unauthorized. when we
             // did not specify a token) the response is empty but headers
