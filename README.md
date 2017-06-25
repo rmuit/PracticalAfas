@@ -13,8 +13,8 @@ though that URL will undoubtedly change.)
 
 This code formed through two principles:
 
-* _Practical usability (by programmers)._
-* Making REST API calls work similarly to SOAP API calls
+* _Practical usability (by programmers)_;
+* Making REST API calls work similarly to SOAP API calls.
 
 The first principle means understandable code is preferred over future-proof
 extensibility that creates separate classes for each little thing and introduces
@@ -39,11 +39,13 @@ Two alternative ways to use this library are:
   RestCurlClient::callAfas() either returns a JSON string or throws exceptions.
 
 - Otherwise, use Connection::getData() (which wraps around the SOAP or REST
-  client) for everything except UpdateConnectors, if you e.g.
+  client), if you e.g.
   * do not like the structure of the filter arguments in the REST calls
     (including the fact that there are numeric codes for operators)
   * want array data returned
   * want to be able to change between the REST and SOAP APIs, for some reason
+  * like having things like default values filled automatically when inserting
+    new objects through an Update Connector.
 
 We'll first discuss the clients and give call examples for comparison purposes
 with the Connection. You can skip these, unless you're curious about the
@@ -59,7 +61,9 @@ know their structure. The class only deals with:
   into every call; there used to be different classes doing NTLM authentication
   instead of tokens)
 * very basic argument validation only (e.g. skip & take being numeric).
-The connection and authentication settings get passed into the constructor.
+
+The connection and authentication settings get passed into the constructor; not
+to every individual AFAS call).
 
 They have only one public method: callAfas(). They make (almost) no assumptions
 about the remote API calls; the exact (type of) remote method and arguments need
@@ -87,6 +91,7 @@ $result_as_json_string = $client->callAfas(
 );
 $attachment = $client->callAfas('subject', 'GetAttachment', [ 'subjectID' => 123 ] );
 
+// This is inserting a new organisation with only its name filled:
 $client->callAfas('update', 'Execute', [ 'connectorType' => 'KnOrganisation', 'dataXml => '<KnOrganisation xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Element><Fields Action="insert"><MatchOga>0</MatchOga><Nm>MyCompany Ltd.</Nm></Fields></Element></KnOrganisation>' ] );
 ```
 
@@ -115,7 +120,7 @@ $result_as_xml_string = $client->callAfas(
 );
 $attachment = $client->callAfas('GET', 'subjectconnector/123');
 
-// NOTE - update not tested yet!
+$client->callAfas('POST', 'connectors/KnOrganisation', [], '{"KnOrganisation":{"Element":{ "Fields":{"MatchOga":0,"Nm":MyCompany Ltd."}}}}'
 ```
 
 ### 2. Connection
@@ -145,8 +150,9 @@ $result_as_string = $connection->getData(
 );
 $attachment = $connection->getData(123, [], Connection::DATA_TYPE_SUBJECT);
 
-// Updates are only working with SOAP clients so far:
-$connection->sendXml('KnOrganisation', '<KnOrganisation xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Element><Fields Action="insert"><MatchOga>0</MatchOga><Nm>MyCompany Ltd.</Nm></Fields></Element></KnOrganisation>' );
+// This works for both client types, converting the array to XML or JSON as
+// needed. See the docs on calling Update Connectors below for more info.
+$connection->sendData('KnOrganisation', ['name' => 'MyCompany Ltd.'], 'POST');
 
 // An extra, more common, example for a GetConnector with simple filter:
 $result_as_array = $connection->getData('MyGetConnectorName',  [ 'SomeCategory' => 'CategName' ] );
@@ -262,7 +268,7 @@ setter/getter value: it is not a boolean, but an integer represented by either
 constant GET_OUTPUTOPTIONS_XML_EXCLUDE_EMPTY (2, the default) or
 GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY (3).
 
-#### Differences between REST and SOAP
+#### Differences between REST and SOAP (for Get Connectors)
 
 The connection class behaves mostly the same, regardless whether it is used with
 a SOAP or REST client. The exceptions are:
@@ -301,33 +307,67 @@ setDataIncludeEmptyFields().)
 ### Helper
 
 This contains a bunch of static methods which I've found useful in exchanging
-data with other systems:
+data with other systems, which are either not tightly integrated into the
+Connection class, or their stability is unknown.
 
 - A getDataBatch() method to assist in fetching a data set in multiple batches
   by calling the method repeatedly to get each batch. (This is useful for large
   data sets, when we need to specify a maximum 'take' parameter to calls.)
 
 - Conversions to/from AFAS country codes, normalizing the structure of a Dutch
-  phone number and/or a physical address.
+  phone number and/or a physical address. These can be used for validating /
+  converting values before sending them over. (They are not really integrated
+  into the library, i.e. array values that are passed through
+  normalizeDataToSend() / constructXML() are not automatically run through these
+  methods. Maybe they should be.)
 
-Also, it contains a method called constructXML, which takes as input an array
-(in a very strict format) and outputs the corresponding XML string to send to an
-Update connector (SOAP client only). This has been instrumental in keeping my
-own sanity when I needed to test updating person objects inside contact object
-inside organization objects... Not only to have aliases for the cryptic tag
-names, but especially to deal with all the funny (a.o.'matching') behavior that
-AFAS exhibits, and to have a place to dump all my test results (in code comments
-that I could read back later). The above simple KnOrganisation example string
-can be output using:
-```
-Helper::constructXml('KnOrganisation', ['name' => 'MyCompany Ltd.'], 'insert')
-```
-constructXml() is not inside Connection because it's incomplete / a work in
-progress, because it forces a specific logic and because it's quite big with all
-its data mapping arrays. However if you need to update AFAS objects over SOAP I
-recommend testing it out. Maybe update the code and send a pull request.
-(Especially when updating nested person/organization objects: read the code and
-save yourself the heachaches I've had.)
+- A normalizeDataToSend() method that will take an array with a custom (strict)
+  format, and convert it to an array which is suitable for sending to an Update
+  Connector through a REST client, as JSON. Plus a constructXml() method that
+  will take the same array and convert it to an XML string which is suitable for
+  sending through a SOAP client.
+
+### Calling Update Connectors through Connection::sendData()
+
+The second argument to sendData() can be a string, in which case it will be
+passed to the client / sent to the AFAS API as-is. So it must be a valid XML or
+JSON string, depending on the client type.
+
+The argument can also be an array, in which case the Helper class will be used
+to convert that array to XML or JSON. The format of this array is custom and
+fairly strict, i.e. exceptions will be thrown for any unrecognized array value.
+What this provides is, among others:
+* being able to use aliases for the somewhat cryptic array keys / XML tags;
+* default values in some cases.
+Besides this, for me personally, having a place to document test results and
+write other comments in the Helper::objectTypeInfo() has been instrumental in
+keeping my sanity when I needed to test updating nested person objects inside
+contact object inside organization objects, and deal with all the funny (a.o.
+'matching') behavior that AFAS exhibits. (Especially when updating nested person
+/ organization objects: read the code and save yourself the heachaches I've had.)
+
+I won't claim that the data definitions and conversion methods are perfect,
+though. They suffice for simple updates, if you find arrays more descriptive
+than formatted JSON/XML. For sending more elaborate structures, or data types
+(Update Connectors) that were not used yet: please test carefully; documented
+PRs are always welcome. Also: I've only tested sending nested objects over a
+SOAP client, so far.
+
+## Bugs
+
+1) Helper::objectTypeInfo is permanently incomplete, as mentioned just above.
+
+2) The structure of JSON objects as (currently) found in AFAS documentation does
+not describe how to send in multiple elements of the same type. Our
+Helper::constructXML() can do this, but Helper::normalizeDataToSend() and by
+extension Connection::sendData() cannot handle multiple elements at once. See
+the comments/@todos inside Helper::normalizeDataToSend() for an example XML vs
+JSON representation.
+
+I'm fairly sure this must be possible (because otherwise it would be impossible
+to send e.g. an order containing more than one line item over REST) but lack an
+environment where I can test endlessly. Please send in date definitions (or even
+better, changed code) to make this work.
 
 ## Authors
 

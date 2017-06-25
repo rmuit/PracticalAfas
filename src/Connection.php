@@ -11,6 +11,7 @@
 namespace PracticalAfas;
 
 use InvalidArgumentException;
+use RuntimeException;
 use SimpleXMLElement;
 use UnexpectedValueException;
 
@@ -94,6 +95,16 @@ class Connection
     const GET_METADATA_YES = 1;
 
     /**
+     * The name of the helper class we use for many sendData calls.
+     *
+     * There is no getter/setter for this. It's only injected in the
+     * constructor.
+     *
+     * @var string
+     */
+    protected $helperClassName;
+
+    /**
      * The PracticalAfas client we use to execute actual AFAS calls.
      *
      * @var object
@@ -133,10 +144,18 @@ class Connection
      *
      * @param object $client
      *   A PracticalAfas client object.
+     * @param string $helper_class_name
+     *   (optional) name of a class containing helper methods. This is used in
+     *   sendData(), for now; see there for the method names. We inject a class
+     *   name, not an instantiated object, since the methods are static and not
+     *   always used. The typical use case for passing this argument is to set
+     *   a subclass of Helper, which has had objectTypeInfo() extended with
+     *   custom field definitions.
      */
-    public function __construct($client)
+    public function __construct($client, $helper_class_name = '\PracticalAfas\Helper')
     {
         $this->setClient($client);
+        $this->helperClassName = $helper_class_name;
     }
 
     /**
@@ -289,12 +308,11 @@ class Connection
         $this->includeEmptyFields = $include;
     }
 
-
     /**
-     * Calls AFAS 'Update connector' with standard arguments and an XML string.
+     * Calls AFAS Update Connector with standard arguments and an XML string.
      *
      * @param $connector_name
-     *   Name of the UpdateConnector.
+     *   Name of the Update Connector.
      * @param string $xml
      *   XML string as specified by AFAS. See their XSD Schemas, or use
      *   AfasApiHelper::constructXML($connector_name, ...) as an argument to
@@ -304,23 +322,71 @@ class Connection
      * @return string
      *   Response from SOAP call. Most successful calls return empty string.
      *
+     * @throws \RuntimeException
+     *   If called for a REST client.
      * @throws \UnexpectedValueException
      *   If the SoapClient returned a response in an unknown format.
      * @throws \Exception
      *   If anything else went wrong. (e.g. a client specific error.)
+     *
+     * @deprecated We now have sendData which is more general and where you
+     *   can provide an array as the second parameter.
      */
     function sendXml($connector_name, $xml)
     {
-        // This is just a 'shorthand' to hide away all those confusing arguments
-        // to callAfas() that we never want to see or change.
-        return $this->client->callAfas(
-            'update',
-            'Execute',
-            [
-                'connectorType' => $connector_name,
-                'dataXml' => $xml,
-            ]
-        );
+        if ($this->clientType !== 'SOAP') {
+            throw new RuntimeException('sendXml() is not supported by REST clients.', 30);
+        }
+        return $this->client->callAfas('update', 'Execute', ['connectorType' => $connector_name, 'dataXml' => $xml]);
+    }
+
+    /**
+     * Sends data to an AFAS Update Connector.
+     *
+     * @param $connector_name
+     *   Name of the Update Connector.
+     * @param string|array $data
+     *   Data string to send in to the Update Connector; must be XML or JSON
+     *   depending on the client type. If this is an array, it will be converted
+     *   to a string using the helper class configured for this Connection.
+     * @param string $rest_verb
+     *   (optional) the HTTP verb representing the action to take: "POST" for
+     *   insert, "PUT" for update, "DELETE" for delete. Must be in upper case;
+     *   defaults to PUT. This also applies to SOAP clients if the $data
+     *   argument is an array: specify "POST" for inserting new data, because
+     *   this will influence how the XML is built.
+     *
+     * @return string
+     *   Response from SOAP call. Most successful calls return empty string.
+     *
+     */
+    function sendData($connector_name, $data, $rest_verb = 'PUT')
+    {
+        // We've specified a rest verb instead of "insert" / "update" / "delete"
+        // because this way, it is still easier to change things if necessary
+        // with regards to the $fields_action argument to the Helper methods.
+        // For how, there is a direct relation between the verb and the action.
+        // If there are ever situations in which this should change, then
+        // (documented) PRs are welcomed.
+        if (!is_string($data)) {
+            $actions = ['PUT' => 'update', 'POST' => 'insert', 'DELETE' => 'delete'];
+            $fields_action = isset($actions[$rest_verb]) ? $actions[$rest_verb] : '';
+            $class = $this->helperClassName;
+        }
+
+        if ($this->clientType === 'SOAP') {
+            if (!is_string($data)) {
+                $data = $class::constructXml($connector_name, $data, $fields_action);
+            }
+            $response = $this->client->callAfas('update', 'Execute', ['connectorType' => $connector_name, 'dataXml' => $data]);
+        } else {
+            if (!is_string($data)) {
+                $data = json_encode($class::normalizeDataToSend($connector_name, $data, $fields_action));
+            }
+            $response = $this->client->callAfas($rest_verb, "connectors/$connector_name", [], $data);
+        }
+
+        return $response;
     }
 
     /**
