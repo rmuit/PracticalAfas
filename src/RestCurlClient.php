@@ -59,7 +59,7 @@ class RestCurlClient
      * Constructor.
      *
      * @param array $options
-     *   Configuration options.
+     *   Configuration options. (Case sensitive.)
      *   Required:
      *   - customerId:      Customer ID, as used in the AFAS endpoint URL.
      *   - appToken:        Token used for the App connector.
@@ -162,11 +162,12 @@ class RestCurlClient
      * is not know yet. Still, we kept the possibility.)
      *
      * @param array $arguments
-     *   Named URL arguments. All values must be scalars.
+     *   Named URL arguments. All argument names must be lower case; all values
+     *   must be scalars.
      * @param string $function
      *   The REST API 'function' (URL) to call.
      * @param string $type
-     *   HTTP verb: GET, PUT, POST, DELETE. (Case sensitive.)
+     *   HTTP verb: GET, PUT, POST, DELETE. Must be upper case.
      * @param string $request_body
      *   Request body to send for POST/PUT requests.
      *
@@ -211,13 +212,15 @@ class RestCurlClient
      * Calls a REST API method.
      *
      * @param string $type
-     *   HTTP verb: GET, PUT, POST, DELETE. Must be upper case.
+     *   HTTP verb: GET, PUT, POST, DELETE.
      * @param string $function
      *   The REST API 'function' (URL) to call. The caller is expected to ensure
      *   its validity.
      * @param array $arguments
      *   Named URL arguments. All values must be scalars. Unlike $function, all
-     *   names/values will be escaped.
+     *   names/values will be escaped. (Case of the argument names gets changed;
+     *   if there are multiple arguments whose names only differ in case, then
+     *   the value that is later in the array will override earlier arguments.)
      * @param string $request_body
      *   (optional) request body to send for POST/PUT requests. Note that in
      *   POST/PUT cases, $arguments is always empty; still, we did not want to
@@ -237,6 +240,12 @@ class RestCurlClient
      */
     public function callAfas($type, $function, array $arguments, $request_body = '')
     {
+        $type = strtoupper($type);
+        // Unify case of arguments, so we don't skip any validation. (If two
+        // arguments with different case are in the array, the value that is
+        // later in the array will override other indices.)
+        $arguments = array_change_key_case($arguments);
+
         $arguments = $this->validateArguments($arguments, $function, $type, $request_body);
 
         // Unlike other input, we don't escape $function (we assume it is safe)

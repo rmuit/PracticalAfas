@@ -416,15 +416,17 @@ class Connection
      * @param array $extra_arguments
      *   (optional) Other arguments to pass to the API call, besides the ones
      *   in $filters / hardcoded for convenience. For GetConnectors this is
-     *   typically 'skip' and 'take'. The 'options' arguments will not be sent
+     *   typically 'Skip' and 'Take'. The 'options' arguments will not be sent
      *   to REST API calls but will still be interpreted, for compatibility with
      *   SOAP. Supported options are 'Outputmode, 'Metadata' and 'Outputoptions'
      *   whose valid values are GET_* constants defined in this class and which
      *   can also be influenced permanently instead of per getData() call; see
      *   setter methods setDataOutputFormat(), setDataIncludeMetadata() and
      *   setDataIncludeEmptyFields() respectively. Other supported options are
-     *   'skip' and 'take', but it is recommended to not use these as options;
-     *   set them at the root level of $extra_arguments instead.
+     *   'Skip' and 'Take', but it is recommended to not use these as options;
+     *   set them at the root level of $extra_arguments instead. (If there are
+     *   multiple arguments whose names only differ in case, then the value that
+     *   is later in the array will override earlier arguments.)
      *
      * @return mixed
      *   Output; format is dependent on data type and extra arguments. The
@@ -466,6 +468,13 @@ class Connection
             throw new InvalidArgumentException("Invalid 'data_type' argument: " . json_encode($data_type), 32);
         }
         $data_type = strtolower($data_type);
+        // Unify case of arguments, so we don't skip any validation. (If two
+        // arguments with different case are in the array, the value that is
+        // later in the array will override other indices.)
+        $extra_arguments = array_change_key_case($extra_arguments);
+        if (isset($extra_arguments['options']) && is_array($extra_arguments['options'])) {
+            $extra_arguments['options'] = array_change_key_case($extra_arguments['options']);
+        }
 
         // The SOAP GetDataWithOptions function supports an 'options' argument
         // with several sub values. This class initially supported three of them
@@ -488,7 +497,7 @@ class Connection
             // We want to return the literal return value from the endpoint.
             $output_format = self::GET_OUTPUTMODE_LITERAL;
         } else {
-            $output_format = isset($extra_arguments['options']['Outputmode']) ? $extra_arguments['options']['Outputmode']
+            $output_format = isset($extra_arguments['options']['outputmode']) ? $extra_arguments['options']['outputmode']
                 : $this->getDataOutputFormat();
             // 'Real' output modes as defined for SOAP, and which we piggyback
             // on with GET_OUTPUTMODE_LITERAL, are numeric. Only 1 other format
@@ -513,10 +522,10 @@ class Connection
         // influences API return value) but may make sense for all REST API
         // calls (because we process the return value ourselves).
         if ($this->clientType !== 'SOAP' || $data_type === self::DATA_TYPE_GET) {
-            if (isset($extra_arguments['options']['Metadata'])) {
-                $include_metadata = !empty($extra_arguments['options']['Metadata']);
+            if (isset($extra_arguments['options']['metadata'])) {
+                $include_metadata = !empty($extra_arguments['options']['metadata']);
             } elseif ($this->clientType !== 'SOAP' && $output_format == self::GET_OUTPUTMODE_LITERAL) {
-                // If the output format comes from $extra_arguments['options']['Outputmode'],
+                // If the output format comes from $extra_arguments['options']['outputmode'],
                 // this overrides the value to true even though
                 // $this->getDataIncludeMetadata() will return false (because it
                 // cannot see the actual output format).
@@ -553,8 +562,8 @@ class Connection
         // 'Outputoptions' governs whether empty fields are present in output;
         // this really only makes sense for GetConnectors.
         if ($data_type === self::DATA_TYPE_GET || $data_type === self::GET_FILTER_OR) {
-            $include_empty_fields = isset($extra_arguments['options']['Outputoptions']) ?
-                $extra_arguments['options']['Outputoptions'] == self::GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY
+            $include_empty_fields = isset($extra_arguments['options']['outputoptions']) ?
+                $extra_arguments['options']['outputoptions'] == self::GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY
                 : $this->getDataIncludeEmptyFields();
             if (!$include_empty_fields && $this->clientType !== 'SOAP') {
                 // We could support this for REST too, at least for
@@ -605,12 +614,12 @@ class Connection
                 $extra_arguments += ['options' => []];
                 // If we have any output format not recognized by the SOAP call,
                 // we actually want literal XML and we post process it later.
-                if (!isset($extra_arguments['options']['Outputmode']) || !is_numeric($extra_arguments['options']['Outputmode'])) {
-                    $extra_arguments['options']['Outputmode'] = self::GET_OUTPUTMODE_LITERAL;
+                if (!isset($extra_arguments['options']['outputmode']) || !is_numeric($extra_arguments['options']['outputmode'])) {
+                    $extra_arguments['options']['outputmode'] = self::GET_OUTPUTMODE_LITERAL;
                 }
                 $extra_arguments['options'] += [
-                    'Metadata' => $include_metadata ? self::GET_METADATA_YES : self::GET_METADATA_NO,
-                    'Outputoptions' => $include_empty_fields ? self::GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY : self::GET_OUTPUTOPTIONS_XML_EXCLUDE_EMPTY,
+                    'metadata' => $include_metadata ? self::GET_METADATA_YES : self::GET_METADATA_NO,
+                    'outputoptions' => $include_empty_fields ? self::GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY : self::GET_OUTPUTOPTIONS_XML_EXCLUDE_EMPTY,
                 ];
             }
             list($type, $function, $arguments) = self::parseGetDataArguments($data_id, $filters, $data_type, $extra_arguments);
@@ -779,14 +788,17 @@ class Connection
                 // We don't support the 'GetData' function. It seems to not have
                 // any advantages.
                 $function = 'GetDataWithOptions';
-                $extra_arguments['connectorId'] = $data_id;
+                $extra_arguments['connectorid'] = $data_id;
                 if (!empty($filters)) {
-                    $extra_arguments['filtersXml'] = static::parseFilters($filters);
+                    $extra_arguments['filtersxml'] = static::parseFilters($filters);
                 }
                 // Turn 'options' argument (which is always set) into XML.
                 $options_str = '';
                 foreach ($extra_arguments['options'] as $option => $value) {
-                    $options_str .= "<$option>" . static::xmlValue($value) . "</$option>";
+                    // Case of the options does not seem to matter (unlike the
+                    // direct arguments, which the Client will take care of),
+                    // but do what seems customary in the docs: one capital.
+                    $options_str .= '<' . ucfirst($option) . '>' . static::xmlValue($value) . '</' . ucfirst($option) . '>';
                 }
                 $extra_arguments['options'] = "<options>$options_str</options>";
                 // For get connectors that are called through App Connectors,
@@ -810,15 +822,15 @@ class Connection
 
             case self::DATA_TYPE_REPORT:
                 $function = 'Execute';
-                $extra_arguments['reportID'] = $data_id;
+                $extra_arguments['reportid'] = $data_id;
                 if (!empty($filters)) {
-                    $extra_arguments['filtersXml'] = static::parseFilters($filters);
+                    $extra_arguments['filtersxml'] = static::parseFilters($filters);
                 }
                 break;
 
             case self::DATA_TYPE_SUBJECT:
                 $function = 'GetAttachment';
-                $extra_arguments['subjectID'] = $data_id;
+                $extra_arguments['subjectid'] = $data_id;
                 break;
 
             case self::DATA_TYPE_DATA:
@@ -833,8 +845,8 @@ class Connection
                 // other function for the so-called 'DataConnector' than getting
                 // XML schema)
                 $function = 'Execute';
-                $extra_arguments['dataID'] = 'GetXmlSchema';
-                $extra_arguments['parametersXml'] = "<DataConnector><UpdateConnectorId>$data_id</UpdateConnectorId><EncodeBase64>false</EncodeBase64></DataConnector>";
+                $extra_arguments['dataid'] = 'GetXmlSchema';
+                $extra_arguments['parametersxml'] = "<DataConnector><UpdateConnectorId>$data_id</UpdateConnectorId><EncodeBase64>false</EncodeBase64></DataConnector>";
                 break;
 
             case self::DATA_TYPE_TOKEN:
@@ -843,15 +855,15 @@ class Connection
                 // its understandable error messages (e.g. if one of them is
                 // missing then we get the notorious "Er is een onverwachte fout
                 // opgetreden") so we take over that task and throw exceptions.
-                if (empty($extra_arguments['apiKey']) || empty($extra_arguments['environmentKey'])) {
+                if (empty($extra_arguments['apikey']) || empty($extra_arguments['environmentkey'])) {
                     throw new InvalidArgumentException("Required extra arguments 'apiKey' and 'environmentKey' not both provided.", 34);
                 }
-                if (!is_string($extra_arguments['apiKey']) || strlen($extra_arguments['apiKey']) != 32
-                    || !is_string($extra_arguments['environmentKey']) || strlen($extra_arguments['environmentKey']) != 32
+                if (!is_string($extra_arguments['apikey']) || strlen($extra_arguments['apikey']) != 32
+                    || !is_string($extra_arguments['environmentkey']) || strlen($extra_arguments['environmentkey']) != 32
                 ) {
                     throw new InvalidArgumentException("Extra arguments 'apiKey' and 'environmentKey' should both be 32-character strings.", 34);
                 }
-                $extra_arguments['userId'] = $data_id;
+                $extra_arguments['userid'] = $data_id;
                 break;
 
             case self::DATA_TYPE_VERSION_INFO:

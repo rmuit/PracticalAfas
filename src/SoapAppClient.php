@@ -174,7 +174,7 @@ class SoapAppClient
      * data manipulation.
      *
      * @param array $arguments
-     *   Arguments for function.
+     *   Arguments for function. All argument names must be lower case.
      * @param string $function
      *   SOAP function name to call.
      *
@@ -236,7 +236,10 @@ class SoapAppClient
      * @param string $function
      *   Function name to call.
      * @param array $arguments
-     *   Named function arguments. All values must be scalars.
+     *   Named function arguments. All values must be scalars. (Case of argument
+     *   names gets changed; if there are multiple arguments whose names only
+     *   differ in case, then the value that is later in the array will override
+     *   earlier arguments.)
      *
      * @return string
      *   The response from the SOAP endpoint.
@@ -252,18 +255,28 @@ class SoapAppClient
      */
     public function callAfas($type, $function, array $arguments)
     {
+        $type = strtolower($type);
+        // Unify case of arguments, so we don't miss any mis-cased ones. (For
+        // instance, a mis-cased 'filtersXml' will not filter anything). If two
+        // arguments with different case are in the array, the value that is
+        // later in the array will override other indices.
+        $arguments = array_change_key_case($arguments);
+
         // Even though this may not be necessary, we want to restrict the
         // connector types to those we know. When adding a new one, we want to
         // carefully check whether we're not missing any arguments that we
         // should be preprocessing.
         if (!in_array($type, ['get', 'update', 'report', 'subject', 'data', 'token', 'versioninfo'])) {
-            throw new InvalidArgumentException("Invalid connector type $type", 40);
+            throw new InvalidArgumentException("Invalid connector type '$type'", 40);
         }
 
         $client = $this->getSoapClient($type);
 
         $arguments = $this->validateArguments($arguments, $function);
 
+        // The SOAP argument names are case sensitive so we need to turn them
+        // back to valid ones.
+        $correct_params = ['connectorid' => 'connectorId', 'filtersxml' => 'filtersXml'];
         $params = [];
         foreach ($arguments as $name => $value) {
 // We could specify integer values as 'int' like the below, but the examples
@@ -275,6 +288,9 @@ class SoapAppClient
 //      else {
 //        $params[] = new SoapVar($value, XSD_STRING, 'string', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
 //      }
+            if (isset($correct_params[$name])) {
+                $name = $correct_params[$name];
+            }
             $params[] = new SoapVar($value, XSD_STRING, null, null, $name, 'urn:Afas.Profit.Services');
         }
         $function_wrapper = new SoapVar($params, SOAP_ENC_OBJECT, null, null, $function, 'urn:Afas.Profit.Services');
