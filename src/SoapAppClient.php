@@ -191,25 +191,37 @@ class SoapAppClient
             $arguments['token'] = '<token><version>1</version><data>' . $this->options['appToken'] . '</data></token>';
         }
         if ($this->connectorType === 'get') {
-            if (empty($arguments['take'])) {
-                // For get connectors (both getData and getDataWithOptions),
-                // there is an issue with the skip & take arguments. The WSDL
-                // suggests they are both required, though testing says that the
-                // 'skip' argument is perfectly OK to leave out. However if
-                // 'take' is left out, nothing is returned, which suggests that
-                // it defaults to '0' (which returns no data). This class is not
-                // in the business of forcing any logic on the arguments, but
-                // since the behavior of returning nothing by default is so
-                // confusing, we'll throw an exception if this is about to
-                // happen (which we do here, not in Connection, so people can't
-                // miss it).
+            // There are two issues with the 'skip' / 'take' arguments:
+            // - (For both getData and getDataWithOptions), the WSDL suggests
+            //   they are both required, though testing says that it's perfectly
+            //   OK to not specify 'skip'. However if 'take' is left out,
+            //   nothing is returned, which suggests that it defaults to '0'
+            //   (which returns no data).
+            // - There are actually two arguments which work: 'take', and a
+            //   'take' option inside the 'option' argument (which means it's
+            //   encoded as "<take>N</take>"). Same for 'skip'. Testing shows
+            //   different behavior for the two variations:
+            //   - If the 'options' 'take' argument is -1, 1000 records are
+            //     returned. Also if a value > 1000 is specified, the output is
+            //     truncated silently to 1000 records. (If 0 is specified, no
+            //     data is returned, just like the regular argument.)
+            //   - If the regular 'take' argument is -1, a "Unexpected backend
+            //     error" is returned. If a value > 1000 is specified, the
+            //     specified number of records is returned.
+            //   - If both are specified, the regular 'take' argument is used.
+            if (empty($arguments['take']) && (empty($arguments['options']) || stripos($arguments['options'], '<take>') === false)) {
+                // This class generally does not want to force any logic on the
+                // specified arguments, but since the behavior of returning
+                // nothing by default is confusing, we'll throw an exception if
+                // this is about to happen (which we do here, not in Connection,
+                // so people can't miss it).
                 throw new InvalidArgumentException("'take' argument must not be empty/zero, otherwise no results are returned.", 41);
             }
-            if (!is_numeric($arguments['take']) || $arguments['take'] < 0) {
+            if (isset($arguments['take']) && (!is_numeric($arguments['take']) || $arguments['take'] <= 0)) {
                 throw new InvalidArgumentException("'take' argument must be a positive number.", 42);
             }
-            if (!empty($arguments['skip']) && (!is_numeric($arguments['skip']) || $arguments['skip'] < 0)) {
-                throw new InvalidArgumentException("'skip' argument must be a positive number.", 43);
+            if (isset($arguments['skip']) && (!is_numeric($arguments['skip']) || $arguments['skip'] < 0)) {
+                throw new InvalidArgumentException("'skip' argument must be zero or larger.", 43);
             }
         }
 

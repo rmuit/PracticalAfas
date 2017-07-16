@@ -74,7 +74,8 @@ class Connection
     // 'quasi deprecated'.)
     const GET_OUTPUTMODE_LITERAL = 1;
     const GET_OUTPUTMODE_XML = 1;
-    // TEXT is defined here, but not supported by this class!
+    // TEXT is defined here, but not supported by this class and apparently also
+    // not supported by the SOAP (App)Connector anymore!
     const GET_OUTPUTMODE_TEXT = 2;
 
     // Constants representing the (XML)'Outputoptions' option for GetConnectors.
@@ -407,10 +408,11 @@ class Connection
      * @param array $filters
      *   (optional) Filters to apply before returning data.
      * @param string $data_type
-     *   (optional) Type of data to retrieve and/or filter type. Defaults to
-     *   GET_FILTER_AND / DATA_TYPE_GET (which is the same); use GET_FILTER_OR
-     *   to apply 'OR' to $filters instead of 'AND', for a GetConnector; use
-     *   other DATA_TYPE_ constants to call other connector types.
+     *   (optional) Type of data to retrieve / connector to call, and/or filter
+     *   type. Defaults to GET_FILTER_AND / DATA_TYPE_GET (which is the same).
+     *   Use GET_FILTER_OR to apply 'OR' to $filters instead of 'AND', for a
+     *   GetConnector. Use other DATA_TYPE_ constants (see just above) to call
+     *   other connectors.
      * @param array $extra_arguments
      *   (optional) Other arguments to pass to the API call, besides the ones
      *   in $filters / hardcoded for convenience. For GetConnectors this is
@@ -420,7 +422,9 @@ class Connection
      *   whose valid values are GET_* constants defined in this class and which
      *   can also be influenced permanently instead of per getData() call; see
      *   setter methods setDataOutputFormat(), setDataIncludeMetadata() and
-     *   setDataIncludeEmptyFields() respectively.
+     *   setDataIncludeEmptyFields() respectively. Other supported options are
+     *   'skip' and 'take', but it is recommended to not use these as options;
+     *   set them at the root level of $extra_arguments instead.
      *
      * @return mixed
      *   Output; format is dependent on data type and extra arguments. The
@@ -464,14 +468,16 @@ class Connection
         $data_type = strtolower($data_type);
 
         // The SOAP GetDataWithOptions function supports an 'options' argument
-        // with 3 sub values, which:
+        // with several sub values. This class initially supported three of them
+        // ('Outputmode', 'Metadata' and 'Outputoptions') for SOAP calls, which
         // - we will also support for REST, to make switching from SOAP to REST
         //   clients easier;
         // - we have also made into setters/getters for this class, so they can
         //   be set once instead of being passed always;
         // - we will interpret for all calls where it makes sense (even though
         //   only GetConnectors for SOAP supported them initially).
-        // Check all values / defaults here, and validate them.
+        // Check these three values / defaults here, and validate them.
+        // For more options: see further below.
 
         // 'Outputmode' only makes sense for SOAP GetConnectors (because for
         // other connectors, the output cannot be converted to arrays /
@@ -560,8 +566,36 @@ class Connection
             $include_empty_fields = false;
         }
 
-        // We split up the parsing in two functions per client type because it's
-        // so different.
+        // The SOAP GetDataWithOptions function's 'options' argument supports
+        // more options than just above three. We have not seen these documented
+        // in AFAS' online docs; they were probably added later (when AFAS added
+        // a REST API) and this class did support them before v1.2. They are
+        // - 'Take' and 'Skip'. That is right: the AFAS SOAP service recognizes
+        //   these arguments as standalone arguments _and_ as 'options'
+        //   arguments. They differ in behavior and the regular argument has
+        //   stricter validation / does not auto-truncate. (For test results:
+        //   see SoapAppclient::validateArguments().)
+        foreach (['take', 'skip'] as $arg) {
+            // We will accept both arguments as input (for REST clients too; why
+            // not...) but warn if they are duplicate, because we don't want to
+            // rely on the undocumented behavior of which one gets preference...
+            if (isset($extra_arguments[$arg]) && isset($extra_arguments['options'][$arg])
+                // Non-numeric arguments will fail later anyway; this slightly
+                // strange comparison makes sure '0' is not replaced by '' just
+                // below.
+                && ($extra_arguments[$arg] != $extra_arguments['options'][$arg] || !is_numeric($extra_arguments['options'][$arg]))) {
+                throw new InvalidArgumentException("Duplicate '$arg' argument found, both as regular argument and inside 'options'. One should be deleted (preferrably the option).", 38);
+            }
+            // ... and we'll always move the option to the regular argument,
+            // because that one has less implicit/irregular behavior.
+            if (isset($extra_arguments['options'][$arg])) {
+                $extra_arguments[$arg] = $extra_arguments['options'][$arg];
+                unset($extra_arguments['options'][$arg]);
+            }
+        }
+
+        // We split up the parsing of further arguments into methods per client
+        // type because it's so different.
         if ($this->clientType === 'SOAP') {
             if ($data_type === self::DATA_TYPE_GET) {
                 // Always add the 'options' parameters which we just validated.
@@ -581,6 +615,12 @@ class Connection
             }
             list($type, $function, $arguments) = self::parseGetDataArguments($data_id, $filters, $data_type, $extra_arguments);
         } else {
+            // If the 'options' argument holds an array, we've just preprocessed
+            // those, to provide compatibility with a SOAP GetConnector. But we
+            // don't want them to end up in the REST call.
+            if (isset($extra_arguments['options']) && is_array($extra_arguments['options'])) {
+                unset($extra_arguments['options']);
+            }
             list($type, $function, $arguments) = self::parseGetDataRestArguments($data_id, $filters, $data_type, $extra_arguments);
         }
 
@@ -699,15 +739,6 @@ class Connection
             throw new InvalidArgumentException('Unknown data_type value: ' . json_encode($data_type), 32);
         }
 
-        // If the 'options' argument holds an array, we assume these are values
-        // compatible with a SOAP GetConnector (and e.g. set because we want
-        // to return the literal return value from the REST endpoint instead of
-        // an array). We support these but we don't want them to end up in the
-        // REST call.
-        if (isset($extra_arguments['options']) && is_array($extra_arguments['options'])) {
-            unset($extra_arguments['options']);
-        }
-
         return [$http_verb, $function, $extra_arguments];
     }
 
@@ -759,12 +790,20 @@ class Connection
                 }
                 $extra_arguments['options'] = "<options>$options_str</options>";
                 // For get connectors that are called through App Connectors,
-                // there are 'skip/take' arguments, and we make the 'take'
-                // argument mandatory: if it is not specified, the output will
-                // be empty. (Further general validation is done in the client
-                // classes, but the job of hardcoding a capped value does not
+                // there are 'skip/take' arguments, and we provide a default
+                // 'take' because if it is not specified, the output will be
+                // empty. (Further general validation is done in the Client
+                // class, but the job of hard coding a capped value does not
                 // belong in there.)
                 if (!isset($extra_arguments['take'])) {
+                    // 1000 happens to be the default/maximum number of records
+                    // returned if 'take' was specified as an 'options' argument
+                    // (which we disallow) and was > 1000. A lower value seems
+                    // too big a compatibility break with pre-App Connectors. It
+                    // is different from the default for REST clients though,
+                    // which is 100. (And we don't raise the REST default to
+                    // 1000 because we prefer keeping the behavior close to the
+                    // AFAS REST API, rather than close to the SOAP client.)
                     $extra_arguments['take'] = 1000;
                 }
                 break;

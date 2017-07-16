@@ -23,10 +23,25 @@ unexpected / undocumented behavior. (The validation of input arguments, and of
 results received from the remote system, covers situations which are unexpected
 for the programmer, and throws documented exceptions.)
 
-(That said: this wasn't created because I was unhappy with other existing
-libraries. There may be good ones. I just inherited some procedural code at the
-end of 2011, which naturally evolved... and about 5 years and 3 rewrites later I
-finally got around to polishing it up for publication.)
+That said, two things:
+* This wasn't created because I was unhappy with other existing libraries. There 
+  may be good ones. I just inherited some procedural code at the end of 2011, 
+  which naturally evolved... and about 5 years and 3 rewrites later I finally 
+  got around to polishing it up for publication.
+* The most used method (unless you use only RestCurlClient) is
+  Connection::getData(). Its code is fairly readable (because it reads top-down
+  without loads of things 'hidden' in other methods/classes)... but calling it 
+  is only simple for 'simple' use cases. (This code was created at a time when 
+  REST and skip/take arguments did not exist yet, which has influenced its
+  evolving and now convoluted signature.)  
+  I personally still
+  prefer doing one call (even with strange arguments) over having to set all
+  arguments like filters, ordering, skip, take etc. in separate chained commands
+  to execute a single Get call... but if people prefer that: they are welcome to
+  contribute that. (Tip: you might want to wrap the existing Connection class, 
+  if you care about the validation of various forms of strangeness - or the
+  compatibility between SOAP and REST clients for e.g. the 'orderbyfieldids'
+  argument).
 
 ## Using the classes
 
@@ -43,7 +58,8 @@ Two alternative ways to use this library are:
   * do not like the structure of the filter arguments in the REST calls
     (including the fact that there are numeric codes for operators)
   * want array data returned
-  * want to be able to change between the REST and SOAP APIs, for some reason
+  * want to be able to change between the REST and SOAP APIs, for some reason.
+    (They do not provide 100% equal results though; see below.)
   * like having things like default values filled automatically when inserting
     new objects through an Update Connector.
 
@@ -74,7 +90,7 @@ to be passed to it, and it will return the result body as a string.
 Note that this is not a PHP 'Soapclient' class; it's a wrapper around
 SOAPClient. The required configuration options are in the example below; see the
 code for others.
-```
+```php
 // Note you will likely not call callAfas() directly but use Connection instead.
 use PracticalAfas\SoapAppClient;
 $client = new SoapAppClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
@@ -103,7 +119,7 @@ NtlmSoapClient is a helper subclass of PHP SoapClient which can do NTLM.)
 #### RestCurlClient
 The below is (almost) equivalent to the above SOAP example (except it returns a
 JSON string instead of an XML string):
-```
+```php
 // Note you will likely not call callAfas() directly but use Connection instead.
 use PracticalAfas\RestCurlClient;
 $client = new RestCurlClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
@@ -131,7 +147,7 @@ filters. It has two important methods: sendXML() which wraps AFAS' Update
 connector, and getData() which wraps all other connectors. The equivalent to
 the above example is:
 
-```
+```php
 use PracticalAfas\Connection;
 use PracticalAfas\RestCurlClient;
 $client = new RestCurlClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
@@ -164,9 +180,8 @@ of data rows instead (i.e. the XML/JSON string gets decoded for you).
 #### Connection::getData() function parameters
 
 The getData() function is created with the assumption that most callers want to
-call GetConnectors, optionally with filters, so this is made easy. (It was also
-created at a time that REST and skip/take arguments did not exist yet, which has
-influenced its signature - which is by now a bit confusing.)
+call GetConnectors, optionally with filters, so this is made easy. All other
+ways to call this are, admittedly, convoluted and somewhat confusing.
 
 **First and second parameter:** (often) the GetConnector name and optional filters.
 
@@ -200,19 +215,22 @@ enough.)
 
 #### The 'options' argument and class-wide setters/getters
 
-There are 3 options which influence the value returned by getData().
+Three options influence the format of data returned by getData(); other options
+will be discussed further down.
 
 In the (older) SOAP API for GetConnectors, the GetDataWithOptions call has an
-'options' argument with 3 sub-values, which influence the contents of the
+'options' argument with various sub-values which influence the contents of the
 response. These would get passed as `'options' => [ ... ]`  in the
 $extra_arguments parameter to getData(); see above example.
 
 To preserve backward compatibility, most 'options' are also supported when the
 Connection object wraps around a REST client instead of a SOAP client. (The
-options will not actually be sent to the REST API.)
+options will not actually be sent to the REST API; the Connection class uses
+them to post process the API return value.)
 
-These options have also been turned into class variables with setters and
-getters, so they don't need to be provided to every call. They are:
+The three options which influence the format of the return value, have also been
+turned into class variables with setters and getters, so they don't need to be
+provided to every call. They are:
 
 ##### 'Outputmode' option / Connnection::setDataOutputFormat():
 
@@ -268,6 +286,18 @@ setter/getter value: it is not a boolean, but an integer represented by either
 constant GET_OUTPUTOPTIONS_XML_EXCLUDE_EMPTY (2, the default) or
 GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY (3).
 
+##### Other options:
+
+It turns out there are more options than the above three, that a SOAP
+getDataWithOptions call supports - though these were not (officially) supported
+by Connection::getData() before version 1.2 (and I've never seen these
+documented in AFAS' knowledge base). They are:
+- 'skip' and 'take'. Indeed it turns out that the SOAP API accepts these in two
+  forms: as direct arguments and as options inside the 'options' argument. It
+  is recommended to _not_ set these inside 'options'. Their behavior is slightly
+  different in both places (see code comments) and v1.2 of this library unifies
+  and validates them, which means the 'options' form has changed behavior
+  slightly.
 #### Differences between REST and SOAP (for Get Connectors)
 
 The connection class behaves mostly the same, regardless whether it is used with
@@ -338,7 +368,8 @@ to convert that array to XML or JSON. The format of this array is custom and
 fairly strict, i.e. exceptions will be thrown for any unrecognized array value.
 What this provides is, among others:
 * being able to use aliases for the somewhat cryptic array keys / XML tags;
-* default values in some cases.
+* default values in some cases;
+* being able to switch between between SOAP/REST clients, if you care about that.
 Besides this, for me personally, having a place to document test results and
 write other comments in the Helper::objectTypeInfo() has been instrumental in
 keeping my sanity when I needed to test updating nested person objects inside
@@ -356,6 +387,7 @@ SOAP client, so far.
 ## Bugs
 
 1) Helper::objectTypeInfo is permanently incomplete, as mentioned just above.
+Send PRs.
 
 2) The structure of JSON objects as (currently) found in AFAS documentation does
 not describe how to send in multiple elements of the same type. Our
@@ -367,7 +399,7 @@ JSON representation.
 I'm fairly sure this must be possible (because otherwise it would be impossible
 to send e.g. an order containing more than one line item over REST) but lack an
 environment where I can test endlessly. Please send in date definitions (or even
-better, changed code) to make this work.
+better, changed code - or provide me with a test environment) to make this work.
 
 ## Authors
 
