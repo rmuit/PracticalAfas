@@ -53,9 +53,9 @@ class Helper
      *   are changed while fetching data. If there really is no immutable field
      *   in the connector, the next best thing is a field that always increments
      *   so at least you don't lost records in your data set, only duplications.
-     *   (One example of this is a 'last updated' field.) AT LEAST: this is the
-     *   case in theory but in practice it seems you can still lose records;
-     *   see id_field_type='date' code.
+     *   (One example of this is a 'last updated' field. The chance of
+     *   duplicates for this is higher than you might think, though, because we
+     *   need to work around AFAS filter bugs. See id_field_type='date' code.)
      *
      * Batched fetching does not work with 'OR type' filters, only with 'AND'.
      *
@@ -74,10 +74,10 @@ class Helper
      *     ordering (though the use for this is unclear).
      *   - id_field_type (string):
      *     Necessary when the value in the ID field is not suitable for using
-     *     in the 'larger than' filter. Supported until now:
-     *     - 'date': if the value is a date field in Microsoft's "Universal
-     *        Sortable" date/time format, this will (oddly) need to have the 'Z'
-     *        removed in order to be a valid filter value.
+     *     in the 'larger than' filter, so special code needed to be implemented
+     *     to work around this fact. One value is recognized at the moment:
+     *     "date". (Please don't use date fields as id_field though, or only as
+     *     a last resort. See the code for issues.)
      *   - id_field_not_unique (bool):
      *     This must be true if the ID field does not contain unique values.
      *   - take (int; recommended):
@@ -165,28 +165,46 @@ class Helper
             // Convert value to filter field if necessary.
             $filter_value = $context['next_start'];
             if (isset($args['id_field_type']) && $args['id_field_type'] === 'date') {
-                // We expect the value to end in 'Z'. If not, we just continue.
+                // Three odd things about date values:
+                // 1. Dates expressed in Microsoft's  "Universal Sortable" date
+                //    format are not recognized as filter values, even though
+                //    this is the format that AFAS returns for REST clients.
+                //    (Fitler values need to have the trailing 'Z' removed.)
                 if (substr($filter_value, -1) === 'Z') {
-                    // Three odd things about date values:
-                    // - Testing reveals that OP_LARGER_OR_EQUAL *sometimes*
-                    //   does not work for date fields; it effectively does
-                    //   OP_LARGER_THAN. (We've seen this consistently work/fail
-                    //   on the same field, depending on the value.) This means
-                    //   we could still be losing records from the data set; one
-                    //   more reason to specify an actual ID field, not a date.
-                    // - Dates expressed in Microsoft's  "Universal Sortable"
-                    //   date format are not recognized as filter values, even
-                    //   though this is the format that AFAS returns. (They need
-                    //   to have the trailing 'Z' removed)
-                    // - Even though date values have a 'Z' at the end, they
-                    //   seem to be expressed in the local timezone, not UTC.
-                    //   (This is easy for us because we don't have to do
-                    //   conversion; filter values are also expressed in the
-                    //   local timezone. But it's confusing.)
-                    // CODE NOTE: if it is / becomes possible to specify the
-                    // timezone in a date field value, this will probably need
-                    // to be changed.
                     $filter_value = substr($filter_value, 0, strlen($filter_value) - 1);
+                }
+                // 2. Even though date values have a 'Z' at the end, they are
+                //    not expressed in UTC; it seems to be the local timezone
+                //    (or, more likely, AFAS' own fixed timezone, CET/CEST
+                //    (UTC+1/2)). This is easy for us because we don't have to
+                //    do conversion; filter values are also expressed in the
+                //    local timezone. But it's confusing.
+                // CODE NOTE: if it is / becomes possible to specify the
+                // timezone in a date field value, this will probably need
+                // to be changed.
+                // 3. Testing reveals that OP_LARGER_OR_EQUAL doesn't work
+                //    reliably; filtering on '>= DATEVAL' will consistently
+                //    include only half the records that display as DATEVAL.
+                //    (Explanation is in README.md, bugs section.) This means
+                //    that the current code has a considerable chance of
+                //    missing records. Sorting descending instead of
+                //    ascending won't change that.
+                if (substr($args['id_field'], 0, 1) === '-') {
+                    // Increase the filter value by one, so we are sure we
+                    // never miss any records. This increases the chance of
+                    // having duplicate records returned that were also in the
+                    // previous data set. (And our code below that will remove
+                    // those previous records, will not work as long as it only
+                    // checks for _one_ specific value.) We still choose to err
+                    // on the side of 'duplicate records' rather than 'missed
+                    // records', partly because date values are 'sparse':
+                    // probability is not high that a record with a date value
+                    // of ($filter_value + 1 second), which would be a
+                    // not-removed duplicate record, actually exists.
+                    $filter_value = date('Y-m-d\TH:i:s', strtotime($filter_value) + 1);
+                }
+                else {
+                    $filter_value = date('Y-m-d\TH:i:s', strtotime($filter_value) - 1);
                 }
             }
 

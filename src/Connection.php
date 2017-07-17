@@ -809,7 +809,7 @@ class Connection
                 //   (only for REST). So we need to keep supporting that.
                 // - The format of 'Index' is an XML snippet. We'll support that
                 //   (like we silently support the 'FilterXml' arg in the case
-                //   that no filters are specified) but we want to be abld to
+                //   that no filters are specified) but we want to be able to
                 //   convert from a 'portable' argument to that XML. And
                 //   'OrderbyFieldIds' is just what we need.
                 if (isset($extra_arguments['options']['index']) && isset($extra_arguments['orderbyfieldids'])) {

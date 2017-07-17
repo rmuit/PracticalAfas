@@ -395,6 +395,8 @@ SOAP client, so far.
 
 ## Bugs
 
+### Library 'bugs'
+
 1) Helper::objectTypeInfo is permanently incomplete, as mentioned just above.
 Send PRs.
 
@@ -409,6 +411,64 @@ I'm fairly sure this must be possible (because otherwise it would be impossible
 to send e.g. an order containing more than one line item over REST) but lack an
 environment where I can test endlessly. Please send in date definitions (or even
 better, changed code - or provide me with a test environment) to make this work.
+
+### AFAS 'bugs' and challenges.
+
+1) Filtering GetConnectors on date fields should be done with caution; it may
+behave in unexpected ways.
+
+First of all: the date format that REST clients returns, is not suitable to be
+used in date filters. Unless there are formatting options for dates that I am
+unaware of, REST clients return dates always with a granularity of a second,
+and ending with "Z" (despite the value _not_ being expressed in UTC!). This
+format is illegal for use as a filter value; the "Z" must be removed.
+
+Further: filtering on a specific date to the second (with OP_EQUAL) will
+almost(?) never return any records. AFAS seems to store dates internally with a
+granularity smaller than a second -probaby in microseconds- and the filter value
+also seems to be interpreted in microseconds. Which means that (unless there is
+some way to specify milliseconds in the filter value), the filter value is
+always interpreted as being exactly on the .000 milliseconds border. (A filter
+value of 2017-07-01T00:00:02 is actually always 2017-07-01T00:00:02.000; there
+is no way to influence that.)
+
+It would be nice if a GetConnector would _interpret_ a filter value just like it
+_displays_ the value. Meaning: a filter 'EQUALS 2017-07-01T00:00:02' would mean
+"the time _rounded to a second_ equals this value". But it doesn't. And as long
+as it doesn't, you will have to pass a double filter in order to get all values
+within a range of a second: e.g. '>= 2017-07-01T00:00:02 AND < 2017-07-01T00:00:03'.
+
+(Above also means that for date values, there is almost no difference
+between '>' (OP_LARGER_THAN) and '>=' (OP_LARGER_OR_EQUAL) filters. Probably
+it only makes a difference for records with a recorded time ending in .000
+milliseconds.)
+
+Above are not necessarily bugs. Just inconveniences, and omissions in
+documentation. (Arguably, if AFAS does not want to interpret an 'EQUALS' filter
+like it displays it, then the bug is having no way to specify milliseconds in
+the filter value.)
+
+
+The following is a bug (in my opinion), however.
+
+Tests show that if a date value is _displayed_ by a GetConnector as
+2017-07-01T00:00:02, then there is only a ~50% chance that a query with
+a filter '>= 2017-07-01T00:00:02' will return that record. And there is a ~50%
+chance that a query with a filter '< 2017-07-01T00:00:02' will return that
+record, instead.
+
+That's right: 2017-07-01T00:00:02 is (often) smaller than 2017-07-01T00:00:02!
+
+This means that the earlier example query
+'>= 2017-07-01T00:00:02 AND < 2017-07-01T00:00:03' will statistically only
+return _half_ of the records that have a display value of 2017-07-01T00:00:02,
+plus _half_ of the records that have a display value of 2017-07-01T00:00:03.
+
+The behavior can have various inconvenient implications, depending on your
+application. This is likely caused by AFAS rounding values with >= .500
+milliseconds up to the next second before displaying; this strange behavior
+would likely disappear if they rounded all values down to a full second.
+
 
 ## Authors
 
