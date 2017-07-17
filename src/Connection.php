@@ -415,18 +415,23 @@ class Connection
      *   other connectors.
      * @param array $extra_arguments
      *   (optional) Other arguments to pass to the API call, besides the ones
-     *   in $filters / hardcoded for convenience. For GetConnectors this is
-     *   typically 'Skip' and 'Take'. The 'options' arguments will not be sent
-     *   to REST API calls but will still be interpreted, for compatibility with
-     *   SOAP. Supported options are 'Outputmode, 'Metadata' and 'Outputoptions'
-     *   whose valid values are GET_* constants defined in this class and which
-     *   can also be influenced permanently instead of per getData() call; see
-     *   setter methods setDataOutputFormat(), setDataIncludeMetadata() and
-     *   setDataIncludeEmptyFields() respectively. Other supported options are
-     *   'Skip' and 'Take', but it is recommended to not use these as options;
-     *   set them at the root level of $extra_arguments instead. (If there are
-     *   multiple arguments whose names only differ in case, then the value that
-     *   is later in the array will override earlier arguments.)
+     *   in $filters / hardcoded for convenience. For GetConnectors these are:
+     *   - 'Skip' and 'Take' (see other documentation);
+     *   - 'OrderByFieldIds', to apply sorting, Syntax is
+     *     "Fieldname1,-Fieldname2,..." (hyphen for descending order). This also
+     *     works with SOAP clients. (It will be converted to an 'Index' option.)
+     *   - 'options'. These will not be sent to REST API calls but will still be
+     *     interpreted, for compatibility with SOAP. Supported options are
+     *     'Outputmode, 'Metadata' and 'Outputoptions' whose valid values are
+     *     GET_* constants defined in this class and which can also be
+     *     influenced permanently instead of per getData() call; see setter
+     *     methods setDataOutputFormat(), setDataIncludeMetadata() and
+     *     setDataIncludeEmptyFields() respectively. Other supported options are
+     *     'Skip', 'Take' and 'Index', but it is recommended to not use these as
+     *     options; set them at the root level of $extra_arguments instead.
+     *     ('Index' only works with SOAP Clients and its syntax is an XML
+     *     snippet; use 'OrderByFieldIds' instead which is portable and has
+     *     easier syntax.)
      *
      * @return mixed
      *   Output; format is dependent on data type and extra arguments. The
@@ -579,6 +584,11 @@ class Connection
         // more options than just above three. We have not seen these documented
         // in AFAS' online docs; they were probably added later (when AFAS added
         // a REST API) and this class did support them before v1.2. They are
+        // - 'Index', which is equivalent to REST's 'orderbyfieldids' except the
+        //   value is XML. (We are now supporting this for SOAP but _not_ for
+        //   REST clients. for writing portable getData() calls, use
+        //   'orderbyfieldids' instead, which we now support for SOAP clients
+        //   too, by converting it to a proper 'Index' argument.)
         // - 'Take' and 'Skip'. That is right: the AFAS SOAP service recognizes
         //   these arguments as standalone arguments _and_ as 'options'
         //   arguments. They differ in behavior and the regular argument has
@@ -601,6 +611,13 @@ class Connection
                 $extra_arguments[$arg] = $extra_arguments['options'][$arg];
                 unset($extra_arguments['options'][$arg]);
             }
+        }
+
+        // Validate some non-options arguments:
+        // Make sure 'orderbyfieldids' is a string / noone passed an array by
+        // accident because they got confused.
+        if (isset($extra_arguments['orderbyfieldids']) && !is_string($extra_arguments['orderbyfieldids'])) {
+            throw new InvalidArgumentException("Invalid 'orderbyfieldids' value; it should be a string.)", 39);
         }
 
         // We split up the parsing of further arguments into methods per client
@@ -776,15 +793,6 @@ class Connection
         $function = '';
         switch ($data_type) {
             case self::DATA_TYPE_GET:
-                // Throw an exception if any REST specific arguments are present
-                // which are not supported by SOAP, because this can have bad
-                // consequences if it goes unseen. (If someone wants to
-                // explicitly ignore this, we should introduce a setter for it.)
-                $args = array_map('strtolower', array_keys($extra_arguments));
-                if (in_array('orderbyfieldids', $args, TRUE)) {
-                  throw new InvalidArgumentException("Argument 'orderbyfieldids' is only supported by REST clients.", 38);
-                }
-
                 // We don't support the 'GetData' function. It seems to not have
                 // any advantages.
                 $function = 'GetDataWithOptions';
@@ -792,13 +800,61 @@ class Connection
                 if (!empty($filters)) {
                     $extra_arguments['filtersxml'] = static::parseFilters($filters);
                 }
+
+                // For ordering, we recommend using the OrderbyFieldIds argument
+                // which is a bit counter intuitive because we usually port the
+                // SOAP options to REST instead of the other way around. Reason:
+                // - We didn't even know that the 'Index' option existed, before
+                //   library v1.2 - and already supported 'OrderbyFieldIds'
+                //   (only for REST). So we need to keep supporting that.
+                // - The format of 'Index' is an XML snippet. We'll support that
+                //   (like we silently support the 'FilterXml' arg in the case
+                //   that no filters are specified) but we want to be abld to
+                //   convert from a 'portable' argument to that XML. And
+                //   'OrderbyFieldIds' is just what we need.
+                if (isset($extra_arguments['options']['index']) && isset($extra_arguments['orderbyfieldids'])) {
+                    throw new InvalidArgumentException("Both 'Index' option and 'OrderbyFieldIds' argument are specified. One should be deleted. (Hint: OrderbyFieldIds is simpler and portable.)", 38);
+                }
+                if (isset($extra_arguments['orderbyfieldids'])) {
+                    $extra_arguments['options']['index'] = '';
+                    $order = array_map('trim', explode(',', $extra_arguments['orderbyfieldids']));
+                    foreach ($order as $value) {
+                        // Ascending = 1, descending = 0
+                        $asc = 1;
+                        if (substr($value, 0, 1) === '-') {
+                            $asc = 0;
+                            $value = substr($value, 1);
+                        }
+                        $extra_arguments['options']['index'] .= '<Field FieldId="' . static::xmlValue($value) . '" OperatorType="' . $asc . '"/>';
+                    }
+                    unset($extra_arguments['orderbyfieldids']);
+                }
+                elseif (isset($extra_arguments['options']['index'])
+                    // Assume the 'index' option is 'old style', an XML snippet.
+                    // We don't escape it later on (because it's part of the
+                    // XML message) but then we need to validate it.
+                    && (!preg_match('/^\s*
+                              (?: <Field\s+     # match 1 or more <Field tags
+                                (?:             # containing 1 or more FieldId/OperatorType values
+                                  (?: FieldId|OperatorType) \s* = \s* "[^"]+" \s*
+                                )+
+                              \/ \s* > \s*  )+
+                            $/ix',
+                            $extra_arguments['options']['index'])
+                        // Above does not ensure >0 FieldId values, so:
+                        || stripos($extra_arguments['options']['index'], 'FieldId') === FALSE)
+                ) {
+                    throw new InvalidArgumentException("Invalid 'Index' value.)", 39);
+                }
                 // Turn 'options' argument (which is always set) into XML.
                 $options_str = '';
                 foreach ($extra_arguments['options'] as $option => $value) {
                     // Case of the options does not seem to matter (unlike the
                     // direct arguments, which the Client will take care of),
                     // but do what seems customary in the docs: one capital.
-                    $options_str .= '<' . ucfirst($option) . '>' . static::xmlValue($value) . '</' . ucfirst($option) . '>';
+                    $options_str .= '<' . ucfirst($option) . '>'
+                        . ($option === 'index' ? $value : static::xmlValue($value))
+                        . '</' . ucfirst($option) . '>';
                 }
                 $extra_arguments['options'] = "<options>$options_str</options>";
                 // For get connectors that are called through App Connectors,

@@ -24,21 +24,21 @@ results received from the remote system, covers situations which are unexpected
 for the programmer, and throws documented exceptions.)
 
 That said, two things:
-* This wasn't created because I was unhappy with other existing libraries. There 
-  may be good ones. I just inherited some procedural code at the end of 2011, 
-  which naturally evolved... and about 5 years and 3 rewrites later I finally 
+* This wasn't created because I was unhappy with other existing libraries. There
+  may be good ones. I just inherited some procedural code at the end of 2011,
+  which naturally evolved... and about 5 years and 3 rewrites later I finally
   got around to polishing it up for publication.
 * The most used method (unless you use only RestCurlClient) is
   Connection::getData(). Its code is fairly readable (because it reads top-down
-  without loads of things 'hidden' in other methods/classes)... but calling it 
-  is only simple for 'simple' use cases. (This code was created at a time when 
+  without loads of things 'hidden' in other methods/classes)... but calling it
+  is only simple for 'simple' use cases. (This code was created at a time when
   REST and skip/take arguments did not exist yet, which has influenced its
-  evolving and now convoluted signature.)  
+  evolving and now convoluted signature.)
   I personally still
   prefer doing one call (even with strange arguments) over having to set all
   arguments like filters, ordering, skip, take etc. in separate chained commands
   to execute a single Get call... but if people prefer that: they are welcome to
-  contribute that. (Tip: you might want to wrap the existing Connection class, 
+  contribute that. (Tip: you might want to wrap the existing Connection class,
   if you care about the validation of various forms of strangeness - or the
   compatibility between SOAP and REST clients for e.g. the 'orderbyfieldids'
   argument).
@@ -53,13 +53,13 @@ Two alternative ways to use this library are:
   and the rest of this document can be ignored. All you need to know is
   RestCurlClient::callAfas() either returns a JSON string or throws exceptions.
 
-- Otherwise, use Connection::getData() (which wraps around the SOAP or REST
-  client), if you e.g.
+- Otherwise, use Connection::getData() / sendData() (which wraps around the SOAP
+  or REST client), if you e.g.
   * do not like the structure of the filter arguments in the REST calls
     (including the fact that there are numeric codes for operators)
-  * want array data returned
   * want to be able to change between the REST and SOAP APIs, for some reason.
     (They do not provide 100% equal results though; see below.)
+  * want array data returned, instead of XML (for SOAP) / JSON (for REST)
   * like having things like default values filled automatically when inserting
     new objects through an Update Connector.
 
@@ -102,7 +102,8 @@ $result_as_json_string = $client->callAfas(
     'take' => 1000,
     'filtersXml' => '<Filters><Filter><Field FieldId="SomeCategory" OperatorType="1">CategName</Field>
       <Field FieldId="Updated" OperatorType="4">2017-01-01T16:00:00</Field></Filter></Filters>',
-    'options' => '<options><Outputoptions>3</Outputoptions><Outputmode>1</Outputmode><Metadata>0</Metadata></options>',
+    'options' => '<options><Index><Field FieldId="Updated" OperatorType="0"/></Index>
+      <Outputoptions>3</Outputoptions><Outputmode>1</Outputmode><Metadata>0</Metadata></options>',
   ]
 );
 $attachment = $client->callAfas('subject', 'GetAttachment', [ 'subjectID' => 123 ] );
@@ -131,7 +132,7 @@ $result_as_xml_string = $client->callAfas(
     'filterfieldids' => 'SomeCategory,Updated',
     'filtervalues' => 'CategName,2017-01-01T16:00:00',
     'operatortypes' => '1,4',
-    'orderbyfieldids' => '-Updated' // This one is actually extra; ordering is not possible for SOAP.
+    'orderbyfieldids' => '-Updated'
   ]
 );
 $attachment = $client->callAfas('GET', 'subjectconnector/123');
@@ -153,12 +154,16 @@ use PracticalAfas\RestCurlClient;
 $client = new RestCurlClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
 $connection = new Connection($client);
 
+// A (more common) example for a GetConnector with simple filter:
+$result_as_array = $connection->getData('MyGetConnectorName',  [ 'SomeCategory' => 'CategName' ] );
+
+// The equivalent of above:
 $result_as_string = $connection->getData(
   'MyGetConnectorName',
   [ 'SomeCategory' => 'CategName',
     [ 'Updated' => '2017-01-01T16:00:00', '#op' => Connection::OP_LARGER_THAN ],
   ],
-  Connection::GET_FILTER_AND, // For a GetConnector without further arguments, this is optional.
+  Connection::GET_FILTER_AND,
   [ 'take => 1000,
     'orderbyfieldids' => '-Updated',
     'options' => ['Outputmode' => Connection::GET_OUTPUTMODE_LITERAL ]
@@ -166,12 +171,9 @@ $result_as_string = $connection->getData(
 );
 $attachment = $connection->getData(123, [], Connection::DATA_TYPE_SUBJECT);
 
-// This works for both client types, converting the array to XML or JSON as
-// needed. See the docs on calling Update Connectors below for more info.
+// Sending data works for both client types, converting the array to XML or JSON
+// as needed. See the docs on calling Update Connectors below for more info.
 $connection->sendData('KnOrganisation', ['name' => 'MyCompany Ltd.'], 'POST');
-
-// An extra, more common, example for a GetConnector with simple filter:
-$result_as_array = $connection->getData('MyGetConnectorName',  [ 'SomeCategory' => 'CategName' ] );
 ```
 ...so if the 'Outputmode' option is _not_ provided, getData() returns an array
 of data rows instead (i.e. the XML/JSON string gets decoded for you).
@@ -205,10 +207,10 @@ ways to call this are, admittedly, convoluted and somewhat confusing.
   to retrieve. The second argument is very likely an empty array.
 
 **Fourth parameter:** for a GetConnector, these are all the arguments you want
-to specify _besides_ the filter related arguments. Often these are 'take', 'skip'
-and/or 'orderbyfieldids'.
+to specify _besides_ the filter related arguments. Often these are 'Take',
+'Skip' and/or 'OrderByFieldIds'.
 
-(Since you often want to specify 'take', you will often end up with a function
+(Since you often want to specify 'Take', you will often end up with a function
 call that has 4 parameters. If you have a GetConnector call with a simple filter
 which you know only returns few records, the first two parameters should be
 enough.)
@@ -216,7 +218,7 @@ enough.)
 #### The 'options' argument and class-wide setters/getters
 
 Three options influence the format of data returned by getData(); other options
-will be discussed further down.
+are discussed further down.
 
 In the (older) SOAP API for GetConnectors, the GetDataWithOptions call has an
 'options' argument with various sub-values which influence the contents of the
@@ -292,19 +294,26 @@ It turns out there are more options than the above three, that a SOAP
 getDataWithOptions call supports - though these were not (officially) supported
 by Connection::getData() before version 1.2 (and I've never seen these
 documented in AFAS' knowledge base). They are:
-- 'skip' and 'take'. Indeed it turns out that the SOAP API accepts these in two
+- 'Skip' and 'Take'. Indeed it turns out that the SOAP API accepts these in two
   forms: as direct arguments and as options inside the 'options' argument. It
   is recommended to _not_ set these inside 'options'. Their behavior is slightly
   different in both places (see code comments) and v1.2 of this library unifies
   and validates them, which means the 'options' form has changed behavior
   slightly.
+- 'Index'. This is used for ordering records in a data set, and its syntax is
+  an XML snippet (which can be seen encapsulated by <Index> tags in an example
+  above). It only works for SOAP clients. It's recommended not to use this
+  option, but to pass the 'OrderByFieldIds' argument instead, which has a
+  simpler syntax and is portable. (For SOAP clients, it is automatically
+  converted to a correct 'Index' option.)
+
 #### Differences between REST and SOAP (for Get Connectors)
 
 The connection class behaves mostly the same, regardless whether it is used with
 a SOAP or REST client. The exceptions are:
 
-- SOAP clients/connections do not support 'OR filters' or ordering (the
-'orderbyfieldids' argument).
+- SOAP clients/connections do not support 'OR filters'. (Or at least, I don't
+  think so. Maybe there is another undocumented option for this...)
 
 - The default value for the 'take' argument. The AFAS REST API will (always?)
 return 100 rows maximum if the 'take' argument is not specified. With a SOAP
