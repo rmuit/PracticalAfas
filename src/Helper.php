@@ -968,8 +968,7 @@ class Helper
         $xml .= '<' . $type . ($parent_type ? '>' : ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">');
 
         // Determine if $element holds a single object or an array of objects:
-        // if one object, we must have at least one scalar value; if several,
-        // all values must be arrays.
+        // we assume the latter if all values are arrays.
         foreach ($data as $key => $element) {
             if (is_scalar($element)) {
                 // Normalize $data to an array of objects.
@@ -979,20 +978,12 @@ class Helper
         }
 
         foreach ($data as $key => $element) {
-
             // Construct element with fields within the XML. (For each element
             // inside the loop, because $info can differ with $element.)
             $info = static::objectTypeInfo($type, $parent_type, $element, $fields_action);
             if (empty($info)) {
                 throw new InvalidArgumentException("'$type' object has no type info.");
             }
-            /* About the field definitions:
-             * - if required = true and default is given, then
-             *   - the default value is sent if no data value is passed
-             *   - an exception is (only) thrown if the passed value is null.
-             * - if the default is null (or value given is null & not
-             *   'required') then <$name xsi:nil=\"true\"/> is passed.
-             */
 
             // Action and Id are set inside 'fake properties' in the data array;
             // use them and unset them.
@@ -1027,7 +1018,12 @@ class Helper
             $xml .= $indent_str . '<Fields' . ($action ? " Action=\"$action\"" : '') . '>';
 
             // Convert our element data into fields, check required fields, and
-            // add default values for fields (where defined).
+            // add default values for fields (where defined). About definitions:
+            // - if required = true and default is given, then
+            //   - the default value is sent if no data value is passed
+            //   - an exception is (only) thrown if the passed value is null.
+            // - if the default is null (or value given is null & not
+            //   'required'), then <$name xsi:nil=\"true\"/> is passed.
             foreach ($info['fields'] as $name => $map_properties) {
                 $value_present = true;
 
@@ -1068,6 +1064,7 @@ class Helper
                             case 'long':
                             case 'decimal':
                                 if (!is_numeric($value)) {
+                                    $property = $name . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
                                     throw new InvalidArgumentException("'$property' field value of '$type' object must be numeric.");
                                 }
                                 if ($map_properties['type'] === 'long' && strpos((string)$value, '.') !== false) {
@@ -1230,9 +1227,7 @@ class Helper
         }
 
         // Determine if $element holds a single object or an array of objects:
-        // if one object, we must have at least one scalar value; if several,
-        // all values must be arrays.
-        // @todo this makes no sense because see the @todo just below.
+        // we assume the latter if all values are arrays.
         foreach ($data as $key => $element) {
             if (is_scalar($element)) {
                 // Normalize $data to an array of objects.
@@ -1240,70 +1235,25 @@ class Helper
                 break;
             }
         }
-        // @todo there is something fundamentally wrong with this loop over
-        //   multiple elements. In an XML message for a SOAP connector, we can
-        //   construct the following, which I believe to be valid:
-        //    <KnSubject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-        //      <Element SbId="1957">
-        //        <Fields>
-        //          <StId>1</StId>
-        //          <Ds>öndèrwérp aziëlaan JSON</Ds>
-        //        </Fields>
-        //      </Element>
-        //      <Element SbId="1958">
-        //        <Fields>
-        //          <StId>2</StId>
-        //          <Ds>öndèrwérp twee</Ds>
-        //        </Fields>
-        //      </Element>
-        //    </KnSubject>
-        // However, an example in the AFAS documentation is the following:
-        //    {
-        //      "KnSubject": {
-        //        "Element": {
-        //          "@SbId": 1957,
-        //          "Fields": {
-        //            "Ds": " öndèrwérp aziëlaan JSON"
-        //          }
-        //        }
-        //      }
-        //    }
-        // ...and as you can probably see, this is all associative arrays with
-        // a similar structure to the XML - which has one problem: we cannot
-        // have TWO keys named 'Element'! So until we fix this, only one element
-        // from $data will survive: the last one will overwrite all others. We
-        // will not let that happen silently.
-        if (count($data) > 1) {
-          throw new InvalidArgumentException("'$type' object contains more than one element; we do not know how to convert this to JSON yet.");
-        }
-        foreach ($data as $key => $element) {
-            // This empties out all previous processed $elements.
-            // @todo fix this overwriting when we see proper specifications on
-            //   how to send in 'sibling' elements.
-            $normalized_element = [];
 
-            // Construct element with fields for this type. (For each element
-            // inside the loop, because $info can differ with $element.
+        $normalized_elements = [];
+        foreach ($data as $key => $element) {
+            // Get type info. (For each element inside the loop, because $info
+            // can differ with $element.)
             // @todo At some point we should reevaluate whether $fields_action
-            //   makes any sense here. That 'some point' is when we start
-            //   extensively testing the generation of JSON / updates for
+            //   makes any sense for the REST API. That 'some point' is when we
+            //   start extensively testing the generation of JSON / updates for
             //   objects whose objectTypeInfo changes with $fields_action. We
-            //   know this makes sense for the SOAP XML format, but have no idea
-            //   about REST/JSON yet.
+            //   know this makes sense for the SOAP XML format (which also uses
+            //   this code), but have no idea about REST/JSON yet.
             $info = static::objectTypeInfo($type, $parent_type, $element, $fields_action);
             if (empty($info)) {
                 throw new InvalidArgumentException("'$type' object has no type info.");
             }
-            /* About the field definitions:
-             * - if required = true and default is given, then
-             *   - the default value is sent if no data value is passed
-             *   - an exception is (only) thrown if the passed value is null.
-             * - if the default is null (or value given is null & not
-             *   'required') then null is passed.
-             */
-
-            // Derive $action. (The only thing that this does, is set the
-            // $fields_action parameter to a recursive call.
+            // Derive $action. The only thing that this does, is set the
+            // $fields_action parameter to a recursive call, so it only has a
+            // possible effect on the return values of objectTypeInfo() calls
+            // made by those recursive calls. Current use is unknown; see above.
             if (isset($element['#action'])) {
                 if (empty($parent_type)) {
                     // This really is an override and we want to keep it that
@@ -1322,6 +1272,10 @@ class Helper
                 $action = $fields_action;
             }
 
+            // Construct new element with an optional id + fields + objects for
+            // this type.
+            $normalized_element = [];
+
             if (!empty($element['#id'])) {
                 if (empty($info['id_field'])) {
                     throw new InvalidArgumentException("Id value provided but no id-field defined for '$type' object.");
@@ -1331,7 +1285,12 @@ class Helper
             unset($element['#id']);
 
             // Convert our element data into fields, check required fields, and
-            // add default values for fields (where defined).
+            // add default values for fields (where defined). About definitions:
+            // - if required = true and default is given, then
+            //   - the default value is sent if no data value is passed
+            //   - an exception is (only) thrown if the passed value is null.
+            // - if the default is null (or value given is null & not
+            //   'required'), then null is passed.
             foreach ($info['fields'] as $name => $map_properties) {
                 $value_present = true;
 
@@ -1373,6 +1332,7 @@ class Helper
                                 case 'long':
                                 case 'decimal':
                                     if (!is_numeric($value)) {
+                                        $property = $name . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
                                         throw new InvalidArgumentException("'$property' property of '$type' object must be numeric.");
                                     }
                                     if ($map_properties['type'] === 'long' && strpos((string)$value, '.') !== false) {
@@ -1443,11 +1403,18 @@ class Helper
                 $keys = "'" . implode(', ', array_keys($element)) . "'";
                 throw new InvalidArgumentException("Unmapped element values provided for '$type' object: keys are $keys.");
             }
+
+            $normalized_elements[] = $normalized_element;
         }
 
-        // @todo we should change this when we fix the above loop to handle
-        //   multiple elements.
-        return [$type => ['Element' => $normalized_element]];
+        // 'Element' can hold a single object or an array. Apparently this is
+        // arbitrary. If we have a single object, 'de-normalize' it to make
+        // make notation simpler. (Note it's not proven to be arbitrary: some
+        // locations in an array structure might require 'Element' to be a
+        // single object or array of objects. But we don't know about this so we
+        // don't test this. In other words: this is a place where the current
+        // code is _not_ strict, despite what the function documentation says.)
+        return [$type => ['Element' => count($normalized_elements) == 1 ? $normalized_elements[0] : $normalized_elements]];
     }
 
     /**

@@ -79,7 +79,7 @@ know their structure. The class only deals with:
 * very basic argument validation only (e.g. skip & take being numeric).
 
 The connection and authentication settings get passed into the constructor; not
-to every individual AFAS call).
+to every individual AFAS call.
 
 They have only one public method: callAfas(). They make (almost) no assumptions
 about the remote API calls; the exact (type of) remote method and arguments need
@@ -144,7 +144,7 @@ $client->callAfas('POST', 'connectors/KnOrganisation', [], '{"KnOrganisation":{"
 
 The Connection wraps around a Client and abstracts away all argument validation
 / data processing that is not client specific. It has a.o. its own syntax for
-filters. It has two important methods: sendXML() which wraps AFAS' Update
+filters. It has two important methods: sendData() which wraps AFAS' Update
 connector, and getData() which wraps all other connectors. The equivalent to
 the above example is:
 
@@ -351,20 +351,18 @@ Connection class, or their stability is unknown.
 
 - A getDataBatch() method to assist in fetching a data set in multiple batches
   by calling the method repeatedly to get each batch. (This is useful for large
-  data sets, when we need to specify a maximum 'take' parameter to calls.)
+  data sets, when we need to specify a 'take' parameter to calls.)
 
 - Conversions to/from AFAS country codes, normalizing the structure of a Dutch
   phone number and/or a physical address. These can be used for validating /
   converting values before sending them over. (They are not really integrated
   into the library, i.e. array values that are passed through
-  normalizeDataToSend() / constructXML() are not automatically run through these
-  methods. Maybe they should be.)
+  normalizeDataToSend() are not automatically run through these methods. Maybe
+  they should be.)
 
 - A normalizeDataToSend() method that will take an array with a custom (strict)
   format, and convert it to an array which is suitable for sending to an Update
-  Connector through a REST client, as JSON. Plus a constructXml() method that
-  will take the same array and convert it to an XML string which is suitable for
-  sending through a SOAP client.
+  Connector. See just below.
 
 ### Calling Update Connectors through Connection::sendData()
 
@@ -373,49 +371,21 @@ passed to the client / sent to the AFAS API as-is. So it must be a valid XML or
 JSON string, depending on the client type.
 
 The argument can also be an array, in which case the Helper class will be used
-to convert that array to XML or JSON. The format of this array is custom and
-fairly strict, i.e. exceptions will be thrown for any unrecognized array value.
-What this provides is, among others:
-* being able to use aliases for the somewhat cryptic array keys / XML tags;
-* default values in some cases;
-* being able to switch between between SOAP/REST clients, if you care about that.
-Besides this, for me personally, having a place to document test results and
-write other comments in the Helper::objectTypeInfo() has been instrumental in
-keeping my sanity when I needed to test updating nested person objects inside
-contact object inside organization objects, and deal with all the funny (a.o.
-'matching') behavior that AFAS exhibits. (Especially when updating nested person
-/ organization objects: read the code and save yourself the heachaches I've had.)
-
-I won't claim that the data definitions and conversion methods are perfect,
-though. They suffice for simple updates, if you find arrays more descriptive
-than formatted JSON/XML. For sending more elaborate structures, or data types
-(Update Connectors) that were not used yet: please test carefully; documented
-PRs are always welcome. Also: I've only tested sending nested objects over a
-SOAP client, so far.
+to convert that array to XML or JSON. See [update-payloads.md](update-payloads.md).
 
 ## Bugs
 
 ### Library 'bugs'
 
-1) Helper::objectTypeInfo is permanently incomplete, as mentioned just above.
-Send PRs.
-
-2) The structure of JSON objects as (currently) found in AFAS documentation does
-not describe how to send in multiple elements of the same type. Our
-Helper::constructXML() can do this, but Helper::normalizeDataToSend() and by
-extension Connection::sendData() cannot handle multiple elements at once. See
-the comments/@todos inside Helper::normalizeDataToSend() for an example XML vs
-JSON representation.
-
-I'm fairly sure this must be possible (because otherwise it would be impossible
-to send e.g. an order containing more than one line item over REST) but lack an
-environment where I can test endlessly. Please send in date definitions (or even
-better, changed code - or provide me with a test environment) to make this work.
+Helper::objectTypeInfo is permanently incomplete and depends on PRs to make it
+more complete, gradually. (Also, I might not bother about backward compatibility
+too much until I know that at least one person is using this functionality.)
 
 ### AFAS 'bugs' and challenges.
 
-1) Filtering GetConnectors on date fields should be done with caution; it may
-behave in unexpected ways.
+#### Filtering GetConnectors on date fields
+
+This should be done with caution; it may behave in unexpected ways.
 
 First of all: the date format that REST clients returns, is not suitable to be
 used in date filters. Unless there are formatting options for dates that I am
@@ -487,7 +457,7 @@ This library is licensed under the MIT License - see the
 
 ## Acknowledgments
 
-* Hat tip to Nathan Vergunst-Kolozsvári @ [Your source](http://www.your-source.nl/) -
+* Hat tip to Philip Vergunst & Nathan Vergunst-Kolozsvári @ [Your source](http://www.your-source.nl/) -
   producing a first version of PHP code that at least exchanged the correct
   data, must not have been easy.
 
