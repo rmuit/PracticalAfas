@@ -20,17 +20,20 @@ use RuntimeException;
  * - Fetch a large data set in batches;
  * - Various mapping and validation functinos for countries, addresses, phone
  *   numbers
- * - Convert a custom (strict) formatted array into XML for updating via SOAP.
- *   (This one is from before the REST Client; it may need updating to unify
- *   array structures... This has not been tried yet.)
+ * - Convert a custom array into XML for updating via SOAP or REST API. (REST
+ *   API is not tested yet, but the converted structure looks OK and is ready
+ *   for testing.)
  *
  * If someone defined custom fields in their AFAS environment, they probably
- * want to extend objectTypeInfo() in a subclass, before using constructXml().
+ * want to extend objectTypeInfo() in a subclass, before using
+ * normalizeDataToSend() or constructXml().
  *
  * All methods are static so far.
  */
 class Helper
 {
+    const XML_TAB_WIDTH = 2;
+
     /**
      * Call a GetConnector to get one batch of a large data set.
      *
@@ -116,6 +119,7 @@ class Helper
      *   If we cannot process the records returned by getData().
      *
      * @see \PracticalAfas\Connection::getData()
+     * @throws \Exception
      */
     public static function getDataBatch(array $args, array &$context)
     {
@@ -865,90 +869,82 @@ class Helper
     /**
      * Construct XML representing one or more AFAS objects.
      *
-     * objectTypeInfo() is an evolving method containing lots of (maybe
-     * incomplete) hardcoded logic and comment fragments from incomplete info
-     * in AFAS' knowledge base. Because of this volatility, $data must adhere
-     * to a strict structure; this method will throw exceptions when e.g.
-     * required data is not present, present data is not recognized, ...
+     * The only reason this has not been officially deprecated yet is that we're
+     * afraid callers might forget passing $embed_action=true (which is
+     * essential).
      *
-     * (AFAS installations with custom fields will typically want to extend
-     * objectTypeInfo() in a subclass, and call this method either through that
-     * subclass or through Connection::sendData() after injecting the subclass
-     * name into the Connection.)
-     *
-     * Connection::getData(CONNECTOR, [], 'data') can be used for getting XSD
-     * schema info to make this function more robust. The information from those
-     * XSD schemas may be more complete, so if you want to use those  schemas to
-     * construct XML instead of using this function, that's fine. This function
-     * exists for those who would like to construct array data with more
-     * descriptive keys, instead of an XML string with hard to remember tags.
-     *
-     * We hope that the below code catches all strange/dangerous combinations of
-     * 'id' /  $fields_action / AutoNum / MatchXXX values and 'embedding
-     * objects', and made enough comments in objectTypeInfo() to explain AFAS'
-     * behavior. But we can't be totally sure. Please read the comments at
-     * MatchPer/MachOga details before dealing with knPerson/knOrganisation
-     * objects; it may save lots of time and wrong assumptions.
-     *
-     * @param string $type
-     *   The type of object; this (usually?) corresponds to the outer tag in the
-     *   XML string / an 'updateConnectorId'; see objectTypeInfo() for possible
-     *   values. An exception is thrown if the type is unknown.
+     * @param $type
+     *   See normalizeDataToSend().
      * @param array $data
-     *   Data to construct the XML from; see objectTypeInfo() for possible
-     *   values. This can represent a set of (one or more) objects; in this case
-     *   all values are arrays representing a single object. It can also
-     *   represent one object, in which case all keys in this array are XML tags
-     *   or aliases and values are the corresponding tag/field (scalar) or
-     *   related object (array) value. The object must contain at least one
-     *   scalar (field) value; passing one object containing only related
-     *   objects and no fields is disallowed. (If you have to, make it a 'set
-     *   of 1 object' by wrapping it in [].) An object can have two other
-     *   key-value pairs that do not represent real field/object values:
-     *   - #id: the 'id attribute' of an object in XML. Only some object types
-     *     have 'id attributes'. (Most have id numbers in separate tags/fields).
-     *   - #action: the 'fields action' (see $fields_action) to perform for a
-     *     nested object, if that is different from $fields_action. This must
-     *     never be set for an 'outer' object; use $fields_action parameter
-     *     instead.
+     *   See normalizeDataToSend().
      * @param string $fields_action
-     *   (optional) Action to fill in 'Fields' tag; can be "insert", "update",
-     *   "delete", "". In cases where specifying "insert" in the XML does not
-     *   make AFAS' behavior different from not specifying anything, it may
-     *   still be important because this method will only add default field
-     *   values if "insert" is explicitly specified.
-     *   Combination of $fields_action "insert" and non-empty id is allowed
-     *   (probably you have autonumbering turned off, if you do this).
-     *   Combination of $fields_action "update" and empty id is logical only
-     *   when the object has a 'MatchXXX' property; see objectTypeInfo().
+     *   See normalizeDataToSend().
      * @param string $parent_type
-     *   (optional) If nonempty, the generated XML will be a fragment suitable
-     *   for embedding within the parent type, which is slightly different from
-     *   standalone XML.
+     *   (optional) Leave empty.
      * @param int $indent
      *   (optional) Add spaces before each tag and end each line except the last
      *   one with newline, unless $indent < 0 (then do not add anything).
      *
      * @return string
-     *   The constructed XML, which is suitable for sending through an AFAS
-     *   UpdateConnector.. All values in $data get XML-encoded/escaped.
+     *   XML payload to send to an Update Connector on a SOAP API/Connection.
      *
-     * @throws \InvalidArgumentException
-     *   If arguments have an unrecognized / invalid format.
-     *
-     * @see objectTypeInfo()
+     * @see normalizeDataToSend()
+     * @see xmlEncodeNormalizedData()
      */
     public static function constructXml($type, array $data, $fields_action = '', $parent_type = '', $indent = -1)
     {
-        if (!in_array($fields_action, ['insert', 'update', 'delete', ''], true)) {
-            throw new InvalidArgumentException("Unknown value $fields_action for fields_action parameter.");
-        }
-        if (!$data) {
-            throw new InvalidArgumentException("'$type' object holds no data.");
-        }
+        return static::xmlEncodeNormalizedData(
+            static::normalizeDataToSend($type, $data, $fields_action, true, $parent_type),
+            $indent,
+            $parent_type
+        );
+    }
 
-        // We set tab width in a variable even though we never change it.
-        $tab_width = 2;
+    /**
+     * Encode already normalized data as XML, suitable for sending through SOAP.
+     *
+     * @param array $data
+     *   Data which is already normalized, i.e. the return value from
+     *   normalizeDataToSend(). (Generally speaking, this must have #action keys
+     *   so the $embed_action parameter to normalizeDataToSend() must have been
+     *   true.
+     * @param int $indent
+     *   (optional) Add spaces before each tag and end each line except the last
+     *   one with newline. By default / if $indent < 0, do not add any spacing.
+     * @param string $parent_type
+     *   (optional) In practice, this is only set by recursive calls (and it's
+     *   effectively used as a boolean, to indicate that we're creating an XML
+     *   snippet for embedding inside a larger string).
+     *
+     * @return string
+     *   XML payload to send to an Update Connector on a SOAP API/Connection.
+     */
+    public static function xmlEncodeNormalizedData(array $data, $indent = -1, $parent_type = '') {
+        // Data is always a one-element array with inside it a one-element array
+        // whose key is 'Element'. We can be this strict because we assume our
+        // value is always a normalizeDataToSend() return value.
+        if (count($data) != 1) {
+            throw new InvalidArgumentException("Data argument must be a single array value, keyed by the object/Update Connector name. (Which again must be one array value, keyed by 'Element'");
+        }
+        $type = key($data);
+        $data = reset($data);
+        $expected_key = key($data);
+        if (count($data) != 1 || $expected_key !== 'Element') {
+            throw new InvalidArgumentException("Data argument must be a single array value containing yet another single array value whose key is 'Element'.");
+        }
+        $data = reset($data);
+        // $data is now either an array of elements or a single element, which
+        // must have either a 'Fields' or 'Objects' key defined, at least.
+        if (!is_array($data)) {
+            // We're not accepting objects for individual Elements; only
+            // alphanumerically keyed arrays, like the normalizeDataToSend()
+            // return value.
+            throw new InvalidArgumentException("'Element' entry for $type is not an array.");
+        }
+        if (isset($data['Fields']) || isset($data['Objects'])) {
+            // No checks; we'll do that in below foreach.
+            $data = array($data);
+        }
 
         // Object header
         $xml = '';
@@ -957,192 +953,121 @@ class Helper
         if ($indent >= 0) {
             // This will be used to add $tab_width spaces to $indent_str, each
             // time we enter inside a tag. See below.
-            $extra_spaces = str_repeat(' ', $tab_width);
+            $extra_spaces = str_repeat(' ', static::XML_TAB_WIDTH);
 
             // This is the initial value _after_ the outer XML line. While being
             // built, the last line in $xml will not end with a newline:
-            $indent_str = "\n" . str_repeat(' ', $indent + $tab_width);
+            $indent_str = "\n" . str_repeat(' ', $indent + static::XML_TAB_WIDTH);
 
             $xml = str_repeat(' ', $indent);
         }
         $xml .= '<' . $type . ($parent_type ? '>' : ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">');
 
-        // Determine if $element holds a single object or an array of objects:
-        // we assume the latter if all values are arrays.
-        foreach ($data as $key => $element) {
-            if (is_scalar($element)) {
-                // Normalize $data to an array of objects.
-                $data = [$data];
-                break;
+        $expected_key = 0;
+        foreach ($data as $element_key => $element) {
+            // Be strict and allow only zero-based arrays of elements.
+            if ($element_key !== $expected_key) {
+                throw new InvalidArgumentException("'Element' entry for $type contains an array of elements whose keys are not (sequentially) zero-based: key '$element_key' was found in the wrong place'.");
             }
-        }
+            $expected_key++;
 
-        foreach ($data as $key => $element) {
-            // Construct element with fields within the XML. (For each element
-            // inside the loop, because $info can differ with $element.)
-            $info = static::objectTypeInfo($type, $parent_type, $element, $fields_action);
-            if (empty($info)) {
-                throw new InvalidArgumentException("'$type' object has no type info.");
-            }
-
-            // Action and Id are set inside 'fake properties' in the data array;
-            // use them and unset them.
+            $fields = isset($element['Fields']) ? $element['Fields'] : array();
+            $objects = isset($element['Objects']) ? $element['Objects'] : array();
+            $id_attribute = '';
+            $action_attribute = '';
             if (isset($element['#action'])) {
-                if (empty($parent_type)) {
-                    // This really is an override and we want to keep it that
-                    // way. When possible, people must specify a correct
-                    // $fields_action.
-                    throw new InvalidArgumentException('#action override is only allowed in embedded objects.');
+                if (!is_string($element['#action'])) {
+                    throw new InvalidArgumentException("'#action' key in inside Element must hold string value.");
                 }
-                // Not sure whether '' makes sense as an override?
-                // Also maybe we should disallow deletes inside inserts etc?
-                if (!in_array($element['#action'], ['insert', 'update', 'delete'], true)) {
-                    throw new InvalidArgumentException("Unknown value '{$element['#action']}' for #action inside '$type' object.");
+                if ($element['#action']) {
+                    // Add the Action attribute if it's explicitly specified;
+                    // otherwise don't. (In this method, we make no assumptions
+                    // on what it does or whether its behavior recurses into
+                    // child elements; we only assume that "" is not a valid
+                    // Action value so we should not set that.)
+                    $action_attribute = ' Action="' . $element['#action'] . '"';
                 }
-                $action = $element['#action'];
                 unset($element['#action']);
-            } else {
-                $action = $fields_action;
+            }
+            if (count($element) > ($fields ? 1 : 0) + ($objects ? 1 : 0)) {
+                // We'll have to do more checking. There can be maximum 4 keys,
+                // and the fourth must be the ID.
+                unset($element['Fields']);
+                unset($element['Objects']);
+                if (count($element) > 1) {
+                    // We'll ignore #action in this message; that's a strange
+                    // construct that might have been inserted by
+                    // normalizeDataToSend() rather than the calling code.
+                    throw new InvalidArgumentException("Element must hold maximum one ID value besides Fields/Objects, but we found more than one; keys are " . implode(', ', $element) . '.');
+                }
+                $value = reset($element);
+                $key = (string) key($element);
+                if (substr($key, 0, 1) !== '@') {
+                    throw new InvalidArgumentException("Illegal key '$key' found inside Element, which can only hold keys 'Fields', 'Objects' and a special @Id key.");
+                }
+                if (!is_int($value) && !is_string($value)) {
+                    throw new InvalidArgumentException("'$key' key in inside Element must hold integer/string value.");
+                }
+                $id_attribute = ' ' . substr($key, 1) . '="' . $value . '"';
             }
 
-            if (!empty($element['#id']) && empty($info['id_field'])) {
-                throw new InvalidArgumentException("Id value provided but no id-field defined for '$type' object.");
-            }
-
-            $xml .= $indent_str . '<Element'
-                 . (empty($element['#id']) ? '' : ' ' . $info['id_field'] . '="' . $element['#id'] . '"')
-                 . '>';
-            unset($element['#id']);
+            // Each element is in its own 'Element' tag (unlike the input
+            // argument which has an array of elements in one 'Element' key,
+            // because multiple 'Element' keys cannot exist in one object or
+            // JSON string),
+            $xml .= "$indent_str<Element$id_attribute>";
             $indent_str .= $extra_spaces;
 
-            $xml .= $indent_str . '<Fields' . ($action ? " Action=\"$action\"" : '') . '>';
-
-            // Convert our element data into fields, check required fields, and
-            // add default values for fields (where defined). About definitions:
-            // - if required = true and default is given, then
-            //   - the default value is sent if no data value is passed
-            //   - an exception is (only) thrown if the passed value is null.
-            // - if the default is null (or value given is null & not
-            //   'required'), then <$name xsi:nil=\"true\"/> is passed.
-            foreach ($info['fields'] as $name => $map_properties) {
-                $value_present = true;
-
-                // Get value from the property equal to the field name (case
-                // sensitive!), or the alias. If two values are present with
-                // both tag and alias, we throw an exception.
-                $value_exists_by_alias = isset($map_properties['alias']) && array_key_exists($map_properties['alias'], $element);
-                if (array_key_exists($name, $element)) {
-                    if ($value_exists_by_alias) {
-                        throw new InvalidArgumentException("'$type' object has a value provided by both its field name $name and alias $map_properties[alias].");
-                    }
-                    $value = $element[$name];
-                    unset($element[$name]);
-                } elseif ($value_exists_by_alias) {
-                    $value = $element[$map_properties['alias']];
-                    unset($element[$map_properties['alias']]);
-                } elseif (array_key_exists('default', $map_properties)) {
-                    $value = $map_properties['default'];
-                } else {
-                    $value_present = false;
+            // Always add Fields tag, also if it's empty. (No idea if that's
+            // necessary, but that's apparently how I tested it 5 years ago.)
+            $xml .= "$indent_str<Fields$action_attribute>";
+            if (!is_array($fields)) {
+                throw new InvalidArgumentException("'Fields' property of '$type' object must be an array.");
+            }
+            foreach ($fields as $name => $value) {
+                if (!is_scalar($value)) {
+                    throw new InvalidArgumentException("'$name' field of '$type' object must be scalar.");
                 }
-
-                // Required fields will disallow non-passed values, or passed
-                // null values.
-                if (!empty($map_properties['required'])
-                    && (!$value_present || !isset($value))
-                ) {
-                    $property = $name . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
-                    throw new InvalidArgumentException("No value given for required '$property' field of '$type' object.");
+                if (is_bool($value)) {
+                    // Boolean values are encoded as 0/1 in AFAS XML.
+                    $value = $value ? '1' : '0';
                 }
-
-                if ($value_present) {
-                    if (isset($value) && !empty($map_properties['type'])) {
-                        switch ($map_properties['type']) {
-                            case 'boolean':
-                                $value = $value ? '1' : '0';
-                                break;
-                            case 'long':
-                            case 'decimal':
-                                if (!is_numeric($value)) {
-                                    $property = $name . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
-                                    throw new InvalidArgumentException("'$property' field value of '$type' object must be numeric.");
-                                }
-                                if ($map_properties['type'] === 'long' && strpos((string)$value, '.') !== false) {
-                                    $property = $name . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
-                                    throw new InvalidArgumentException("'$property' field value of '$type' object must be a 'long'.");
-                                }
-                                // For decimal, we could also check digits, but
-                                // we're not going that far yet.
-                                break;
-                            case 'date':
-                                // @todo format in standard way, once we know that's necessary
-                                break;
-                        }
-                    }
-                    $xml .= $indent_str . $extra_spaces . (isset($value)
-                            ? "<$name>" . static::xmlValue($value) . "</$name>"
-                            // Value is passed but null or default value is null
-                            : "<$name xsi:nil=\"true\"/>");
-                }
+                $xml .= $indent_str . $extra_spaces . (isset($value)
+                        ? "<$name>" . htmlspecialchars($value, ENT_QUOTES | ENT_XML1) . "</$name>"
+                        // Value is passed but null or default value is null
+                        : "<$name xsi:nil=\"true\"/>");
             }
             $xml .= $indent_str . '</Fields>';
 
-            if (!empty($element)) {
-                // Add other embedded objects. (We assume all remaining element
-                // values are indeed objects. If not, an error will be thrown.)
+            if (!is_array($objects)) {
+                throw new InvalidArgumentException("'Objects' property of '$type' object must be an array.");
+            }
+            if ($objects) {
                 $xml .= $indent_str . '<Objects>';
-
-                foreach ($info['objects'] as $name => $alias) {
-                    $value_present = true;
-
-                    // Get value from the property equal to the tag (case
-                    // sensitive!), or the alias. If two values are present with
-                    // both tag and alias, we throw an exception.
-                    if (array_key_exists($name, $element)) {
-                        if (array_key_exists($alias, $element)) {
-                            throw new InvalidArgumentException("'$type' object has a value provided by both its property name $name and alias $alias.");
-                        }
-                        $value = $element[$name];
-                        unset($element[$name]);
-                    } elseif (array_key_exists($alias, $element)) {
-                        $value = $element[$alias];
-                        unset($element[$alias]);
-                    } else {
-                        $value_present = false;
+                foreach ($objects as $name => $value) {
+                    if (!is_array($value)) {
+                        throw new InvalidArgumentException("Value for '$name' object embedded inside '$type' object must be array.");
                     }
-
-                    if ($value_present) {
-                        if (!is_array($value)) {
-                            $property = $name . (isset($alias) ? " ($alias)" : '');
-                            throw new InvalidArgumentException("Value for '$property' object embedded inside '$type' object must be array.");
-                        }
-                        $xml .= ($indent < 0 ? '' : "\n") . static::constructXml(
-                                $name,
-                                $value,
-                                $action,
-                                $type,
-                                $indent < 0 ? $indent : $indent + 3 * $tab_width
-                            );
-                    }
+                    // We'll do more checks on $value in the recursive call.
+                    // (This is again supposed to be a one-element array with
+                    // 'Element' as key, and object(s) as value.)
+                    $xml .= ($indent < 0 ? '' : "\n") . static::xmlEncodeNormalizedData(
+                            [ $name => $value ],
+                            $indent < 0 ? $indent : $indent + 3 * static::XML_TAB_WIDTH,
+                            $type
+                        );
                 }
                 $xml .= $indent_str . '</Objects>';
             }
-
-            // Throw error for unknown element data (for which we have not seen
-            // a field/object definition).
-            if (!empty($element)) {
-                $keys = "'" . implode(', ', array_keys($element)) . "'";
-                throw new InvalidArgumentException("Unmapped element values provided for '$type' object: keys are $keys.");
-            }
-
+// @todo Decrease indent again in case we loop and do another <Element>
+//$indent_str = "\n" . str_repeat(' ', $indent + static::XML_TAB_WIDTH);
             // Add closing XML tags.
             if ($indent >= 0) {
-                $xml .= "\n" . str_repeat(' ', $indent + $tab_width) . '</Element>';
+                $xml .= "\n" . str_repeat(' ', $indent + static::XML_TAB_WIDTH) . '</Element>';
             } else {
                 $xml .= '</Element>';
             }
         }
-
         // Add closing XML tag.
         if ($indent >= 0) {
             // Do not end the whole string with newline.
@@ -1154,73 +1079,100 @@ class Helper
         return $xml;
     }
 
-    /**
-     * Prepare a value for inclusion in XML: trim and encode.
-     *
-     * @param string $text
-     *
-     * @return string
-     */
-    protected static function xmlValue($text)
-    {
-        // check_plain() / ENT_QUOTES converts single quotes to &#039; which is
-        // illegal in XML so we can't use it for sanitizing.) The below is
-        // equivalent to "htmlspecialchars($text, ENT_QUOTES | ENT_XML1)", but
-        // also valid in PHP < 5.4.
-        return str_replace("'", '&apos;', htmlspecialchars(trim($text)));
-    }
 
     /**
      * 'Normalizes' AFAS object representation to send in insert/update queries.
      *
-     * This is a straight 'port' from constructXml() which is used to convert
-     * an array with the exact same structure into an XML message. Please see
-     * constructXml() for comments. At the time of converting, it is not known
-     * whether all the arguments make sense in the REST/JSON world, and the
-     * structure of the AFAS examples is not suitable for sending in multiple
-     * objects in one call. So there are several @todo's in the code to make
-     * that work (or document the restricted application of $data in a REST
-     * context?) But for now, this function does work for relatively simple
-     * input arrays, and helps Connection::sendData() be able to send in those
-     * arrays to both REST and SOAP clients.
+     * TL/DR: Always pass $action ("insert" or "update"; "update" should not be
+     * necessary for REST, but still); always set $embed_action to true when
+     * wanting to output XML; pass ID values in '#id' key, not '@__Id'.
+     *
+     * 'Normalizing' means validating the structure, adding default values where
+     * necessary, converting 'more readable' aliases' to system field names used
+     * by AFAS.
+     *
+     * At the time of writing this, REST/JSON is untested and it is not known
+     * whether all the arguments make sense in the REST/JSON world. However, at
+     * least the structure of the output seems suitable for sending in to the
+     * REST API, so it's ready for extensive testing by whoever wants to. The
+     * output has been tested with the SOAP API: when $embed_action is true,
+     * it can be converted to XML which will work correctly for updating /
+     * inserting objects.
+     *
+     * AFAS installations with custom fields will typically want to extend
+     * objectTypeInfo() in a subclass, and call this method either through that
+     * subclass or through Connection::sendData() after injecting the subclass
+     * name into the Connection. That should make the custom fields available.
+     *
+     * We hope that the below code catches all strange/dangerous combinations of
+     * 'id' /  $action / AutoNum / MatchXXX values and 'embedding
+     * objects'. AFAS behavior and our assumptions are explained in
+     * update-payloads.md, and in code comments in objectTypeInfo(). We can't be
+     * totally sure, though. Please read the ocumentation before dealing with
+     * knPerson/knOrganisation objects; it may save lots of time and wrong
+     * assumptions.
      *
      * @param $type
      *   The type of object, i.e. the 'Update Connector' name to send this data
      *   into. See objectTypeInfo() for possible values.
      * @param array $data
-     *   Data to normalize; see objectTypeInfo() for possible values.
-     *   See constructXml() for comments. A note about special 'id fields': in
-     *   an XML representation (returned by constructXML()) these would be
-     *   attributes in the object tag. In this output array they are represented
-     *   as fields that happen to start with a '@'. However, these "@TypeId"
-     *   field names are not recognized; they must be named "#id" just like the
-     *   input for constructXML().
-     * @param string $fields_action
-     *   (optional) Can be "insert", "update", "delete", "", though for now only
-     *   "insert" changes the return value - by adding default field values. See
-     *   constructXML() comments for the relation between this value and the
-     *   "#id" key in $data. (At the time of writing the initial code for this
-     *   method, it was unclear whether this has any significance for the JSON/
-     *   array format of the REST API.)
+     *   Data to normalize, representing one or more objects; see
+     *   objectTypeInfo() for possible values in an object. If any value in the
+     *   (first dimension of the) array is scalar, it's assumed to be a single
+     *   object; if it contains only non-scalars (which must be arrays), it's
+     *   assumed to be several objects. Note that it's possible to pass one
+     *   object containing no fields and only embedded 'child' objects, only by
+     *   passing it as an 'array containing one object'. The keys inside a
+     *   single object can be:
+     *   - field names or aliases (as defined in objectTypeInfo());
+     *   - names of object types (see $type argument)
+     *   - '#id', which holds the 'id value' for an object. (For REST payloads,
+     *     this will be converted to a '@__Id' key; passing this key itself as
+     *     a field name is not allowed here. For XML/SOAP payloads, this will be
+     *     converted to an id attribute in the Element tag.)
+     *   - #action: this is for fringe cases: it's only allowed as part of
+     *     'child' objects, to specify a $action for the child object which
+     *     differs from its parents. See update-payloads for one of the very few
+     *     examples currently known.
+     *   The format is fairly strict: this method will throw exceptions when
+     *   e.g. required data is not present, present data is not recognized, ...
+     * @param string $action
+     *   (optional) Allowed values: "insert", "update", "delete", "". These
+     *   can influence elements' fields in the return value, by e.g. adding
+     *   default values. (Until now, only "insert" is known to have an effect
+     *   for REST/JSON generation. For XML, the difference between "update" and
+     *   "" is only the Action attribute included in the XML. While XML without
+     *   an 'Action' attribute is not known to make any sense, we allow "" for
+     *   at least being able to generate it.
+     * @todo the above is not actually true and should probably be marked as a bug.
+     * @param bool $embed_action
+     *   (optional) If true, embed '#action' values in all elements in the
+     *   return value, containing the $action value (or an existing '#action'
+     *   value of an embedded element). The return value will not be suitable
+     *   for passing into the REST API but suitable for passing into
+     *   xmlEncodeNormalizedData(), for rendering correct Action attributes.
+     *   In practice,  when generating an XML message for the SOAP API, it is
+     *   required to pass true here, or to insert #action values into the
+     *   returned objects by yourself.
      * @param string $parent_type
      *   (optional) If nonempty, the return value will be suitable for embedding
-     *   inside the parent type, which could be slightly different from a
-     *   'standalone' value.
+     *   inside the parent type, which in some cases is a little different from
+     *   a 'standalone' value.
      *
      * @return array
-     *   An array suitable for sending in to a POST/PUT (/DELETE?) REST API
-     *   request, after converting it to JSON.
+     *   An array which is suitable either for sending in to POST/PUT(/DELETE?)
+     *   REST API requests, after converting it to JSON - or for converting it
+     *   to XML for the SOAP API, depending on the value of $embed_action.
      *
      * @throws \InvalidArgumentException
      *   If arguments have an unrecognized / invalid format.
      *
-     * @see constructXML()
      * @see objectTypeInfo()
      */
-    public static function normalizeDataToSend($type, array $data, $fields_action = '', $parent_type = '')
+    public static function normalizeDataToSend($type, array $data, $action = '', $embed_action = false, $parent_type = '')
     {
-        if (!in_array($fields_action, ['insert', 'update', 'delete', ''], true)) {
-            throw new InvalidArgumentException("Unknown value $fields_action for fields_action parameter.");
+        if (!in_array($action, ['insert', 'update', 'delete', ''], true)) {
+            throw new InvalidArgumentException("Unknown value $action for fields_action parameter.");
         }
         if (!$data) {
             throw new InvalidArgumentException("'$type' object holds no data.");
@@ -1238,27 +1190,54 @@ class Helper
 
         $normalized_elements = [];
         foreach ($data as $key => $element) {
-            // Get type info. (For each element inside the loop, because $info
-            // can differ with $element.)
-            // @todo At some point we should reevaluate whether $fields_action
-            //   makes any sense for the REST API. That 'some point' is when we
-            //   start extensively testing the generation of JSON / updates for
-            //   objects whose objectTypeInfo changes with $fields_action. We
-            //   know this makes sense for the SOAP XML format (which also uses
-            //   this code), but have no idea about REST/JSON yet.
-            $info = static::objectTypeInfo($type, $parent_type, $element, $fields_action);
+            // Get type info. We do this for each element inside the loop,
+            // because $info can differ with $element. Notes:
+            // - We don't know fore sure that $action makes sense for the REST
+            //   API; we've never tried it. This method is also used for
+            //   generating o structure that will be converted into XML for the
+            //   SOAP API, so we'll keep it.
+            // - It's unclear to me (even though I wrote this code myself 5
+            //   years ago) why $element['#action'] is apparently not used for
+            //   deriving type info for this element, but only for child
+            //   elements. (It _is_ used for inserting the 'action' parameter
+            //   inside _this_ element's 'Fields' XML tag, though.) I did use
+            //   this structure successfully so I'll keep it the same, but still
+            //   this complicates things - and it feels like this could
+            //   necessitate a (incompatible) change at some point. (See also
+            //   the exception with empty $parent_type below.)
+            // @todo think some more about changing this now. We probably never actually _used_ this, given $element['#action'] cannot be on the 1st level, right?
+            $info = static::objectTypeInfo($type, $parent_type, $element, $action);
+            // @todo FIX: we seem to have a bug with ViKc default not being set when insert-inside-update?
+            // @todo FIX: (and also with the KnBasicAddressAdr:PbAd being set when it shouldn't, when update-inside-update?)
+            // @todo FIX: (also check why default values are still added to embedded person object when $action is empty. Not a clear bug, but potentially confusing because it requires us to pass "update" for JSON.)
             if (empty($info)) {
                 throw new InvalidArgumentException("'$type' object has no type info.");
             }
-            // Derive $action. The only thing that this does, is set the
-            // $fields_action parameter to a recursive call, so it only has a
+
+            // Construct new element with an optional id + fields + objects for
+            // this type (and #action, if specified by the caller).
+            $normalized_element = [];
+
+            // Derive $element_action. The only thing that this does (except for
+            // including it in the element if requested; see just below) is set
+            // the $action parameter to a recursive call, so it only has a
             // possible effect on the return values of objectTypeInfo() calls
-            // made by those recursive calls. Current use is unknown; see above.
+            // made by those recursive calls.
             if (isset($element['#action'])) {
                 if (empty($parent_type)) {
                     // This really is an override and we want to keep it that
                     // way. When possible, people must specify a correct
-                    // $fields_action.
+                    // $action instead of #action, because it's much more
+                    // readable. This was the assumption in the 5 year old code
+                    // that constructs XML, so we kept it so far. Note however:
+                    // - '#action' will be set on the first level of the
+                    //   _return value_, if $action is specified.
+                    // - $element['#action'] is currently not fully equivalent
+                    //   to $action, because -as noted above-
+                    //   $element['#action'] does not influence the current
+                    //   $info, yet influences child elements. So this last
+                    //   thing is extra likely to be "better off changed,
+                    //   because that seems more logical".
                     throw new InvalidArgumentException('#action override is only allowed in embedded objects.');
                 }
                 // Not sure whether '' makes sense as an override?
@@ -1266,15 +1245,35 @@ class Helper
                 if (!in_array($element['#action'], ['insert', 'update', 'delete'], true)) {
                     throw new InvalidArgumentException("Unknown value '{$element['#action']}' for #action inside '$type' object.");
                 }
-                $action = $element['#action'];
+                $element_action = $element['#action'];
                 unset($element['#action']);
             } else {
-                $action = $fields_action;
+                $element_action = $action;
             }
-
-            // Construct new element with an optional id + fields + objects for
-            // this type.
-            $normalized_element = [];
+            // Include #action if requested by the caller (typically because
+            // it's needed inside XML). Rules:
+            // - The original 5 year old code, constructing XML, passed
+            //   $element_action up into recursive calls, meaning child elements
+            //   without #action defined explicitly, would still have the parent
+            //   value set explicitly. We're going to keep doing this, in the
+            //   structure we create in this method. (It probably makes sense in
+            //   practice, especially since an empty $element_action does not
+            //   really 'mean' anything, and we mostly want to act as if an
+            //   action is always defined, unless it's explicitly set to "" in a
+            //   child object.)
+            // - (Unlike the old code) if we have an empty $element_action,
+            //   we'll also include that. (This will lead to action _not_ being
+            //   set in the resulting XML, because 'Action=""' is not a valid
+            //   thing. This also allows 'emptying the action in child elements'
+            //   to make it technically possible to construct the corresponding
+            //   XML... even though we assume it to be senseless.)
+            // Both things mean we won't need to make assumptions about whether/
+            // how the separate new XML construction code implements
+            // 'inheritance' of actions; the XML will always end up the same as
+            // with the old code.
+            if ($embed_action) {
+                $normalized_element['#action'] = $element_action;
+            }
 
             if (!empty($element['#id'])) {
                 if (empty($info['id_field'])) {
@@ -1324,6 +1323,10 @@ class Helper
 
                 if ($value_present) {
                     if (isset($value)) {
+                        if (!is_scalar($value)) {
+                            $property = $name . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
+                            throw new InvalidArgumentException("'$property' property of '$type' object must be scalar.");
+                        }
                         if (!empty($map_properties['type'])) {
                             switch ($map_properties['type']) {
                                 case 'boolean':
@@ -1391,7 +1394,7 @@ class Helper
                         // layer).
                         $normalized_element['Objects'] = array_merge(
                             $normalized_element['Objects'],
-                            static::normalizeDataToSend($name, $value, $action, $type)
+                            static::normalizeDataToSend($name, $value, $element_action, $embed_action, $type)
                         );
                     }
                 }
@@ -1426,7 +1429,9 @@ class Helper
      *
      * AFAS installations with custom fields will typically want to extend this
      * method in a subclass. Its name can be injected into the Connection class,
-     * for using Connection::sendData() with those custom fields.
+     * for using Connection::sendData() with those custom fields. The same goes
+     * for standard object types which have not been included yet below - and
+     * everyone's willing to send PRs to add those to the library code.
      *
      * @param string $type
      *   The type of object / Update Connector.
@@ -1437,7 +1442,7 @@ class Helper
      * @param array $data
      *   (optional) Input data to 'normalize' using the returned info. This can
      *   influence e.g. some defaults.
-     * @param string $fields_action
+     * @param string $action
      *   (optional) Action to fill in 'fields' tag; can be "insert", "update",
      *   "delete", "". This can influence e.g. some defaults.
      *
@@ -1448,10 +1453,10 @@ class Helper
      * @see constructXml()
      * @see normalizeDataToSend()
      */
-    public static function objectTypeInfo($type, $parent_type = '', array $data = [], $fields_action = '')
+    public static function objectTypeInfo($type, $parent_type = '', array $data = [], $action = '')
     {
 
-        $inserting = $fields_action === 'insert';
+        $inserting = $action === 'insert';
 
         $info = [];
         switch ($type) {
@@ -1666,7 +1671,7 @@ class Helper
                         ],
                         /**
                          * If you specify MatchPer and if the corresponding fields have
-                         * values, the difference between $fields_action "update" and
+                         * values, the difference between $action "update" and
                          * "insert" falls away: if there is a match (but only one) the
                          * existing record is updated. If there isn't, a new one is
                          * inserted. If there are multiple matches, or a wrong match method
@@ -1681,21 +1686,21 @@ class Helper
                          * knOrganisation -> knContact -> knPerson XML (as far as I know).
                          * But updating existing data is tricky.
                          * Updates-or-inserts work when specifying non-zero match_method, no
-                         * BcCo numbers and no $fields_action (if there are no multiple
+                         * BcCo numbers and no $action (if there are no multiple
                          * matches; those will yield an error).
                          * Specifying MatchPer=0 and BcCo for an existing org+person, and no
-                         * $fields_action, yields an AFAS error "Object variable or With
+                         * $action, yields an AFAS error "Object variable or With
                          * block variable not set" (which is a Visual Basic error, pointing
                          * to an error in AFAS' program code). To bypass this error,
-                         * $fields_action "update" must be explicitly specified.
+                         * $action "update" must be explicitly specified.
                          * When inserting new contact/person objects into an existing
                          * organization (without risking the 'multiple matches' error above)
-                         * $fields_action "update" + BcCo + MatchPer=0 must be specified for
-                         * the organization, and $fields_action "insert" must be specified
-                         * for the contact/person object. (In constructXML() use '#action'.)
+                         * $action "update" + BcCo + MatchPer=0 must be specified for
+                         * the organization, and $action "insert" must be specified
+                         * for the contact/person object. (In normalizeDataToSend() use '#action'.)
                          *
                          * NOTE - for Qoony sources in 2011 (which inserted KnPerson objects
-                         *   inside KnSalesRelationPer), 3 had the comment
+                         *   inside KnSalesRelationPer), BcCo value 3 had the comment
                          *   "match customer by mail". They used 3 until april 2014, when
                          *   suddenly updates broke, giving "organisation vs person objects"
                          *   and "multiple person objects found for these search criteria"
@@ -1882,7 +1887,7 @@ class Helper
                 // We're sure that the record will be newly inserted if MatchPer
                 // specifies this, and the 'fields action' does not say otherwise.
                 // @todo test: what about MatchPer 7 and "update"? What overrides what?
-                $inserting = (!$fields_action || $fields_action === 'insert')
+                $inserting = (!$action || $action === 'insert')
                     && (!isset($data['match_method']) && !isset($data['MatchPer'])
                         || isset($data['match_method']) && $data['match_method'] == 7
                         || isset($data['MatchPer']) && $data['MatchPer'] == 7);
@@ -1893,9 +1898,9 @@ class Helper
                     // ...but it seems very unlikely that someone would specify BcCo when
                     // they don't explicitly want the corresponding record overwritten.
                     // So we match on BcCo in that case. This means there is no difference
-                    // between $fields_action "insert" and "update"!
+                    // between $action "insert" and "update"!
                     // If we do _not_ set MatchPer while BcCo _is_ specified, with
-                    // $fields_action "insert" we get error "Unsupported match value!!"
+                    // $action "insert" we get error "Unsupported match value!!"
                     $info['fields']['MatchPer']['default!'] = '0';
                 } elseif (!empty($data['SoSe']) || !empty($data['bsn'])) {
                     // I guess we can assume the same logic (we never want duplicate
@@ -1903,11 +1908,26 @@ class Helper
                     // BSN...
                     $info['fields']['MatchPer']['default!'] = '1';
                 }
-                // TODO we can surely assume the same logic for 2-6 but this would take
+                // @todo we can surely assume the same logic for 2-6 but this would take
                 // a lot of testing. Do this later. We will feel entitled to change this
                 // part of this function's behavior silently.
+                // @todo test and decide:
+                //   We've inserted a block for MatchOga in the corresponding
+                //   logic for KnOrganisation, so shouldn't we do the same here.
+                //   even if just to keep from being non-confusing? (Or remove
+                //   the block for KnOrganisation too, because testing has shown
+                //   that MatchPer/MatchOga=0 together with 'insert' does the
+                //   same: it always inserts. I guess inserting this block here
+                //   is slightly nicer, but I won't do it without testing.
+//                elseif ($action === 'insert') {
+//                    // Since we can get an error if not setting MatchOga in some
+//                    // circumstances (see 0 above), explicitly set 'always insert'.
+//                    // (Note we haven't actually seen an error that this would
+//                    // solve; it's "just to be sure" and doesn't hurt anything.)
+//                    $info['fields']['MatchPer']['default!'] = '7';
+//                }
                 else {
-                    // Probably even with $fields_action "update", a new record will be
+                    // Probably even with $action "update", a new record will be
                     // inserted if there is no match... but we do not know this for sure!
                     // Since our principle is to prevent silent overwrites of data, we
                     // here force an error for "update" if MatchPer is not explicitly
@@ -2024,7 +2044,7 @@ class Helper
                         ],
                         /**
                          * If you specify MatchOga and if the corresponding fields have
-                         * values, the difference between $fields_action "update" and
+                         * values, the difference between $action "update" and
                          * "insert" falls away: if there is a match (but only one) the
                          * existing record is updated. If there isn't, a new one is
                          * inserted. If there are multiple matches, or a wrong match method
@@ -2140,23 +2160,26 @@ class Helper
                     ],
                 ];
 
-                // We're sure that the record will be newly inserted if MatchPer
+                // We're sure that the record will be newly inserted if MatchOga
                 // specifies this, and the 'fields action' does not say otherwise.
                 // @todo test: what about MatchOga 6 and "update"? What overrides what?
-                $inserting = (!$fields_action || $fields_action === 'insert')
+                $inserting = (!$action || $action === 'insert')
                     && (!isset($data['match_method']) && !isset($data['MatchOga'])
                         || isset($data['match_method']) && $data['match_method'] == 6
                         || isset($data['MatchOga']) && $data['MatchOga'] == 6);
 
                 // MatchOga defaults: Our principle is we would rather insert duplicate
                 // data than silently overwrite data by accident.
+// @todo So then, do we really want to keep doing the below also for $inserting? Seems better to only fill defaults for updates?
+
+//@todo test: what is up with 'number' not being explicitly set here? That's a bug, only covered by the default-default being 0 too, right?
                 if (!empty($data['BcCo'])) {
                     // ...but it seems very unlikely that someone would specify BcCo when
                     // they don't explicitly want the corresponding record overwritten.
                     // So we match on BcCo in that case. This means there is no difference
-                    // between $fields_action "insert" and "update"!
+                    // between $action "insert" and "update"!
                     // If we do _not_ set MatchOga while BcCo _is_ specified, with
-                    // $fields_action "insert" we get error "Unsupported match value!!"
+                    // $action "insert" we get error "Unsupported match value!!"
                     $info['fields']['MatchOga']['default!'] = '0';
                 } elseif (!empty($data['CcNr']) || !empty($data['coc_number'])) {
                     // I guess we can assume the same logic (we never want duplicate
@@ -2166,12 +2189,14 @@ class Helper
                 } elseif (!empty($data['FiNr']) || !empty($data['fiscal_number'])) {
                     // ...and fiscal number.
                     $info['fields']['MatchOga']['default!'] = '2';
-                } elseif ($fields_action === 'insert') {
+                } elseif ($action === 'insert') {
                     // Since we can get an error if not setting MatchOga in some
                     // circumstances (see 0 above), explicitly set 'always insert'.
+                    // (Note we haven't actually seen an error that this would
+                    // solve; it's "just to be sure" and doesn't hurt anything.)
                     $info['fields']['MatchOga']['default!'] = '6';
                 } else {
-                    // Probably even with $fields_action "update", a new record will be
+                    // Probably even with $action "update", a new record will be
                     // inserted if there is no match... but we do not know this for sure!
                     // Since our principle is to prevent silent overwrites of data, we
                     // here force an error for "update" if MatchOga is not explicitly
@@ -2973,7 +2998,7 @@ class Helper
 
         // If no ID is specified, default AutoNum to True for inserts.
         if (isset($info['fields']['AutoNum'])
-            && $fields_action === 'insert' && !isset($data['#id'])
+            && $action === 'insert' && !isset($data['#id'])
         ) {
             $info['fields']['AutoNum']['default'] = true;
         }
@@ -3008,8 +3033,8 @@ class Helper
      *
      * @deprecated Since REST/JSON appeared, this was renamed to objectTypeInfo.
      */
-    protected static function xmlTypeInfo($type, $parent_type, $data, $fields_action)
+    protected static function xmlTypeInfo($type, $parent_type, $data, $action)
     {
-        return static::objectTypeInfo($type, $parent_type, $data, $fields_action);
+        return static::objectTypeInfo($type, $parent_type, $data, $action);
     }
 }
