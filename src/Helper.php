@@ -947,19 +947,19 @@ class Helper
         }
 
         // Object header
-        $xml = '';
-        $indent_str = '';
-        $extra_spaces = '';
+        $xml = $indent_str1 = $indent_str2 = $indent_str3 = '';
         if ($indent >= 0) {
-            // This will be used to add $tab_width spaces to $indent_str, each
-            // time we enter inside a tag. See below.
-            $extra_spaces = str_repeat(' ', static::XML_TAB_WIDTH);
-
-            // This is the initial value _after_ the outer XML line. While being
-            // built, the last line in $xml will not end with a newline:
-            $indent_str = "\n" . str_repeat(' ', $indent + static::XML_TAB_WIDTH);
-
+            // This is how the XML starts, and also the number of spaces before
+            // the 'type end tag' below. We won't use a $indent_str0 for that:
+            // we'll always need an if/then anyway since this has no LF.
             $xml = str_repeat(' ', $indent);
+            $extra_spaces = str_repeat(' ', static::XML_TAB_WIDTH);
+            // LF + Indentation before Element tag:
+            $indent_str1 = "\n" . $xml . $extra_spaces;
+            // LF + Indentation before Fields/Objects tag:
+            $indent_str2 = $indent_str1 . $extra_spaces;
+            // LF + Indentation before individual field values:
+            $indent_str3 = $indent_str2 . $extra_spaces;
         }
         $xml .= '<' . $type . ($parent_type ? '>' : ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">');
 
@@ -1015,12 +1015,11 @@ class Helper
             // argument which has an array of elements in one 'Element' key,
             // because multiple 'Element' keys cannot exist in one object or
             // JSON string),
-            $xml .= "$indent_str<Element$id_attribute>";
-            $indent_str .= $extra_spaces;
+            $xml .= "$indent_str1<Element$id_attribute>";
 
             // Always add Fields tag, also if it's empty. (No idea if that's
             // necessary, but that's apparently how I tested it 5 years ago.)
-            $xml .= "$indent_str<Fields$action_attribute>";
+            $xml .= "$indent_str2<Fields$action_attribute>";
             if (!is_array($fields)) {
                 throw new InvalidArgumentException("'Fields' property of '$type' object must be an array.");
             }
@@ -1032,18 +1031,18 @@ class Helper
                     // Boolean values are encoded as 0/1 in AFAS XML.
                     $value = $value ? '1' : '0';
                 }
-                $xml .= $indent_str . $extra_spaces . (isset($value)
+                $xml .= $indent_str3 . (isset($value)
                         ? "<$name>" . htmlspecialchars($value, ENT_QUOTES | ENT_XML1) . "</$name>"
                         // Value is passed but null or default value is null
                         : "<$name xsi:nil=\"true\"/>");
             }
-            $xml .= $indent_str . '</Fields>';
+            $xml .= "$indent_str2</Fields>";
 
             if (!is_array($objects)) {
                 throw new InvalidArgumentException("'Objects' property of '$type' object must be an array.");
             }
             if ($objects) {
-                $xml .= $indent_str . '<Objects>';
+                $xml .= "$indent_str2<Objects>";
                 foreach ($objects as $name => $value) {
                     if (!is_array($value)) {
                         throw new InvalidArgumentException("Value for '$name' object embedded inside '$type' object must be array.");
@@ -1057,16 +1056,9 @@ class Helper
                             $type
                         );
                 }
-                $xml .= $indent_str . '</Objects>';
+                $xml .= "$indent_str2</Objects>";
             }
-// @todo Decrease indent again in case we loop and do another <Element>
-//$indent_str = "\n" . str_repeat(' ', $indent + static::XML_TAB_WIDTH);
-            // Add closing XML tags.
-            if ($indent >= 0) {
-                $xml .= "\n" . str_repeat(' ', $indent + static::XML_TAB_WIDTH) . '</Element>';
-            } else {
-                $xml .= '</Element>';
-            }
+            $xml .= "$indent_str1</Element>";
         }
         // Add closing XML tag.
         if ($indent >= 0) {
