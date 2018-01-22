@@ -826,10 +826,6 @@ Helper::xmlEncodeNormalizedData(Helper::normalizeDataToSend('KnOrganisation', $i
 </KnOrganisation>
 ```
 For comparison: json_encode(Helper::normalizeDataToSend('KnOrganisation', $input), JSON_PRETTY_PRINT):
-
-_(Inconsistency (and arguably but not definitely a bug): we're still providing
-default values for the KnPerson objects, if we do not explicitly pass $action =
-'update' as 3rd argument. We probably should fix that, so it doesn't get confusing.)_
 ```json
 {
     "KnOrganisation": {
@@ -871,10 +867,7 @@ default values for the KnPerson objects, if we do not explicitly pass $action =
                                         "SeNm": "MUIT",
                                         "FiNm": "Roderik",
                                         "In": "R.",
-                                        "LaNm": "Muit",
-                                        "SpNm": false,
-                                        "ViGe": "O",
-                                        "Corr": false
+                                        "LaNm": "Muit"
                                     }
                                 }
                             }

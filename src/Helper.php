@@ -1136,7 +1136,6 @@ class Helper
      *   "" is only the Action attribute included in the XML. While XML without
      *   an 'Action' attribute is not known to make any sense, we allow "" for
      *   at least being able to generate it.
-     * @todo the above is not actually true and should probably be marked as a bug.
      * @param bool $embed_action
      *   (optional) If true, embed '#action' values in all elements in the
      *   return value, containing the $action value (or an existing '#action'
@@ -1242,7 +1241,6 @@ class Helper
             // Get type info. We do this for each element inside the loop,
             // because $info can differ with $element.
             $info = static::objectTypeInfo($type, $parent_type, $element, $element_action);
-            // @todo FIX: (also check why default values are still added to embedded person object when $action is empty. Not a clear bug, but potentially confusing because it requires us to pass "update" for JSON.)
             if (empty($info)) {
                 throw new InvalidArgumentException("'$type' object has no type info.");
             }
@@ -1889,12 +1887,13 @@ class Helper
                 }
 
                 // We're sure that the record will be newly inserted if MatchPer
-                // specifies this, and the 'fields action' does not say otherwise.
-                // @todo test: what about MatchPer 7 and "update"? What overrides what?
-                $inserting = (!$action || $action === 'insert')
-                    && (!isset($data['match_method']) && !isset($data['MatchPer'])
-                        || isset($data['match_method']) && $data['match_method'] == 7
-                        || isset($data['MatchPer']) && $data['MatchPer'] == 7);
+                // specifies this. (We assume that this is the case even when
+                // $action specifies "update"; this is how we've documented
+                // things elsewhere too. The only thing this effectively does
+                // so far, is to add default values.)
+                $inserting = isset($data['match_method']) || isset($data['MatchPer']) ?
+                    $action !== 'delete' && (isset($data['match_method']) ? $data['match_method'] : $data['MatchPer'] == 7) :
+                    $action === 'insert';
 
                 // MatchPer defaults: Our principle is we would rather insert duplicate
                 // data than silently overwrite data by accident.
@@ -2165,12 +2164,13 @@ class Helper
                 ];
 
                 // We're sure that the record will be newly inserted if MatchOga
-                // specifies this, and the 'fields action' does not say otherwise.
-                // @todo test: what about MatchOga 6 and "update"? What overrides what?
-                $inserting = (!$action || $action === 'insert')
-                    && (!isset($data['match_method']) && !isset($data['MatchOga'])
-                        || isset($data['match_method']) && $data['match_method'] == 6
-                        || isset($data['MatchOga']) && $data['MatchOga'] == 6);
+                // specifies this. (We assume that this is the case even when
+                // $action specifies "update"; this is how we've documented
+                // things elsewhere too. The only thing this effectively does
+                // so far, is to add default values.)
+                $inserting = isset($data['match_method']) || isset($data['MatchOga']) ?
+                    $action !== 'delete' && (isset($data['match_method']) ? $data['match_method'] : $data['MatchOga'] == 6) :
+                    $action === 'insert';
 
                 // MatchOga defaults: Our principle is we would rather insert duplicate
                 // data than silently overwrite data by accident.
