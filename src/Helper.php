@@ -1182,30 +1182,6 @@ class Helper
 
         $normalized_elements = [];
         foreach ($data as $key => $element) {
-            // Get type info. We do this for each element inside the loop,
-            // because $info can differ with $element. Notes:
-            // - We don't know fore sure that $action makes sense for the REST
-            //   API; we've never tried it. This method is also used for
-            //   generating o structure that will be converted into XML for the
-            //   SOAP API, so we'll keep it.
-            // - It's unclear to me (even though I wrote this code myself 5
-            //   years ago) why $element['#action'] is apparently not used for
-            //   deriving type info for this element, but only for child
-            //   elements. (It _is_ used for inserting the 'action' parameter
-            //   inside _this_ element's 'Fields' XML tag, though.) I did use
-            //   this structure successfully so I'll keep it the same, but still
-            //   this complicates things - and it feels like this could
-            //   necessitate a (incompatible) change at some point. (See also
-            //   the exception with empty $parent_type below.)
-            // @todo think some more about changing this now. We probably never actually _used_ this, given $element['#action'] cannot be on the 1st level, right?
-            $info = static::objectTypeInfo($type, $parent_type, $element, $action);
-            // @todo FIX: we seem to have a bug with ViKc default not being set when insert-inside-update?
-            // @todo FIX: (and also with the KnBasicAddressAdr:PbAd being set when it shouldn't, when update-inside-update?)
-            // @todo FIX: (also check why default values are still added to embedded person object when $action is empty. Not a clear bug, but potentially confusing because it requires us to pass "update" for JSON.)
-            if (empty($info)) {
-                throw new InvalidArgumentException("'$type' object has no type info.");
-            }
-
             // Construct new element with an optional id + fields + objects for
             // this type (and #action, if specified by the caller).
             $normalized_element = [];
@@ -1217,24 +1193,20 @@ class Helper
             // made by those recursive calls.
             if (isset($element['#action'])) {
                 if (empty($parent_type)) {
-                    // This really is an override and we want to keep it that
-                    // way. When possible, people must specify a correct
-                    // $action instead of #action, because it's much more
-                    // readable. This was the assumption in the 5 year old code
-                    // that constructs XML, so we kept it so far. Note however:
-                    // - '#action' will be set on the first level of the
-                    //   _return value_, if $action is specified.
-                    // - $element['#action'] is currently not fully equivalent
-                    //   to $action, because -as noted above-
-                    //   $element['#action'] does not influence the current
-                    //   $info, yet influences child elements. So this last
-                    //   thing is extra likely to be "better off changed,
-                    //   because that seems more logical".
+                    // This really is an override that's implemented for some
+                    // edge cases where we have no other wayk and we want to
+                    // keep it that way. When possible, people must specify a
+                    // correct $action instead of #action, because it's much
+                    // more readable. Note however that '#action' will be set on
+                    // the first level of the _return value_, if $embed_action
+                    // is specified.
                     throw new InvalidArgumentException('#action override is only allowed in embedded objects.');
                 }
-                // Not sure whether '' makes sense as an override?
-                // Also maybe we should disallow deletes inside inserts etc?
-                if (!in_array($element['#action'], ['insert', 'update', 'delete'], true)) {
+                // Not sure whether '' makes sense as an override; as we have
+                // documented in the readme, we assume it means nothing, but
+                // we'll at least make it technically possible to do so. Also...
+                // maybe we should disallow deletes inside inserts etc?
+                if (!in_array($element['#action'], ['insert', 'update', 'delete', ''], true)) {
                     throw new InvalidArgumentException("Unknown value '{$element['#action']}' for #action inside '$type' object.");
                 }
                 $element_action = $element['#action'];
@@ -1265,6 +1237,14 @@ class Helper
             // with the old code.
             if ($embed_action) {
                 $normalized_element['#action'] = $element_action;
+            }
+
+            // Get type info. We do this for each element inside the loop,
+            // because $info can differ with $element.
+            $info = static::objectTypeInfo($type, $parent_type, $element, $element_action);
+            // @todo FIX: (also check why default values are still added to embedded person object when $action is empty. Not a clear bug, but potentially confusing because it requires us to pass "update" for JSON.)
+            if (empty($info)) {
+                throw new InvalidArgumentException("'$type' object has no type info.");
             }
 
             if (!empty($element['#id'])) {
@@ -1306,6 +1286,28 @@ class Helper
 
                 // Required fields will disallow non-passed values, or passed
                 // null values.
+                /* @todo Think about this and test: are we not treating required
+                 *   values in the wrong way? Why should a value be 'required'
+                 *   for sending in an _update_ of a record? (This has
+                 *   implications for e.g. how KnBasicAddressAdr.PbAd is
+                 *   defined; it at this moment is set to 'default!' because it
+                 *   should apparently be present on all updates. But that's
+                 *   silly; it means that it will effectively always be reset to
+                 *   false on every organisation update (because noone ever sets
+                 *   it explicitly). I can't imagine that this is actually
+                 *   required to be sent in on _updates_. But that raises the
+                 *   questions:
+                 *   - Should we just not check required fields on updates?
+                 *     That is: can we assume that required values always
+                 *     present in AFAS already, for an existing object? (I guess
+                 *     the answer is yes)
+                 *   - If the answer is yes: how useful is the 'required'
+                 *     property _really_? (I don't advocate for abolishing it,
+                 *     but it effectively does not do anything for all fields
+                 *     which also have a 'default' set. I guess it serves as
+                 *     a form of documentation, or security measure in case we
+                 *     ever remove the 'default' property...)
+                 */
                 if (!empty($map_properties['required'])
                     && (!$value_present || !isset($value))
                 ) {
@@ -1468,6 +1470,16 @@ class Helper
                          *   Rs is _also_ " 'essential', even if ResZip==true, because if Zip
                          *      could not be resolved, the specified value of Rs is taken."
                          *      So we'll make it required too.
+                         *
+                         * @todo The following needs to be tested, seems like a bug:
+                         *   There should be no 'default!' here. It should be
+                         *   either removed, or replaced by 'default'. I'm
+                         *   guessing that it's the latter AND that the 'checks
+                         *   on requiredness' should be abolished for updates.
+                         *   (If we change it to 'default' now, no organisation
+                         *   updates will succeed unless we explicitly set
+                         *   PbAd everywhere. Which seems wrong. That's why I'm
+                         *   not changing this, without testing.)
                          */
                         'PbAd' => [
                             'alias' => 'is_po_box',
@@ -2975,7 +2987,8 @@ class Helper
         // If we are not sure that the record will be newly inserted, we do not
         // want to have default values - because those will risk silently
         // overwriting existing values in AFAS.
-        // Exception: those marked with '!'.
+        // Exception: those marked with '!'. (These are usually not 'real'
+        // fields, but metadata or values for a kind of 'change record'.)
         if (!empty($info['fields'])) {
             foreach ($info['fields'] as $field => &$definition) {
                 if (isset($definition['default!'])) {

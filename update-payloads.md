@@ -574,7 +574,7 @@ by this code. Please send feedback.)_
 ```
 #### Situation 2: inserting a new contact for (/ while updating) an existing organisation:
 
-This needs he '#action' hack that was also discussed in point 1b above, because
+This needs the '#action' hack that was also discussed in point 1b above, because
 the action for the embedded objects is different from the outer KnOrganisation.
 
 Also, just to note: I opted to always query for an existing organisation /
@@ -616,12 +616,13 @@ The differences with the 'insert new person' case in the input array are noted
 in the PHP. The differences in output are:
 - The outer Action attribute has changed (obviously), as well as the one in
   the KnBasicAddressAdr object;
-- AutoNum field is not added to the KnOrganisation (and a BcCo is present
+- AutoNum field is not added to the KnOrganisation object (and a BcCo is present
   because we specified that in the input, obviously);
 - MatchOga is 0 instead of 6;
-- No default value is added for PbAd in the KnOrganisation object;
-- (A default value is still added for PbAd in the KnContact object; is that supposed to happen?
-- No default value is added for ViKc in the KnContact object. _(This seems to be a bug, since this is still a new KnContact, not an update of an existing one!)_
+- No default value is added for PbAd in the KnOrganisation object.
+_(Note that a default value is still added for PbAd in the KnBasicAddressAdr
+object; I expect this to be a bug and have documented the code where IMHO it 
+needs a more substantial rewrite. I can't test this myself at the moment.)_
 
 Helper::xmlEncodeNormalizedData(Helper::normalizeDataToSend('KnOrganisation', $input, 'update', true), 0):
 ```xml
@@ -653,6 +654,7 @@ Helper::xmlEncodeNormalizedData(Helper::normalizeDataToSend('KnOrganisation', $i
           <Fields Action="insert">
             <TeNr>06-22517218</TeNr>
             <EmAd>rm@wyz.biz</EmAd>
+            <ViKc>PRS</ViKc>
           </Fields>
           <Objects>
             <KnPerson>
@@ -708,7 +710,8 @@ For comparison: json_encode(Helper::normalizeDataToSend('KnOrganisation', $input
                     "Element": {
                         "Fields": {
                             "TeNr": "06-22517218",
-                            "EmAd": "rm@wyz.biz"
+                            "EmAd": "rm@wyz.biz",
+                            "ViKc": "PRS"
                         },
                         "Objects": {
                             "KnPerson": {
@@ -764,11 +767,12 @@ $input = [
 ```
 The differences in output with (/ on top of) situation 2 above, are:
 - The inner two Action attributes have changed, obviously;
-- AutoNum field is not added to the KnPerson (and a BcCo is present because we
-  specified that in the input, obviously);
+- AutoNum field is not added to the KnPerson object (and a BcCo is present 
+  because we specified that in the input, obviously);
 - (MatchPer is not different, but as noted above, that's an inconsistency in the
   situation 1/2 which does not make a practical difference;)
-- No default values are added for SpNm / ViGe / Corr.
+- No default values are added for ViKc in the KnContact object, or for SpNm / 
+  ViGe / Corr in the KnPerson object.
 
 Helper::xmlEncodeNormalizedData(Helper::normalizeDataToSend('KnOrganisation', $input, 'update', true), 0):
 ```xml
