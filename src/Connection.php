@@ -842,7 +842,7 @@ class Connection
                             $/ix',
                             $extra_arguments['options']['index'])
                         // Above does not ensure >0 FieldId values, so:
-                        || stripos($extra_arguments['options']['index'], 'FieldId') === FALSE)
+                        || stripos($extra_arguments['options']['index'], 'FieldId') === false)
                 ) {
                     throw new InvalidArgumentException("Invalid 'Index' value.)", 39);
                 }

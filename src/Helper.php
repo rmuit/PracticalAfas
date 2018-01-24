@@ -126,7 +126,7 @@ class Helper
         if (!isset($args['connection'])) {
             throw new InvalidArgumentException("'connection' argument not provided.", 32);
         }
-        if (!($args['connection'] instanceof \PracticalAfas\Connection)) {
+        if (!($args['connection'] instanceof Connection)) {
             throw new InvalidArgumentException("Invalid 'connection' argument.", 32);
         }
         if (!isset($args['connector'])) {
@@ -206,8 +206,7 @@ class Helper
                     // of ($filter_value + 1 second), which would be a
                     // not-removed duplicate record, actually exists.
                     $filter_value = date('Y-m-d\TH:i:s', strtotime($filter_value) + 1);
-                }
-                else {
+                } else {
                     $filter_value = date('Y-m-d\TH:i:s', strtotime($filter_value) - 1);
                 }
             }
@@ -265,14 +264,14 @@ class Helper
             // The last record(s) from the previous batch are the same as the
             // first record(s) from this batch, so remove them. Loop as long as
             // the ID field value is equal to what we remembered from last time.
-            $key = NULL;
+            $key = null;
             foreach ($records as $key => $item) {
                 if (empty($item[$id_field])) {
                     throw new RuntimeException("A returned item does not have the '$id_field' value populated, so we cannot reliably fetch items over multiple invocations of start().", 27);
                 }
                 if ($item[$id_field] !== $context['next_start']) {
                     // We're done. $key acts as a flag that we're OK.
-                    $key = NULL;
+                    $key = null;
                     break;
                 }
                 // Check if the item occurs in last_records. If so, remove it.
@@ -284,7 +283,7 @@ class Helper
                     }
                 }
             }
-            if ($key !== NULL) {
+            if ($key !== null) {
                 // If this ever happens: tough luck. This whole code block is
                 // just a hack anyway.
                 throw new RuntimeException("All items in a returned batch have the same ID value. This cannot be supported. Please set a unique 'id_field'.", 26);
@@ -321,7 +320,7 @@ class Helper
                 while ($item[$id_field] == $context['next_start']) {
                     $context['last_records'][] = $item;
                     $item = prev($records);
-                    if ($item === FALSE) {
+                    if ($item === false) {
                         throw new RuntimeException("All items in a returned batch have the same ID value. This cannot be supported. Please set a unique 'id_field'.", 26);
                     }
                     if (empty($item[$id_field])) {
@@ -1729,8 +1728,12 @@ class Helper
                         //),
                         // Nummer, 1-15 chars
                         'BcCo' => [
-                            // 'ID' would be more confusing because it's not the internal ID.
-                            'alias' => 'number',
+                            // This is called "Nummer" here by AFAS but the field
+                            // name itself obviously refers to 'code', and also
+                            // a reference field in KnContact is called "Code persoon"
+                            // by AFAS. Let's be consistent and call it "code" here too.
+                            // ('ID' would be more confusing because it's not the internal ID.)
+                            'alias' => 'code',
                         ],
                         'SeNm' => [
                             'alias' => 'search_name',
@@ -1904,7 +1907,7 @@ class Helper
                 // accident...
                 if ($action === 'insert') {
                     $info['fields']['MatchPer']['default!'] = '7';
-                } elseif (!empty($data['BcCo'])) {
+                } elseif (!empty($data['BcCo']) || !empty($data['code'])) {
                     // ...but it seems very unlikely that someone would specify BcCo when
                     // they don't explicitly want the corresponding record overwritten.
                     // So we match on BcCo in that case.
@@ -2022,10 +2025,17 @@ class Helper
                     ],
                     'fields' => [
                         // Postadres is adres
+                        // (In a previous version we defaulted this to 'false'
+                        // just like the PbAd field from the address objects,
+                        // but it seems to mean something different - and seems
+                        // to only make sense to set 'false' if people have
+                        // explicitly added a postal address?
+                        // @todo maybe make this default dependent on presence
+                        //   of, _and_ difference in, two address objects?
                         'PbAd' => [
-                            'alias' => 'is_po_box',
+                            'alias' => 'postal_address_is_address',
                             'type' => 'boolean',
-                            'default' => false,
+                            'default' => true,
                         ],
                         'AutoNum' => [
                             'alias' => 'auto_num',
@@ -2056,11 +2066,16 @@ class Helper
                         //),
                         // Nummer, 1-15 chars
                         'BcCo' => [
-                            // 'ID' would be more confusing because it's not the internal ID.
-                            'alias' => 'number',
+                            // This is called "Nummer" here by AFAS but the field
+                            // name itself obviously refers to 'code', and also
+                            // a reference field in KnContact is called "Code organisatie"
+                            // by AFAS. Let's be consistent and call it "code" here too.
+                            // ('ID' would be more confusing because it's not the internal ID.)
+                            'alias' => 'code',
                         ],
                         'SeNm' => [
                             'alias' => 'search_name',
+                            // @todo dynamic defaults for this and voorletter?
                         ],
                         // Name. Is not required officially, but I guess you must fill in either
                         // BcCo, SeNm or Nm to be able to find the record back. (Or maybe you get an
@@ -2167,8 +2182,7 @@ class Helper
                 // accident...
                 if ($action === 'insert') {
                     $info['fields']['MatchOga']['default!'] = '6';
-//@todo test: what is up with 'number' not being explicitly set here? That's a bug, only covered by the default-default being 0 too, right?
-                } elseif (!empty($data['BcCo'])) {
+                } elseif (!empty($data['BcCo']) || !empty($data['code'])) {
                     // ...but it seems very unlikely that someone would specify BcCo when
                     // they don't explicitly want the corresponding record overwritten.
                     // So we match on BcCo in that case. See pros/cons at MatchPer.
@@ -2506,7 +2520,10 @@ class Helper
             case 'FbSales':
                 $info = [
                     'objects' => [
-                        'FbSalesLines' => 'line_item',
+                        // @todo just be strict, and make it so that some child objects must come
+                        //   as multiple values, and others can't? It seems like we might be able to predict that.
+                        // (Or maybe "cannot be multiple" is for verification, but "should be multiple" still accepts singular but will always output array?)
+                        'FbSalesLines' => 'line_items',
                     ],
                     'fields' => [
                         // Nummer
@@ -2744,8 +2761,8 @@ class Helper
             case 'FbSalesLines':
                 $info = [
                     'objects' => [
-                        'FbOrderBatchLines' => 'batch_line_item',
-                        'FbOrderSerialLines' => 'serial_line_item',
+                        'FbOrderBatchLines' => 'batch_line_items',
+                        'FbOrderSerialLines' => 'serial_line_items',
                     ],
                     'fields' => [
                         // Type item (verwijzing naar: Tabelwaarde,Itemtype => AfasKnCodeTableValue)
