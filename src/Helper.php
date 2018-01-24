@@ -1888,48 +1888,41 @@ class Helper
 
                 // We're sure that the record will be newly inserted if MatchPer
                 // specifies this. (We assume that this is the case even when
-                // $action specifies "update"; this is how we've documented
-                // things elsewhere too. The only thing this effectively does
-                // so far, is to add default values.)
+                // $action specifies "update", i.e. MatchPer overrides $action;
+                // this is what we've documented elsewhere too. The only thing
+                // $inserting effectively does so far, is add default values.)
                 $inserting = isset($data['match_method']) || isset($data['MatchPer']) ?
                     $action !== 'delete' && (isset($data['match_method']) ? $data['match_method'] : $data['MatchPer'] == 7) :
                     $action === 'insert';
 
-                // MatchPer defaults: Our principle is we would rather insert duplicate
-                // data than silently overwrite data by accident.
-                if (!empty($data['BcCo'])) {
+                // MatchPer defaults are first of all influenced by whether
+                // we're inserting a record. (Code note: checking $inserting or
+                // $action doesn't make a difference in practice; in principle
+                // it's just strange that a field default would depend on the
+                // field value.) For non-inserts, our principle is we would
+                // rather insert duplicate data than silently overwrite data by
+                // accident...
+                if ($action === 'insert') {
+                    $info['fields']['MatchPer']['default!'] = '7';
+                } elseif (!empty($data['BcCo'])) {
                     // ...but it seems very unlikely that someone would specify BcCo when
                     // they don't explicitly want the corresponding record overwritten.
-                    // So we match on BcCo in that case. This means there is no difference
-                    // between $action "insert" and "update"!
-                    // If we do _not_ set MatchPer while BcCo _is_ specified, with
-                    // $action "insert" we get error "Unsupported match value!!"
+                    // So we match on BcCo in that case.
+                    // Con: This overwrites existing data if there is a 'typo'
+                    //      in the BcCo field.
+                    // Pro: - Now people are not forced to think about this
+                    //        field. (If we left it empty, they would likely
+                    //        have to pass it.)
+                    //      - Predictability. If we leave this empty, we don't
+                    //        know what AFAS will do. (And if AFAS throws an
+                    //        error, we're back to the user having to specify 0,
+                    //        which means it's easier if we do it for them.)
                     $info['fields']['MatchPer']['default!'] = '0';
                 } elseif (!empty($data['SoSe']) || !empty($data['bsn'])) {
-                    // I guess we can assume the same logic (we never want duplicate
-                    // records so just update everything silently, even for inserts), for
-                    // BSN...
+                    // I guess we can assume the same logic for BSN, since
+                    // that's supposedly also a unique number.
                     $info['fields']['MatchPer']['default!'] = '1';
-                }
-                // @todo we can surely assume the same logic for 2-6 but this would take
-                // a lot of testing. Do this later. We will feel entitled to change this
-                // part of this function's behavior silently.
-                // @todo test and decide:
-                //   We've inserted a block for MatchOga in the corresponding
-                //   logic for KnOrganisation, so shouldn't we do the same here.
-                //   even if just to keep from being non-confusing? (Or remove
-                //   the block for KnOrganisation too, because testing has shown
-                //   that MatchPer/MatchOga=0 together with 'insert' does the
-                //   same: it always inserts. I guess inserting this block here
-                //   is slightly nicer, but I won't do it without testing.
-//                elseif ($action === 'insert') {
-//                    // Since we can get an error if not setting MatchOga in some
-//                    // circumstances (see 0 above), explicitly set 'always insert'.
-//                    // (Note we haven't actually seen an error that this would
-//                    // solve; it's "just to be sure" and doesn't hurt anything.)
-//                    $info['fields']['MatchPer']['default!'] = '7';
-//                }
-                else {
+                } else {
                     // Probably even with $action "update", a new record will be
                     // inserted if there is no match... but we do not know this for sure!
                     // Since our principle is to prevent silent overwrites of data, we
@@ -1937,13 +1930,6 @@ class Helper
                     // specified in $data.
                     // (If you disagree / encounter circumstances where this is not OK,
                     // tell me so we can refine this. --Roderik.)
-                    //
-                    // If we set MatchPer=0 if BcCo is not specified,
-                    // - we get error "Voer een waarde in bij 'Nummer'" at "update";
-                    // - a record is always inserted at "insert" (so I guess in this case
-                    //   '0' is equal to '7').
-                    // (NOTE we haven't actually tested this until now, just assumed that
-                    // it works the same way as for knOrganisation, which was tested...)
                     $info['fields']['MatchPer']['default!'] = '0';
                 }
 
@@ -2165,40 +2151,35 @@ class Helper
 
                 // We're sure that the record will be newly inserted if MatchOga
                 // specifies this. (We assume that this is the case even when
-                // $action specifies "update"; this is how we've documented
-                // things elsewhere too. The only thing this effectively does
-                // so far, is to add default values.)
+                // $action specifies "update", i.e. MatchOga overrides $action;
+                // this is what we've documented elsewhere too. The only thing
+                // $inserting effectively does so far, is add default values.)
                 $inserting = isset($data['match_method']) || isset($data['MatchOga']) ?
                     $action !== 'delete' && (isset($data['match_method']) ? $data['match_method'] : $data['MatchOga'] == 6) :
                     $action === 'insert';
 
-                // MatchOga defaults: Our principle is we would rather insert duplicate
-                // data than silently overwrite data by accident.
-// @todo So then, do we really want to keep doing the below also for $inserting? Seems better to only fill defaults for updates?
-
+                // MatchOga defaults are first of all influenced by whether
+                // we're inserting a record. (Code note: checking $inserting or
+                // $action doesn't make a difference in practice; in principle
+                // it's just strange that a field default would depend on the
+                // field value.) For non-inserts, our principle is we would
+                // rather insert duplicate data than silently overwrite data by
+                // accident...
+                if ($action === 'insert') {
+                    $info['fields']['MatchOga']['default!'] = '6';
 //@todo test: what is up with 'number' not being explicitly set here? That's a bug, only covered by the default-default being 0 too, right?
-                if (!empty($data['BcCo'])) {
+                } elseif (!empty($data['BcCo'])) {
                     // ...but it seems very unlikely that someone would specify BcCo when
                     // they don't explicitly want the corresponding record overwritten.
-                    // So we match on BcCo in that case. This means there is no difference
-                    // between $action "insert" and "update"!
-                    // If we do _not_ set MatchOga while BcCo _is_ specified, with
-                    // $action "insert" we get error "Unsupported match value!!"
+                    // So we match on BcCo in that case. See pros/cons at MatchPer.
                     $info['fields']['MatchOga']['default!'] = '0';
                 } elseif (!empty($data['CcNr']) || !empty($data['coc_number'])) {
-                    // I guess we can assume the same logic (we never want duplicate
-                    // records so just update everything silently, even for inserts), for
-                    // KvK number...
+                    // I guess we can assume the same logic for KvK number, since
+                    // that's supposedly also a unique number.
                     $info['fields']['MatchOga']['default!'] = '1';
                 } elseif (!empty($data['FiNr']) || !empty($data['fiscal_number'])) {
                     // ...and fiscal number.
                     $info['fields']['MatchOga']['default!'] = '2';
-                } elseif ($action === 'insert') {
-                    // Since we can get an error if not setting MatchOga in some
-                    // circumstances (see 0 above), explicitly set 'always insert'.
-                    // (Note we haven't actually seen an error that this would
-                    // solve; it's "just to be sure" and doesn't hurt anything.)
-                    $info['fields']['MatchOga']['default!'] = '6';
                 } else {
                     // Probably even with $action "update", a new record will be
                     // inserted if there is no match... but we do not know this for sure!
@@ -2207,11 +2188,6 @@ class Helper
                     // specified in $data.
                     // (If you disagree / encounter circumstances where this is not OK,
                     // tell me so we can refine this. --Roderik.)
-                    //
-                    // If we set MatchOga=0 if BcCo is not specified,
-                    // - we get error "Voer een waarde in bij 'Nummer'" at "update";
-                    // - a record is always inserted at "insert" (so I guess in this case
-                    //   '0' is equal to '6').
                     $info['fields']['MatchOga']['default!'] = '0';
                 }
                 break;
