@@ -576,26 +576,24 @@ class UpdateObject
             // still... it's a possibility. Code is largely the same as in the
             // 'fields' block below; see there for comments.
             foreach ($properties['objects'] as $name => $object_properties) {
-                $is_required = !empty($object_properties['required!'])
+                $validate_required_value = !empty($object_properties['required!'])
                     || ($behavior & self::VALIDATE_ALL && !empty($object_properties['required']));
 
-                if ($action === 'insert') {
-                    if (!isset($element['Objects'][$name])
-                        && $is_required
-                        && !($allow_changes && array_key_exists($name, $defaults))
-                    ) {
-                        throw new InvalidArgumentException("No value given for required '$name' field of '{$this->getType()}' object.");
-                    }
+                if ($validate_required_value
+                    && !isset($element['Objects'][$name])
+                    && !($allow_changes && array_key_exists($name, $defaults))
+                ) {
+                    throw new InvalidArgumentException("No value given for required '$name' field of '{$this->getType()}' object.");
                 }
 
-                if ($allow_changes
-                    && isset($defaults[$name])
-                    && (!array_key_exists($name, $element['Objects'])
-                        || (!isset($element['Objects'][$name]) && $is_required))
-                ) {
-                    // A default value is of the type that we use to create
-                    // UpdateObjects.
-                    $element['Objects'][$name] = static::create($name, $defaults[$name], $this->getType());
+                if ($allow_changes && isset($defaults[$name])) {
+                    $null_required_value = !isset($element['Objects'][$name])
+                        && (!empty($object_properties['required!']) || !empty($object_properties['required!']));
+                    if ($null_required_value || !array_key_exists($name, $element['Objects'])) {
+                        // A default value is of the type that we use to create
+                        // UpdateObjects.
+                        $element['Objects'][$name] = static::create($name, $defaults[$name], $this->getType());
+                    }
                 }
             }
 
@@ -607,40 +605,32 @@ class UpdateObject
             // - if the default is null (or value given is null & not
             //   'required'), then null is passed.
             foreach ($properties['fields'] as $name => $field_properties) {
-                // We ignore 'requiredness' (for checks and for adding
-                // defaults) if we only want to check / are only allowed to
-                // change 'essential' data.
-                $is_required = !empty($field_properties['required!'])
+                // Don't check 'normal required-ness' if we only want to check
+                // essential data. 'required!' fields are considered essential.
+                $validate_required_value = !empty($field_properties['required!'])
                     || ($behavior & self::VALIDATE_ALL && !empty($field_properties['required']));
-
-                // Check requiredness only for action "insert", because we
-                // never want to force overwriting data for "update".
-                // 'required!' fields are considered essential. Throw an
-                // exception only if we have no default value or are not
+                // Throw an exception if we have no default value or are not
                 // allow to insert it.
-                if ($action === 'insert') {
-                    if (!isset($element['Fields'][$name])
-                        && $is_required
-                        && !($allow_changes && array_key_exists($name, $defaults))
-                    ) {
-                        throw new InvalidArgumentException("No value given for required '$name' field of '{$this->getType()}' object.");
-                    }
+                if ($validate_required_value
+                    && !isset($element['Fields'][$name])
+                    && !($allow_changes && array_key_exists($name, $defaults))
+                ) {
+                    throw new InvalidArgumentException("No value given for required '$name' field of '{$this->getType()}' object.");
                 }
 
-                // Add defaults if no value present, or if value is null and
-                // field is required. (And if we are allowed to change it.)
-                if ($allow_changes
-                    && isset($defaults[$name])
-                    && (!array_key_exists($name, $element['Fields'])
-                        || (!isset($element['Fields'][$name]) && $is_required))
-                ) {
-                    $element['Fields'][$name] = $defaults[$name];
+                // Add defaults if value is missing, or if value is null and
+                // field is required. (And if we can change it.)
+                if ($allow_changes && isset($defaults[$name])) {
+                    $null_required_value = !isset($element['Fields'][$name])
+                        && (!empty($field_properties['required!']) || !empty($field_properties['required!']));
+                    if ($null_required_value || !array_key_exists($name, $element['Fields'])) {
+                        $element['Fields'][$name] = $defaults[$name];
+                    }
                 }
             }
         }
     }
 /*
- update = don't check requiredness at all.Also don't fill essential defaults.  <--- so does this change the return value of getDefaults? I guess not, because we just don't call it for "update"?
  VALIDATE_ESSENTIAL = check only 'required!', not 'required' (and depending on the CHANGE flog & presence, fill default or throw. <== NOTE this is new; we only had 'default!' until now.
  'default!' should be converted into, in getDefaults(), checking $action.
 
