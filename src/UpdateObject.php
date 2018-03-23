@@ -11,12 +11,12 @@
 namespace PracticalAfas;
 
 use InvalidArgumentException;
+use OutOfBoundsException;
 use RuntimeException;
+use UnexpectedValueException;
 
 /**
  * TODO REDO
- *
- * @todo think about setAction() because we are deleting #action
  *
  * @todo note this can explicitly be an array of objects, not only one single object.
  */
@@ -101,42 +101,21 @@ class UpdateObject
      */
     protected $parentType = '';
 
-    //@todo delete
-//    /**
-//     * Field values for this object, keyed by the AFAS field name.
-//     *
-//     * @var array
-//     */
-//    protected $fields = [];
-//
-//    /**
-//     * Objects embedded inside this object, keyed by the AFAS object name.
-//     *
-//     * Values are arrays of UpdateObjects or subclasses. In most cases these
-//     * arrays will only hold one values and in some cases multiple values are
-//     * effectively disallowed - but still, everything is stored as arrays to
-//     * have a consistent structure.
-//     *
-//     * @todo later, revisit this assumption, see if it still holds up.
-//     *
-//     * @var array
-//     */
-//    protected $objects = [];
     /**
-     * The data representing one or more objects, i.e. the "Element" data.
+     * The action(s) to perform on the data: "insert", "update" or "delete".
      *
-     * This will be roughly equal to the "Element" structure as output in JSON
-     * format for sending to the REST API. That means: it's at least one array
-     * of object data containing one to three keys: the 'id' field key, "Fields"
-     * and "Objects". But:
-     * - This array of object data is always wrapped in another array (with
-     *   numeric keys), for the sake of uniformity. (The "Element" value in
-     *   the JSON output may be a single object or an array of objects,
-     *   depending on factors not discussed here.)
-     * - The "Object" value, if present, is an array of UpdateObjects keyed by
-     *   the object type.
+     * @see setAction()
      *
-     * @var array
+     * @var string[]
+     */
+    protected $actions = [];
+
+    /**
+     * The "Element" data representing one or several objects.
+     *
+     * @see getElements()
+     *
+     * @var array[]
      */
     protected $elements = [];
 
@@ -146,7 +125,7 @@ class UpdateObject
      * @param string $type
      *   The type of object, i.e. the 'Update Connector' name to send this data
      *   into. See getProperties() for possible values.
-     * @param array $element_data
+     * @param array $object_data
      *   (Optional) Data to set in this class, representing one or more objects
      *   of this type; see getProperties() for possible values per object type.
      *   If any value in the (first dimension of the) array is scalar, it's
@@ -169,21 +148,25 @@ class UpdateObject
      *   (Optional) If nonempty, the return value will be suitable for embedding
      *   inside the parent type, which can have a slightly different structure
      *   (e.g. allowed fields) in some cases.
+     * @param string $action
+     *   (Optional) The action to perform on the data: "insert", "update" or
+     *   "delete". Only "insert" is known to have an effect in the first version
+     *   of this class, but that might change later, with changes to code or
+     *   AFAS behavior. Unlike $parent_type, this does not have to be provided
+     *   at object creation; it can also be set later.
      *
      * @return static
      *
      * @throws \InvalidArgumentException
-     *   If a type is not known, the data contains unknown field/object names,
-     *   of the values have an unrecognized / invalid format.
-     *
-     * @see __construct()
+     *   If a type/action is not known, the data contains unknown field/object
+     *   names, or the values have an unrecognized / invalid format.
      */
-    public static function create($type, array $element_data = [], $parent_type = '') {
+    public static function create($type, array $object_data = [], $parent_type = '', $action = '') {
         // If a custom class is defined for this type, instantiate that one.
         if (isset(static::$classMap[$type])) {
-            return new static::$classMap[$type]($element_data, $type, $parent_type);
+            return new static::$classMap[$type]($object_data, $type, $parent_type, $action);
         }
-        return new static($element_data, $type, $parent_type);
+        return new static($object_data, $type, $parent_type, $action);
     }
 
     /**
@@ -206,30 +189,192 @@ class UpdateObject
      *
      * @see create()
      */
-    public function __construct(array $element_data = [], $type = '', $parent_type = '')
+    public function __construct(array $object_data = [], $type = '', $parent_type = '', $action = '')
     {
+        // If $type is empty or unrecognized, setValues() will throw an
+        // exception. A wrong $parent_type will just... most likely, act as an
+        // empty $parent_type (depending on what getProperties() does).
         $this->type = $type;
         $this->parentType = $parent_type;
-        $this->setValues($element_data);
+        $this->setAction($action);
+        $this->addObjectData($object_data);
     }
 
     /**
-     * Sets (a normalized/unaliased version of) values in this object.
+     * Returns the object type.
+     *
+     * @return string
+     */
+    public function getType()
+    {
+        return $this->type;
+    }
+
+    /**
+     * Returns the action which is set to perform on one or all objects.
+     *
+     * @param int $element_index
+     *   (Optional) The zero-based index of the object whose action is
+     *   requested. Usually this class will contain data for only one object,
+     *   in which case this argument does not need to be specified (or should be
+     *   0).
+     *
+     * @return string
+     *
+     * @throws \OutOfBoundsException
+     *   If the index value does not exist.
+     * @throws \UnexpectedValueException
+     *   If different actions exist and the caller didn't request an index.
+     */
+    public function getAction($element_index = null)
+    {
+        // For the case that empty($this->actions):
+        $action = '';
+        $check_all = false;
+        if (!isset($element_index)) {
+            // We expect most code to not care about passing an index, which is
+            // fine because it would be a really rare occasion that differing
+            // actions are set (which results in an exception).
+            $check_all = true;
+        } elseif (isset($this->actions[$element_index])) {
+            $action = $this->actions[$element_index];
+        } elseif (!empty($this->actions)) {
+            // If the element with this index exists, we have added an element
+            // (through addObject()) without adding an explicit action for it.
+            // We'll allow this if all the actions which are set, are the same.
+            if (!isset($this->elements[$element_index])) {
+                throw new OutOfBoundsException("No action or element defined for index $element_index.");
+            }
+            $check_all = true;
+        }
+        if ($check_all) {
+            // Check if all set actions are the same.
+            if (count(array_unique($this->actions)) > 1) {
+                $addition = isset($element_index) ? " but not for $element_index" : '';
+                throw new UnexpectedValueException("Multiple different action values are set$addition, so getAction() has to be called with a valid index parameter.");
+            }
+        }
+
+        return $action;
+    }
+
+    /**
+     * Returns the action values that were set in this class.
+     *
+     * This is not known to be of any practical use to outside callers; it's
+     * probably easier to call getAction() because callers will set only one
+     * object, or several objects without adding differing actions, in the vast
+     * majority of cases. Still, it's possible for who knows which use case...
+     *
+     * @return string[]
+     *   The array of all action values. Usually this will be an array of one
+     *   value that was set through create().
+     */
+    public function getActions()
+    {
+        return $this->actions;
+    }
+
+    /**
+     * Sets the action to perform on object data.
+     *
+     * Setting "insert" is known to have an effect in the first version of this
+     * class: it can add extra default values in the validate() phase. Except
+     * for this, the only effect is that the value is inserted in the XML
+     * output. (There are currently no plans for extra behavior, but who knows
+     * we discover some extra AFAS behavior / other necessity later.)
+     *
+     * This method should not be called after validate(); the effect of changing
+     * action after validation is not defined.
+     *
+     * @param string $action
+     *   The action to perform on the data: "insert", "update" or "delete".
+     * @param int $index
+     *   The index of the object for which to set the action. Do not specify
+     *   this; it's usually not needed even when the UpdateObject holds data for
+     *   multiple objects. It's only of theoretical use (which is: outputting
+     *   multiple objects with different "action" values as XML).
+     */
+    public function setAction($action, $index = 0)
+    {
+        // Unify $action. We'll silently accept PUT/POST too, as long as the
+        // REST API keeps the one-to-one relationship of these to update/insert.
+        $actions = ['put' => 'update', 'post' => 'insert', 'delete' => 'delete'];
+        if ($action && is_string($action)) {
+            $action = strtolower($action);
+            if (isset($actions[$action])) {
+                $action = $actions[$action];
+            }
+        }
+        if (!is_string($action) || ($action && !in_array($action, $actions, true))) {
+            throw new InvalidArgumentException('Unknown action value' . var_export($action, true) . '.');
+        }
+
+        $this->actions[$index] = $action;
+    }
+
+    /**
+     * Returns the "Element" data representing one or several objects.
+     *
+     * This is the 'getter' equivalent for setObjectData() but the data is
+     * normalized / de-aliased, and wrapped inside another array (also if it
+     * represents only one object). Nitpick: we return "Element" data that would
+     * be valid for JSON output; the XML output can have a different structure.
+     *
+     * @return array[]
+     *   A structure roughly equal to the "Element" structure as output in JSON
+     *   format for sending to the REST API. That means: it's at least one array
+     *   of object data containing one to three keys: the 'id field' key,
+     *   "Fields" and "Objects". But:
+     *   - This array of object data is always wrapped in another array (with
+     *     numeric keys), for the sake of uniformity (whereas the "Element"
+     *     value in the JSON output may be one object or an array of objects.)
+     *   - The "Object" value, if present, is an array of UpdateObjects keyed by
+     *     the object type. (That is: a single UpdateObject per type, which may
+     *     contain data for one or several objects.)
+     */
+    protected function getElements()
+    {
+        return $this->elements;
+    }
+
+    /**
+     * Sets (a normalized/de-aliased version of) element values in this object.
+     *
+     * Unlike addObjectData(), this overwrites any existing data which may have
+     * been present previously. (That is: the object data; not e.g. the action
+     * value(s) accompanying the data.)
+     *
+     * @see addObjectData()
+     */
+    protected function setObjectData(array $object_data)
+    {
+        $this->elements = [];
+        $this->addObjectData($object_data);
+    }
+
+    /**
+     * Adds (a normalized/de-aliased version of) element values to this object.
+     *
+     * @param array $object_data
+     *   (Optional) Data to set in this class, representing one or more objects
+     *   of this type; see getProperties() for possible values per object type.
+     *   See create() for a more elaborate description of this argument.
      *
      * @throws \InvalidArgumentException
      *   If a type is not known, the data contains unknown field/object names,
      *   of the values have an unrecognized / invalid format.
      *
-     * @see __construct()
+     * @see create()
      */
-    protected function setValues(array $element_data)
+    protected function addObjectData(array $object_data)
     {
         // Determine if $data holds a single object or an array of objects:
         // we assume the latter if all values are arrays.
-        foreach ($element_data as $element) {
+        foreach ($object_data as $element) {
             if (is_scalar($element)) {
                 // Normalize $data to an array of objects.
-                $element_data = [$element_data];
+                $object_data = [$object_data];
                 break;
             }
         }
@@ -239,7 +384,7 @@ class UpdateObject
             throw new InvalidArgumentException($this->getType() . ' object has no properties defined.');
         }
         $this->elements = [];
-        foreach ($element_data as $key => $element) {
+        foreach ($object_data as $key => $element) {
             // Construct new element with an optional id + fields + objects for
             // this type.
             $normalized_element = [];
@@ -378,14 +523,6 @@ class UpdateObject
      * Changing values mostly implies adding default values, but some objects
      * contain code for e.g. uniform formatting of fields.
      *
-     * @param string $action
-     *   (Optional) The action to validate/change this data for: this will
-     *   mostly be "insert" or "update". "insert" usually adds more default
-     *   values (or if $behavior does not include VALIDATE_ALLOW_CHANGES: does
-     *   more requiredness checks), whereas "update" will allow these values to
-     *   be empty so existing values in AFAS don't get overwritten. Values
-     *   "POST" and "PUT" are also allowed, as an alias to "insert" and "update"
-     *   respectively.
      * @param int $behavior
      *   (Optional) By default, this method performs all implemented checks, and
      *   can change any data. This behavior can be changed by passing one of the
@@ -409,20 +546,8 @@ class UpdateObject
      * @todo doc throws. (And the fact that there's no _guarantee_ things aren't changed // even if values may be changed, it should still be usable.)
      * @todo or is that a sign that we should pass the value in, instead?
      */
-    public function validate($action = '', $behavior = self::VALIDATE_ALLOW_ALL_CHANGES)
+    public function validate($behavior = self::VALIDATE_ALLOW_ALL_CHANGES)
     {
-        // Unify $action
-        $actions = ['put' => 'update', 'post' => 'insert', 'delete' => 'delete'];
-        if ($action && is_string($action)) {
-            $action = strtolower($action);
-            if (isset($actions[$action])) {
-                $action = $actions[$action];
-            }
-        }
-        if (!is_string($action) || ($action && !in_array($action, $actions, true))) {
-            throw new InvalidArgumentException('Unknown action ' . var_export($action, true) . '.');
-        }
-
         $properties = $this->getProperties();
         // It's unlikely this will ever get thrown because the check is also in
         // setValues().
@@ -434,10 +559,14 @@ class UpdateObject
 
         // @todo check child objects first.
 
-        // @todo YOU NEED ACTION PROPERTY FOR THAT
-
-        foreach ($this->elements as &$element) {
-            $allow_changes = $behavior & self::VALIDATE_ALLOW_CHANGES;
+        foreach ($this->elements as $element_index => &$element) {
+            $action = $this->getAction($element_index);
+// @TODO reevaluate this, maybe after writing tests or using this method more:
+//    Do we allow $action to invalidate 'behavior' arguments to this method?
+//    Or are 'behavior' arguments the final word, and do we maybe expect the caller
+//    to change them according to the action? ('Structurally' it feels like the
+//    current code is OK, because $action can be different per element?)
+            $allow_changes = $action === 'insert' && $behavior & self::VALIDATE_ALLOW_CHANGES;
             if ($allow_changes) {
                 $defaults = $this->getDefaults($element, $action);
             }
@@ -519,17 +648,24 @@ class UpdateObject
   */
 
     /**
-     * Returns the object type.
+     * Returns property definitions for this specific object type.
      *
-     * @return string
+     * The format is not related to AFAS but a structure specific to this class.
+     *
+     * There may or may not be properties named 'default'; it's better not to
+     * trust those but to call getDefaults() instead.
+     *
+     * @return array
      */
-    public function getType()
+    public function getProperties()
     {
-        return $this->type;
+        switch ($this->parentType) {
+
+        }
     }
 
     /**
-     * Return default values to fill for properties of an object.
+     * Returns default values to fill for properties of an object.
      *
      * @param array $element
      *   (Optional) the element to derive defaults for: some defaults are
@@ -556,23 +692,6 @@ class UpdateObject
         // @todo extract defaults from property definitions.
 
         // @todo translplant all default! / action dependent logic here, not in getProperties
-    }
-
-    /**
-     * Return property definitions for this specific object type.
-     *
-     * The format is not related to AFAS but a structure specific to this class.
-     *
-     * There may or may not be properties named 'default'; it's better not to
-     * trust those but to call getDefaults() instead.
-     *
-     * @return array
-     */
-    public function getProperties()
-    {
-        switch ($this->parentType) {
-
-        }
     }
 
     /**
