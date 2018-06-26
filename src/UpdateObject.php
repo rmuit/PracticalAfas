@@ -23,31 +23,64 @@ use UnexpectedValueException;
 class UpdateObject
 {
     /**
-     * Bitmask for validate() argument: do only essential validation.
+     * @see validate(); this is a bitmask for the $validation_behavior argument.
      */
     const VALIDATE_ESSENTIAL = 0;
 
     /**
-     * Bitmask for validate() argument: allow modifying values/adding defaults.
-     *
-     * The other bitmasks may influence e.g. which default values are added: if
-     * VALIDATE_ALL is not passed at the same time, only 'essential' default
-     * values are added.
+     * @see validate(); this is a bitmask for the $validation_behavior argument.
      */
-    const VALIDATE_ALLOW_CHANGES = 1;
+    const VALIDATE_REQUIRED = 1;
 
     /**
-     * Bitmask for validate() argument: do all (strict) validation
+     * Default behavior for validate($validation_behavior).
+     *
+     * If future versions of this class introduce new behavior through
+     * additional bitmask values, this value may or may not be changed to
+     * incorporate that behavior by default.
      */
-    const VALIDATE_ALL = 2;
+    const VALIDATE_DEFAULT = 1;
 
     /**
-     * Bitmask for validate() argument: validate and change all data.
-     *
-     * This is equal to passing VALIDATE_ALL | VALIDATE_ALLOW_CHANGES; we just
-     * needed it for the method definition.
+     * @see validate(); this is a bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ALLOW_ALL_CHANGES = 3;
+    const VALIDATE_ALLOW_NO_CHANGES = 0;
+
+    /**
+     * @see validate(); this is a bitmask for the $change_behavior argument.
+     */
+    const VALIDATE_ALLOW_EMBEDDED_CHANGES = 1;
+
+    /**
+     * @see validate(); this is a bitmask for the $change_behavior argument.
+     */
+    const VALIDATE_ALLOW_DEFAULTS_ON_INSERT = 2;
+
+    /**
+     * @see validate(); this is a bitmask for the $change_behavior argument.
+     */
+    const VALIDATE_ALLOW_DEFAULTS_ON_UPDATE = 4;
+
+    /**
+     * @see validate(); this is a bitmask for the $change_behavior argument.
+     */
+    const VALIDATE_ALLOW_REFORMAT = 8;
+
+    /**
+     * @see validate(); this is a bitmask for the $change_behavior argument.
+     */
+    const VALIDATE_ALLOW_CHANGES = 16;
+
+    /**
+     * Default behavior for validate(,$modification_behavior).
+     *
+     * This is all defined behavior except VALIDATE_ALLOW_DEFAULTS_ON_UPDATE.
+     *
+     * If future versions of this class introduce new behavior through
+     * additional bitmask values, this value may or may not be changed to
+     * incorporate that behavior by default.
+     */
+    const VALIDATE_ALLOW_DEFAULT = 27;
 
     /**
      * Line indentation (number of spaces) for XML output.
@@ -520,33 +553,52 @@ class UpdateObject
     /**
      * Validate the object's data and change/add values where needed.
      *
-     * Changing values mostly implies adding default values, but some objects
-     * contain code for e.g. uniform formatting of fields.
-     *
-     * @param int $behavior
-     *   (Optional) By default, this method performs all implemented checks, and
-     *   can change any data. This behavior can be changed by passing one of the
-     *   following options (which basically comes down to 'turning off the
-     *   options which are not passed and are turned on by default'):
-     *   - VALIDATE_ESSENTIAL: This is the basic minimum: Perform only checks
-     *     that we know will make the AFAS Update Connector call fail, but skip
-     *     others. (If accompanied by other options, this option does not have
-     *     any effect.) This can be useful when e.g. updating data which is
-     *     present in AFAS but does not pass all implemented checks.
-     *   - VALIDATE_ALL: Perform all implemented checks. (and if not accompanied
-     *     by more options, disallow changing data).
-     *   - VALIDATE_ALLOW_CHANGES: Allow changing data, but (if not accompanied
-     *     by more options) only essential data. So e.g. don't add default
-     *     values which are sensible but not strictly required by AFAS.
-     *   The default is equal to VALIDATE_ALL | VALIDATE_ALLOW_CHANGES. If
-     *   VALIDATE_ALLOW_CHANGES is not passed, then the checks for required
-     *   fields (either only essential ones or all) will throw an exception for
-     *   missing values.
-     *
-     * @todo doc throws. (And the fact that there's no _guarantee_ things aren't changed // even if values may be changed, it should still be usable.)
-     * @todo or is that a sign that we should pass the value in, instead?
+     * @param int $validation_behavior
+     *   (Optional) By default, this method performs validation checks. This
+     *   argument is a bitmask that can be used to disable validation checks (or
+     *   add additional ones in child classes). Possible values are:
+     *   - VALIDATE_ESSENTIAL: Perform only checks that we know will make the
+     *     AFAS Update Connector call fail, but skip others. This can be useful
+     *     for e.g. updating data which is present in AFAS but does not pass all
+     *     our validation checks. This value loses its meaning when passed
+     *     together with other values.
+     *   - VALIDATE_REQUIRED (default): Check for presence of field values which
+     *     this library considers 'required' even if an AFAS Update Connector
+     *     call would not fail if they're missing. Example: town/municipality in
+     *     an address object.
+     *   Child classes might define additional values.
+     * @param int $change_behavior
+     *   (Optional) By default, this method can change values of fields and
+     *   embedded objects (for e.g. uniform formatting of values ar adding
+     *   defaults). This argument is a bitmask that can be used to modify which
+     *   data which can be changed, or disable changes. Possible values are:
+     *   - VALIDATE_ALLOW_NO_CHANGES: Do not allow any changes. This value loses
+     *     its meaning when passed together with other values.
+     *   - VALIDATE_ALLOW_EMBEDDED_CHANGES (default): Allow changes to be made
+     *     to embedded objects. If it is specified, the other bitmasks determine
+     *     which changes can be made to embedded objects (so if only this value
+     *     is specified, no changes are allowed to either this object or its
+     *     embedded objects). If it is not specified, the other bitmasks
+     *     determine only which changes can be made to this object, but any
+     *     changes to embedded objects are disallowed.
+     *   - VALIDATE_ALLOW_DEFAULTS_ON_INSERT (default): Allow adding default
+     *     values to empty fields when inserting a new object. Note that even if
+     *     this value is not specified, there are still some 'essential' values
+     *     which can be set in the object; see getDefaults(,$essential_only).
+     *   - VALIDATE_ALLOW_DEFAULTS_ON_UPDATE: Allow adding default values to
+     *     empty fields when updating an existing object. Also see
+     *     VALIDATE_ALLOW_DEFAULTS_ON_INSERT.
+     *   - VALIDATE_ALLOW_REFORMAT (default): Allow reformatting of singular
+     *     field values. For 'reformatting' a combination of values (e.g. moving
+     *     a house number from a street value into its own field) additional
+     *     values may need to be passed.
+     *   - VALIDATE_ALLOW_CHANGES (default): Allow changing field values, in
+     *     ways not covered by other bitmasks. Behavior is not precisely defined
+     *     by this class; child classes may use this value or implement their
+     *     own additional bitmasks.
+     *   Child classes might define additional values.
      */
-    public function validate($behavior = self::VALIDATE_ALLOW_ALL_CHANGES)
+    public function validate($validation_behavior = self::VALIDATE_DEFAULT, $change_behavior = self::VALIDATE_ALLOW_DEFAULT)
     {
         $properties = $this->getProperties();
         // It's unlikely this will ever get thrown because the check is also in
@@ -561,15 +613,9 @@ class UpdateObject
 
         foreach ($this->elements as $element_index => &$element) {
             $action = $this->getAction($element_index);
-// @TODO reevaluate this, maybe after writing tests or using this method more:
-//    Do we allow $action to invalidate 'behavior' arguments to this method?
-//    Or are 'behavior' arguments the final word, and do we maybe expect the caller
-//    to change them according to the action? ('Structurally' it feels like the
-//    current code is OK, because $action can be different per element?)
-            $allow_changes = $action === 'insert' && $behavior & self::VALIDATE_ALLOW_CHANGES;
-            if ($allow_changes) {
-                $defaults = $this->getDefaults($element, $action);
-            }
+            $defaults = $action === 'insert'
+                ? $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT))
+                : $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_UPDATE));
 
             // Check requiredness for embeddable objects, and default values for
             // objects which are missing. This is unlikely to ever be needed but
@@ -577,18 +623,16 @@ class UpdateObject
             // 'fields' block below; see there for comments.
             foreach ($properties['objects'] as $name => $object_properties) {
                 $validate_required_value = !empty($object_properties['required!'])
-                    || ($behavior & self::VALIDATE_ALL && !empty($object_properties['required']));
-
-                if ($validate_required_value
-                    && !isset($element['Objects'][$name])
-                    && !($allow_changes && array_key_exists($name, $defaults))
+                    && ($object_properties['required'] === 1 || ($validation_behavior & self::VALIDATE_REQUIRED));
+                if ($validate_required_value && !isset($element['Objects'][$name])
+                    && (!array_key_exists($name, $defaults)
+                        || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Objects'])))
                 ) {
                     throw new InvalidArgumentException("No value given for required '$name' field of '{$this->getType()}' object.");
                 }
 
-                if ($allow_changes && isset($defaults[$name])) {
-                    $null_required_value = !isset($element['Objects'][$name])
-                        && (!empty($object_properties['required!']) || !empty($object_properties['required!']));
+                if (array_key_exists($name, $defaults)) {
+                    $null_required_value = !isset($element['Objects'][$name]) && !empty($object_properties['required']);
                     if ($null_required_value || !array_key_exists($name, $element['Objects'])) {
                         // A default value is of the type that we use to create
                         // UpdateObjects.
@@ -599,30 +643,33 @@ class UpdateObject
 
             // Check required fields and add default values for fields
             // (where defined). About definitions:
-            // - if required = true and default is given, then
-            //   - the default value is sent if no data value is present;
-            //   - an exception is (only) thrown if a null value is present.
+            // - if required = true, then
+            //   - if no data value present and default is provided, it's set.
+            //   - if no data value present and no default is provided, an
+            //     exception is thrown.
+            //   - if a null value is present, an exception is thrown, unless
+            //     null is provided as a default value. (We don't silently
+            //     overwrite given null values with other default values.)
             // - if the default is null (or value given is null & not
             //   'required'), then null is passed.
             foreach ($properties['fields'] as $name => $field_properties) {
-                // Don't check 'normal required-ness' if we only want to check
-                // essential data. 'required!' fields are considered essential.
-                $validate_required_value = !empty($field_properties['required!'])
-                    || ($behavior & self::VALIDATE_ALL && !empty($field_properties['required']));
-                // Throw an exception if we have no default value or are not
-                // allow to insert it.
-                if ($validate_required_value
-                    && !isset($element['Fields'][$name])
-                    && !($allow_changes && array_key_exists($name, $defaults))
+                $validate_required_value = !empty($field_properties['required'])
+                    && ($field_properties['required'] === 1 || ($validation_behavior & self::VALIDATE_REQUIRED));
+                // See above: throw an exception if we have no-or-null field
+                // value and no default, OR if we have null field value and
+                // non-null default.
+                if ($validate_required_value && !isset($element['Fields'][$name])
+                    && (!array_key_exists($name, $defaults)
+                        || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Fields'])))
                 ) {
                     throw new InvalidArgumentException("No value given for required '$name' field of '{$this->getType()}' object.");
                 }
 
                 // Add defaults if value is missing, or if value is null and
-                // field is required. (And if we can change it.)
-                if ($allow_changes && isset($defaults[$name])) {
-                    $null_required_value = !isset($element['Fields'][$name])
-                        && (!empty($field_properties['required!']) || !empty($field_properties['required!']));
+                // field is required (and if we can change it, but that's
+                // always the case if $defaults is set).
+                if (array_key_exists($name, $defaults)) {
+                    $null_required_value = !isset($element['Fields'][$name]) && !empty($field_properties['required']);
                     if ($null_required_value || !array_key_exists($name, $element['Fields'])) {
                         $element['Fields'][$name] = $defaults[$name];
                     }
@@ -631,9 +678,6 @@ class UpdateObject
         }
     }
 /*
- VALIDATE_ESSENTIAL = check only 'required!', not 'required' (and depending on the CHANGE flog & presence, fill default or throw. <== NOTE this is new; we only had 'default!' until now.
- 'default!' should be converted into, in getDefaults(), checking $action.
-
 @TODO write tests, especially for validate()
   */
 
@@ -662,13 +706,11 @@ class UpdateObject
      *   dependent on the presence of other values. (This is usually the only
      *   element present in $this->elements, but it's passed into this method as
      *   an argument because object can hold more than one element.)
-     * @param string $action
-     *   (Optional) The 'action' for which default values are valid. In
-     *   principle, defaults only make sense for action "insert", because we
-     *   never want to force overwriting data for "update". However. there still
-     *   are some fields which need to have values filled for every action;
-     *   specify "update" to get only those values. (Those values are usually
-     *   not for 'real' fields, but for metadata or a kind of 'change record'.)
+     * @param bool $essential_only
+     *   (Optional) If true, don't return 'regular' defaults but still return
+     *   defaults for fields that always need to have values filled. (Those
+     *   values are usually not for 'real' fields, but for metadata or a kind of
+     *   'change record'.)
      *
      * @return array
      *
@@ -676,8 +718,13 @@ class UpdateObject
      *
      * @todo on me: doublecheck that we account for $element having 'Fields' and 'Objects' dimension.
      */
-    public function getDefaults(array $element = [], $action = 'insert')
+    public function getDefaults(array $element = [], $essential_only = false)
     {
+        // Note this method contains no mechanism to allow for defaults (whether
+        // essential or not ) that is only returned for a specific action (e.g.
+        // only on insert). We hope this is not necessary and having enabled
+        // the user to get defaults on update/insert (in validate()) is
+        // enough.
 
         // @todo extract defaults from property definitions.
 
