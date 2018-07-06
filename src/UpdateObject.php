@@ -395,8 +395,11 @@ class UpdateObject
      *   See create() for a more elaborate description of this argument.
      *
      * @throws \InvalidArgumentException
-     *   If a type is not known, the data contains unknown field/object names,
-     *   of the values have an unrecognized / invalid format.
+     *   If the data contains unknown field/object names or the values have an
+     *   unrecognized / invalid format.
+     * @throws \UnexpectedValueException
+     *   If there's something wrong with this object's type value or its
+     *   defined properties.
      *
      * @see create()
      */
@@ -414,7 +417,7 @@ class UpdateObject
 
         $properties = $this->getProperties();
         if (empty($properties)) {
-            throw new InvalidArgumentException($this->getType() . ' object has no properties defined.');
+            throw new UnexpectedValueException($this->getType() . ' object has no properties defined.');
         }
         $this->elements = [];
         foreach ($object_data as $key => $element) {
@@ -597,19 +600,32 @@ class UpdateObject
      *     by this class; child classes may use this value or implement their
      *     own additional bitmasks.
      *   Child classes might define additional values.
+     *
+     * @throws \InvalidArgumentException
+     *   If any of the behavior arguments have an unrecognized format.
+     * @throws \UnexpectedValueException
+     *   If this object's data does not pass validation. (This likely indicates
+     *   the data is invalid, although in theory it can also indicate that the
+     *   validation is based on improper logic/definitions.)
      */
     public function validate($validation_behavior = self::VALIDATE_DEFAULT, $change_behavior = self::VALIDATE_ALLOW_DEFAULT)
     {
+        if (!is_int($validation_behavior)) {
+            throw new InvalidArgumentException('$validation_behavior argument is not an integer.');
+        }
+        if (!is_int($change_behavior)) {
+            throw new InvalidArgumentException('$change_behavior argument is not an integer.');
+        }
+
         $properties = $this->getProperties();
         // It's unlikely this will ever get thrown because the check is also in
         // setValues().
         if (empty($properties)) {
-            throw new RuntimeException($this->getType() . ' object has no properties defined.');
+            throw new UnexpectedValueException($this->getType() . ' object has no properties defined.');
         }
 
         // @todo maybe split out into separate methods like protected checkRequiredFields() because better overridable?
 
-        // @todo check child objects first.
 
         foreach ($this->elements as $element_index => &$element) {
             $action = $this->getAction($element_index);
@@ -617,18 +633,20 @@ class UpdateObject
                 ? $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT))
                 : $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_UPDATE));
 
-            // Check requiredness for embeddable objects, and default values for
-            // objects which are missing. This is unlikely to ever be needed but
-            // still... it's a possibility. Code is largely the same as in the
-            // 'fields' block below; see there for comments.
+            $embedded_change_behavior = ($change_behavior & self::VALIDATE_ALLOW_EMBEDDED_CHANGES)
+                ? $change_behavior : self::VALIDATE_ALLOW_NO_CHANGES;
             foreach ($properties['objects'] as $name => $object_properties) {
+                // Check requiredness for embeddable objects, and create defaults
+                // for missing objects. This is unlikely to ever be needed but
+                // still... it's a possibility. Code is largely the same as in the
+                // 'fields' block below; see there for comments.
                 $validate_required_value = !empty($object_properties['required!'])
                     && ($object_properties['required'] === 1 || ($validation_behavior & self::VALIDATE_REQUIRED));
                 if ($validate_required_value && !isset($element['Objects'][$name])
                     && (!array_key_exists($name, $defaults)
                         || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Objects'])))
                 ) {
-                    throw new InvalidArgumentException("No value given for required '$name' field of '{$this->getType()}' object.");
+                    throw new UnexpectedValueException("No value given for required '$name' field of '{$this->getType()}' object.");
                 }
 
                 if (array_key_exists($name, $defaults)) {
@@ -638,6 +656,15 @@ class UpdateObject
                         // UpdateObjects.
                         $element['Objects'][$name] = static::create($name, $defaults[$name], $this->getType());
                     }
+                }
+
+                // Validate embedded objects. (Also the defaults we've just
+                // created.)
+                if (isset($element['Objects'][$name])) {
+                    if (!$element['Objects'][$name] instanceof UpdateObject) {
+                        throw new UnexpectedValueException("'$name' field of '{$this->getType()}' object must be an object of type UpdateObject.");
+                    }
+                    $element['Objects'][$name]->validate($validation_behavior, $embedded_change_behavior);
                 }
             }
 
@@ -662,7 +689,7 @@ class UpdateObject
                     && (!array_key_exists($name, $defaults)
                         || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Fields'])))
                 ) {
-                    throw new InvalidArgumentException("No value given for required '$name' field of '{$this->getType()}' object.");
+                    throw new UnexpectedValueException("No value given for required '$name' field of '{$this->getType()}' object.");
                 }
 
                 // Add defaults if value is missing, or if value is null and
