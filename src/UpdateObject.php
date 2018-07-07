@@ -419,6 +419,13 @@ class UpdateObject
         if (empty($properties)) {
             throw new UnexpectedValueException($this->getType() . ' object has no properties defined.');
         }
+        if (!isset($properties['fields']) || !is_array($properties['fields'])) {
+            throw new UnexpectedValueException($this->getType() . " object has no 'fields' property defined (or the property is not an array).");
+        }
+        if (isset($properties['objects']) && !is_array($properties['objects'])) {
+            throw new UnexpectedValueException($this->getType() . " object has a non-array 'objects' property defined.");
+        }
+
         $this->elements = [];
         foreach ($object_data as $key => $element) {
             // Construct new element with an optional id + fields + objects for
@@ -554,7 +561,16 @@ class UpdateObject
     }
 
     /**
-     * Validate the object's data and change/add values where needed.
+     * Validates our object data and change/add values where needed.
+     *
+     * If an object cannot be validated (so an UnexpectedValueException is
+     * thrown), it's possible that some of the object data gets changed, by
+     * e.g. adding default values or reformatting values. This specific method
+     * implementation behaves the following way:
+     * - If the object data holds only one element, the field data is not
+     *   changed but the data for embedded objects could be.
+     * - If the object data holds multiple elements, (both fields and embedded
+     *   objects in) already fully validated objects could be changed.
      *
      * @param int $validation_behavior
      *   (Optional) By default, this method performs validation checks. This
@@ -617,92 +633,221 @@ class UpdateObject
             throw new InvalidArgumentException('$change_behavior argument is not an integer.');
         }
 
+        foreach ($this->elements as $element_index => $element) {
+            $element = $this->validateEmbeddedObjects($element, $element_index, $validation_behavior, $change_behavior);
+            $element = $this->validateFields($element, $element_index, $validation_behavior, $change_behavior);
+
+            $this->elements[$element_index] = $element;
+        }
+
+        // @TODO maybe do the following only if the magical I-am-nearly-outputting property has been set?
+        //      (see validateFields TODO)
+        //
+        //@todo consider: should we re-validate whether all the element's
+        // properties are known? (Or do we do this also on generating the output string?.)
+        // ^^ fields and objects should be inside the 'validate..()' methods
+        //    and checking if nothing else is there on the first level, should be here.
+    }
+
+    /**
+     * Validates an element's embedded objects against a list of definitions.
+     *
+     * This is mainly split out from validate() in the hopes of being a little
+     * easier to override by a child class, if ever necessary.
+     *
+     * @param array $element
+     *   The element (usually the single one contained in $this->elements)
+     *   whose embedded objects should be validated.
+     * @param int $element_index
+     *   The index of the element in our object data; usually there is one
+     *   element and the index is 0.
+     * @param int $validation_behavior
+     *   (Optional) see validate().
+     * @param int $change_behavior
+     *   (Optional) see validate(). Note that this is the behavior for the
+     *   complete object, and may still need to be amended to apply to embedded
+     *   objects.
+     *
+     * @return array
+     *   The element with its embedded objects validated.
+     *
+     * @throws \UnexpectedValueException
+     *   If the element data does not pass validation. (This likely indicates
+     *   the data is invalid, although in theory it can also indicate that the
+     *   validation is based on improper logic/definitions.)
+     */
+    protected function validateEmbeddedObjects(array $element, $element_index, $validation_behavior = self::VALIDATE_DEFAULT, $change_behavior = self::VALIDATE_ALLOW_DEFAULT)
+    {
         $properties = $this->getProperties();
-        // It's unlikely this will ever get thrown because the check is also in
-        // setValues().
+        // Doublechecks; unlikely to fail because also in addObjectData().
         if (empty($properties)) {
             throw new UnexpectedValueException($this->getType() . ' object has no properties defined.');
         }
+        if (!isset($properties['objects'])) {
+            return $element;
+        } elseif (!is_array($properties['objects'])) {
+            throw new UnexpectedValueException($this->getType() . " object has a non-array 'objects' property defined.");
+        }
 
-        // @todo maybe split out into separate methods like protected checkRequiredFields() because better overridable?
 
+        $action = $this->getAction($element_index);
+        $defaults = [];
+        if (($action === 'insert' && $change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT)
+            || ($action === 'update' && $change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_UPDATE)
+        ) {
+            $defaults = $this->getDefaults($element);
+            if (!isset($defaults['objects'])) {
+                $defaults = [];
+            } elseif (!$defaults($properties['objects'])) {
+                throw new UnexpectedValueException($this->getType() . " object defaults definition has a non-array 'objects' property.");
+            } else {
+                $defaults = $defaults['objects'];
+            }
+        }
 
-        foreach ($this->elements as $element_index => &$element) {
-            $action = $this->getAction($element_index);
-            $defaults = $action === 'insert'
-                ? $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT))
-                : $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_UPDATE));
+        $object_type_msg = "'{$this->getType()}' object" . ($element_index ? ' with index ' . ($element_index + 1) : '') . '.';
+        $embedded_change_behavior = ($change_behavior & self::VALIDATE_ALLOW_EMBEDDED_CHANGES)
+            ? $change_behavior : self::VALIDATE_ALLOW_NO_CHANGES;
+        foreach ($properties['objects'] as $name => $object_properties) {
+            // Check requiredness for embeddable objects, and create defaults
+            // for missing objects. This is unlikely to ever be needed but
+            // still... it's a possibility. Code is largely the same as
+            // validateFields(); see there for comments.
+            $validate_required_value = !empty($object_properties['required!'])
+                && ($object_properties['required'] === 1 || ($validation_behavior & self::VALIDATE_REQUIRED));
+            if ($validate_required_value && !isset($element['Objects'][$name])
+                && (!array_key_exists($name, $defaults)
+                    || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Objects'])))
+            ) {
+                throw new UnexpectedValueException("No value given for required '$name' field of $object_type_msg.");
+            }
 
-            $embedded_change_behavior = ($change_behavior & self::VALIDATE_ALLOW_EMBEDDED_CHANGES)
-                ? $change_behavior : self::VALIDATE_ALLOW_NO_CHANGES;
-            foreach ($properties['objects'] as $name => $object_properties) {
-                // Check requiredness for embeddable objects, and create defaults
-                // for missing objects. This is unlikely to ever be needed but
-                // still... it's a possibility. Code is largely the same as in the
-                // 'fields' block below; see there for comments.
-                $validate_required_value = !empty($object_properties['required!'])
-                    && ($object_properties['required'] === 1 || ($validation_behavior & self::VALIDATE_REQUIRED));
-                if ($validate_required_value && !isset($element['Objects'][$name])
-                    && (!array_key_exists($name, $defaults)
-                        || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Objects'])))
-                ) {
-                    throw new UnexpectedValueException("No value given for required '$name' field of '{$this->getType()}' object.");
-                }
-
-                if (array_key_exists($name, $defaults)) {
-                    $null_required_value = !isset($element['Objects'][$name]) && !empty($object_properties['required']);
-                    if ($null_required_value || !array_key_exists($name, $element['Objects'])) {
-                        // A default value is of the type that we use to create
-                        // UpdateObjects.
+            if (array_key_exists($name, $defaults)) {
+                $null_required_value = !isset($element['Objects'][$name]) && !empty($object_properties['required']);
+                if ($null_required_value || !array_key_exists($name, $element['Objects'])) {
+                    // We would expect a default value to be the same data
+                    // definition (array) that we use to create UpdateObjects.
+                    // It can be defined as an UpdateObject itself, though we
+                    // don't expect that; in this case, clone the object to be
+                    // sure we don't end up adding some default object in
+                    // several places.
+                    if ($defaults[$name] instanceof UpdateObject) {
+                        $element['Objects'][$name] = clone $defaults[$name];
+                    }
+                    else {
+                        if (!is_array($defaults[$name])) {
+                            throw new UnexpectedValueException("Default value for '$name' object embedded inside $object_type_msg must be array.");
+                        }
                         $element['Objects'][$name] = static::create($name, $defaults[$name], $this->getType());
                     }
                 }
-
-                // Validate embedded objects. (Also the defaults we've just
-                // created.)
-                if (isset($element['Objects'][$name])) {
-                    if (!$element['Objects'][$name] instanceof UpdateObject) {
-                        throw new UnexpectedValueException("'$name' field of '{$this->getType()}' object must be an object of type UpdateObject.");
-                    }
-                    $element['Objects'][$name]->validate($validation_behavior, $embedded_change_behavior);
-                }
             }
 
-            // Check required fields and add default values for fields
-            // (where defined). About definitions:
-            // - if required = true, then
-            //   - if no data value present and default is provided, it's set.
-            //   - if no data value present and no default is provided, an
-            //     exception is thrown.
-            //   - if a null value is present, an exception is thrown, unless
-            //     null is provided as a default value. (We don't silently
-            //     overwrite given null values with other default values.)
-            // - if the default is null (or value given is null & not
-            //   'required'), then null is passed.
-            foreach ($properties['fields'] as $name => $field_properties) {
-                $validate_required_value = !empty($field_properties['required'])
-                    && ($field_properties['required'] === 1 || ($validation_behavior & self::VALIDATE_REQUIRED));
-                // See above: throw an exception if we have no-or-null field
-                // value and no default, OR if we have null field value and
-                // non-null default.
-                if ($validate_required_value && !isset($element['Fields'][$name])
-                    && (!array_key_exists($name, $defaults)
-                        || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Fields'])))
-                ) {
-                    throw new UnexpectedValueException("No value given for required '$name' field of '{$this->getType()}' object.");
+            // Validate embedded objects; also the defaults we've just created.
+            if (isset($element['Objects'][$name])) {
+                // Doublecheck; unlikely to fail because it's also in
+                // addObjectData().
+                if (!$element['Objects'][$name] instanceof UpdateObject) {
+                    throw new UnexpectedValueException("'$name' field of $object_type_msg must be an object of type UpdateObject.");
                 }
+                $element['Objects'][$name]->validate($validation_behavior, $embedded_change_behavior);
+            }
+        }
 
-                // Add defaults if value is missing, or if value is null and
-                // field is required (and if we can change it, but that's
-                // always the case if $defaults is set).
-                if (array_key_exists($name, $defaults)) {
-                    $null_required_value = !isset($element['Fields'][$name]) && !empty($field_properties['required']);
-                    if ($null_required_value || !array_key_exists($name, $element['Fields'])) {
-                        $element['Fields'][$name] = $defaults[$name];
-                    }
+        return $element;
+    }
+
+    /**
+     * Validates an element's fields against a list of definitions.
+     *
+     * This is mainly split out from validate() in the hopes of being a little
+     * easier to override by a child class, if ever necessary.
+     *
+     * @param array $element
+     *   The element (usually the single one contained in $this->elements)
+     *   whose fields should be validated.
+     * @param int $element_index
+     *   The index of the element in our object data; usually there is one
+     *   element and the index is 0.
+     * @param int $validation_behavior
+     *   (Optional) see validate().
+     * @param int $change_behavior
+     *   (Optional) see validate().
+     *
+     * @return array
+     *   The element with its fields validated.
+     *
+     * @throws \UnexpectedValueException
+     *   If the element data does not pass validation. (This likely indicates
+     *   the data is invalid, although in theory it can also indicate that the
+     *   validation is based on improper logic/definitions.)
+     */
+    protected function validateFields(array $element, $element_index, $validation_behavior = self::VALIDATE_DEFAULT, $change_behavior = self::VALIDATE_ALLOW_DEFAULT)
+    {
+        $properties = $this->getProperties();
+        // Doublechecks; unlikely to fail because also in addObjectData().
+        if (empty($properties)) {
+            throw new UnexpectedValueException($this->getType() . ' object has no properties defined.');
+        }
+        if (!isset($properties['fields']) || !is_array($properties['fields'])) {
+            throw new UnexpectedValueException($this->getType() . " object has no 'fields' property defined (or the property is not an array).");
+        }
+
+        $action = $this->getAction($element_index);
+        $defaults = $action === 'insert'
+// @TODO no this is not OK; if we don't specify ALLOW_DEFAULTS this means we are
+//   not outputting values yet (because outputting values always validates) and
+//   in this case also the 'essential values' should not be set yet.
+//   We may need a way to "force adding essentials regardless of whether VALILDATE_ALLOW flag is set"
+//   _only_ on that last call to validate() which is made internally from the output method.
+// @TODO do I need an internal flag to set when "an object is being output, so afterwards its values cannot be changed anymore
+//     (except if addObjectData() is called again)?
+            ? $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT))
+            : $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_UPDATE));
+        // Defaults can be empty, but if they're not, they must have a 'field'
+        // key, to prevent mistakes in the definition.
+        if (!empty($defaults) && (!isset($defaults['fields']) || !is_array($defaults['fields']))) {
+            throw new UnexpectedValueException($this->getType() . " object defaults definition has no 'fields' property (or a non-array one).");
+        }
+        $defaults = isset($defaults['fields']) ? [] : $defaults['fields'];
+
+        $object_type_msg = "'{$this->getType()}' object" . ($element_index ? ' with index ' . ($element_index + 1) : '') . '.';
+        // Check required fields and add default values for fields (where
+        // defined). About definitions:
+        // - if required = true, then
+        //   - if no data value present and default is provided, it's set.
+        //   - if no data value present and no default is provided, an
+        //     exception is thrown.
+        //   - if a null value is present, an exception is thrown, unless null
+        //     is provided as a default value. (We don't silently overwrite
+        //     null values which were explicitly set with other default values.)
+        // - if the default is null (or value given is null & not 'required'),
+        //   then null is passed.
+        foreach ($properties['fields'] as $name => $field_properties) {
+            $validate_required_value = !empty($field_properties['required'])
+                && ($field_properties['required'] === 1 || ($validation_behavior & self::VALIDATE_REQUIRED));
+            // See above: throw an exception if we have no-or-null field
+            // value and no default, OR if we have null field value and
+            // non-null default.
+            if ($validate_required_value && !isset($element['Fields'][$name])
+                && (!array_key_exists($name, $defaults)
+                    || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Fields'])))
+            ) {
+                throw new UnexpectedValueException("No value given for required '$name' field of $object_type_msg object.");
+            }
+
+            // Add defaults if value is missing, or if value is null and field
+            // is required (and if we can change it, but that's always the case
+            // if $defaults is set).
+            if (array_key_exists($name, $defaults)) {
+                $null_required_value = !isset($element['Fields'][$name]) && !empty($field_properties['required']);
+                if ($null_required_value || !array_key_exists($name, $element['Fields'])) {
+                    $element['Fields'][$name] = $defaults[$name];
                 }
             }
         }
+
+        return $element;
     }
 /*
 @TODO write tests, especially for validate()
@@ -740,10 +885,13 @@ class UpdateObject
      *   'change record'.)
      *
      * @return array
-     *
-     * @todo check: objects on same level?
-     *
-     * @todo on me: doublecheck that we account for $element having 'Fields' and 'Objects' dimension.
+     *   An array with up to two keys (other keys will be ignored):
+     *   'fields':  An array with default values keyed by their field names.
+     *              This key is mandatory (unless the return value is empty).
+     *   'objects': An array with default values keyed by the names which AFAS
+     *              uses for embedded objects in this specific object type.
+     *              Values are data structures in a format that would be valid
+     *              input for this class.
      */
     public function getDefaults(array $element = [], $essential_only = false)
     {
