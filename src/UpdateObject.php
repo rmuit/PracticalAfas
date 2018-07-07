@@ -224,7 +224,7 @@ class UpdateObject
      */
     public function __construct(array $object_data = [], $type = '', $parent_type = '', $action = '')
     {
-        // If $type is empty or unrecognized, setValues() will throw an
+        // If $type is empty or unrecognized, addObjectData() will throw an
         // exception. A wrong $parent_type will just... most likely, act as an
         // empty $parent_type (depending on what getProperties() does).
         $this->type = $type;
@@ -321,7 +321,8 @@ class UpdateObject
      * action after validation is not defined.
      *
      * @param string $action
-     *   The action to perform on the data: "insert", "update" or "delete".
+     *   The action to perform on the data: "insert", "update" or "delete". ""
+     *   is also accepted as a valid value, though it has no known use.
      * @param int $index
      *   The index of the object for which to set the action. Do not specify
      *   this; it's usually not needed even when the UpdateObject holds data for
@@ -357,7 +358,7 @@ class UpdateObject
      * @return array[]
      *   A structure roughly equal to the "Element" structure as output in JSON
      *   format for sending to the REST API. That means: it's at least one array
-     *   of object data containing one to three keys: the 'id field' key,
+     *   of object data containing one to three keys: the name of the ID field,
      *   "Fields" and "Objects". But:
      *   - This array of object data is always wrapped in another array (with
      *     numeric keys), for the sake of uniformity (whereas the "Element"
@@ -392,7 +393,11 @@ class UpdateObject
      * @param array $object_data
      *   (Optional) Data to set in this class, representing one or more objects
      *   of this type; see getProperties() for possible values per object type.
-     *   See create() for a more elaborate description of this argument.
+     *   See create() for a more elaborate description of this argument. If the
+     *   data contains embedded objects, then those will inherit the 'action'
+     *   that is set for their parent object, so if the caller cares about which
+     *   action is set for embedded objects, it's advisable to call setAction()
+     *   before this method.
      *
      * @throws \InvalidArgumentException
      *   If the data contains unknown field/object names or the values have an
@@ -426,7 +431,6 @@ class UpdateObject
             throw new UnexpectedValueException($this->getType() . " object has a non-array 'objects' property defined.");
         }
 
-        $this->elements = [];
         foreach ($object_data as $key => $element) {
             // Construct new element with an optional id + fields + objects for
             // this type.
@@ -460,11 +464,11 @@ class UpdateObject
                 $value_present = false;
                 // Get value from the property equal to the field name (case
                 // sensitive!), or the alias. If two values are present with
-                // both field name and alias, we throw an exception.
+                // both field name and alias, throw an exception.
                 $value_exists_by_alias = isset($field_properties['alias']) && array_key_exists($field_properties['alias'], $element);
                 if (array_key_exists($name, $element)) {
                     if ($value_exists_by_alias) {
-                        throw new InvalidArgumentException($this->getType() . ' object has a value provided by both its field name $name and alias $field_properties[alias].');
+                        throw new InvalidArgumentException("'{$this->getType()}' object has a value provided by both its field name $name and alias $field_properties[alias].");
                     }
                     $value = $element[$name];
                     unset($element[$name]);
@@ -486,15 +490,15 @@ class UpdateObject
                                 case 'boolean':
                                     $value = (bool) $value;
                                     break;
-                                case 'long':
+                                case 'integer':
                                 case 'decimal':
                                     if (!is_numeric($value)) {
                                         $property = $name . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
                                         throw new InvalidArgumentException("'$property' property of '{$this->getType()}' object must be numeric.");
                                     }
-                                    if ($field_properties['type'] === 'long' && strpos((string)$value, '.') !== false) {
+                                    if ($field_properties['type'] === 'integer' && strpos((string)$value, '.') !== false) {
                                         $property = $name . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
-                                        throw new InvalidArgumentException("'$property' field value of '{$this->getType()}' object must be a 'long'.");
+                                        throw new InvalidArgumentException("'$property' field value of '{$this->getType()}' object must be an integer value.");
                                     }
                                     // For decimal, we could also check digits,
                                     // but we're not going that far yet.
@@ -513,24 +517,25 @@ class UpdateObject
                 }
             }
 
-            if (!empty($element)) {
+            if (!empty($element) && !empty($properties['objects'])) {
                 // Add other embedded objects. (We assume all remaining element
                 // values are indeed objects. If not, an error will be thrown.)
-                foreach ($properties['objects'] as $name => $alias) {
+                foreach ($properties['objects'] as $name => $object_properties) {
                     $value_present = false;
-                    // Get value from the property equal to the tag (case
-                    // sensitive!), or the alias. If two values are present with
-                    // both tag and alias, we throw an exception.
+                    // Get value from the property equal to the object name
+                    // (case sensitive!), or the alias. If two values are
+                    // present with both name and alias, throw an exception.
+                    $value_exists_by_alias = isset($object_properties['alias']) && array_key_exists($object_properties['alias'], $element);
                     if (array_key_exists($name, $element)) {
-                        if (array_key_exists($alias, $element)) {
-                            throw new InvalidArgumentException("'{$this->getType()}' object has a value provided by both its property name $name and alias $alias.");
+                        if ($value_exists_by_alias) {
+                            throw new InvalidArgumentException("'{$this->getType()}' object has a value provided by both its property name $name and alias $object_properties[alias].");
                         }
                         $value = $element[$name];
                         unset($element[$name]);
                         $value_present = true;
-                    } elseif (array_key_exists($alias, $element)) {
-                        $value = $element[$alias];
-                        unset($element[$alias]);
+                    } elseif ($value_exists_by_alias) {
+                        $value = $element[$object_properties['alias']];
+                        unset($element[$object_properties['alias']]);
                         $value_present = true;
                     }
 
@@ -543,20 +548,40 @@ class UpdateObject
                                 $property = $name . (isset($alias) ? " ($alias)" : '');
                                 throw new InvalidArgumentException("Value for '$property' object embedded inside '{$this->getType()}' object must be array.");
                             }
-                            $normalized_element['Objects'][$name] = static::create($name, $value, $this->getType());
+                            // Determine action to pass into the child object;
+                            // we encourage callers call setAction() before us.
+                            // So we need to check for our element's specific
+                            // action even though the element is not set yet,
+                            // which will throw an exception if this action is
+                            // not explicitly set.
+                            try {
+                                // count is 'current maximum index + 1'
+                                $action = $this->getAction(count($this->elements[]));
+                            }
+                            catch (OutOfBoundsException $e) {
+                                // Get default action. This will fail if
+                                // the current UpdateObject has elements with
+                                // multiple different actions, in which case
+                                // calling setAction() is mandatory before
+                                // calling this method. That's such an edge
+                                // case that it isn't documented elsewhere.
+                                $action = $this->getAction();
+                            }
+
+                            $normalized_element['Objects'][$name] = static::create($name, $value, $this->getType(), $action);
                         }
                     }
                 }
-
-                // Throw error for unknown element data (for which we have not seen
-                // a field/object definition).
-                if (!empty($element)) {
-                    $keys = "'" . implode(', ', array_keys($element)) . "'";
-                    throw new InvalidArgumentException("Unmapped element values provided for '{$this->getType()}' object: keys are $keys.");
-                }
-
-                $this->elements[] = $normalized_element;
             }
+
+            // Throw error for unknown element data (for which we have not seen
+            // a field/object definition).
+            if (!empty($element)) {
+                $keys = "'" . implode(', ', array_keys($element)) . "'";
+                throw new InvalidArgumentException("Unmapped element values provided for '{$this->getType()}' object: keys are $keys.");
+            }
+
+            $this->elements[] = $normalized_element;
         }
     }
 
@@ -719,7 +744,7 @@ class UpdateObject
                 && (!array_key_exists($name, $defaults)
                     || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Objects'])))
             ) {
-                throw new UnexpectedValueException("No value given for required '$name' field of $object_type_msg.");
+                throw new UnexpectedValueException("No value given for required '$name' object embedded in $object_type_msg.");
             }
 
             if (array_key_exists($name, $defaults)) {
@@ -736,7 +761,7 @@ class UpdateObject
                     }
                     else {
                         if (!is_array($defaults[$name])) {
-                            throw new UnexpectedValueException("Default value for '$name' object embedded inside $object_type_msg must be array.");
+                            throw new UnexpectedValueException("Default value for '$name' object embedded in $object_type_msg must be array.");
                         }
                         $element['Objects'][$name] = static::create($name, $defaults[$name], $this->getType());
                     }
@@ -748,9 +773,17 @@ class UpdateObject
                 // Doublecheck; unlikely to fail because it's also in
                 // addObjectData().
                 if (!$element['Objects'][$name] instanceof UpdateObject) {
-                    throw new UnexpectedValueException("'$name' field of $object_type_msg must be an object of type UpdateObject.");
+                    throw new UnexpectedValueException("'$name' object embedded in $object_type_msg must be an object of type UpdateObject.");
                 }
+
                 $element['Objects'][$name]->validate($validation_behavior, $embedded_change_behavior);
+
+                if (empty($object_properties['multiple'])) {
+                    $embedded_elements = $element['Objects'][$name]->getElements();
+                    if (count($embedded_elements) > 1) {
+                        throw new UnexpectedValueException("'$name' object embedded in $object_type_msg contains " . count($embedded_elements) . 'elements but can only contain a single element.');
+                    }
+                }
             }
         }
 
@@ -858,10 +891,39 @@ class UpdateObject
      *
      * The format is not related to AFAS but a structure specific to this class.
      *
-     * There may or may not be properties named 'default'; it's better not to
-     * trust those but to call getDefaults() instead.
+     * The return value may or may not contain properties named 'default'; it's
+     * better not to trust those but to call getDefaults() instead.
      *
      * @return array
+     *   An array with the following keys:
+     *   'id_field': If the object type has an ID field, it's name. (e.g. for
+     *               KnSubject this is 'SbId', because a subject always has a
+     *               "@SbId" entry. ID fields are distinguished by being
+     *               outside of the 'Fields' section and being prefixed by "@".)
+     *   'fields':   Arrays describing properties of fields, keyed by AFAS field
+     *               names. An array may be empty but must be defined for a
+     *               field to be recognized. Properties known to this class:
+     *     'alias':    A name for this field that is more readable than AFAS'
+     *                 field name and that can be used in input data structures.
+     *     'type':     Data type of the field, used for validation ond output
+     *                 formatting. Values: boolean, date, int, decimal.
+     *                 Optional; unspecified types are treated as strings.
+     *     'required': If TRUE, this field is required and our validate()
+     *                 method will throw an exception if the field is not
+     *                 populated. If (int)1, this is done even if validate() is
+     *                 not instructed to validated required values; this can be
+     *                 useful to set if it is known that AFAS itself will throw
+     *                 an unclear error when it receives no value for the field.
+     *   'objects':  Arrays describing properties of the 'object references'
+     *               defined for this object type, keyed by their AFAS names.
+     *               which are objects that are, keyed by AFAS field names. An
+     *               An array may be empty but must be defined for an embedded
+     *               object to be recognized. Properties known to this class:
+     *     'alias':    A name for this field that can be used instead of the
+     *                 AFAS name and that can be used in input data structures.
+     *     'multiple': If TRUE, the embedded object can hold more than one
+     *                 element.
+     *     'required': See 'fields' above.
      */
     public function getProperties()
     {
