@@ -153,14 +153,21 @@ class UpdateObject
     protected $elements = [];
 
     /**
-     * Instantiates a new instance of this class.
+     * Instantiates a new UpdateObject, or a class defined in our map.
+     *
+     * One thing to remember for the $action argument: when wanting to use this
+     * object's output for inserting new data into AFAS, "insert" should be
+     * passed here (or set later using setAction()). This will also take care
+     * of setting default values. In other cases, pass "update", because "it's
+     * the right thing to do". (Yes this is a messy argument; @see setAction()
+     * for more info if you really want to know why.)
      *
      * @param string $type
      *   The type of object, i.e. the 'Update Connector' name to send this data
-     *   into. See getProperties() for possible values.
+     *   into. See the getProperties() code for possible values.
      * @param array $object_data
      *   (Optional) Data to set in this class, representing one or more objects
-     *   of this type; see getProperties() for possible values per object type.
+     *   of this type; see the getProperties() code for possible values.
      *   If any value in the (first dimension of the) array is scalar, it's
      *   assumed to be a single object; if it contains only non-scalars (which
      *   must be arrays), it's assumed to be several objects. Note that it's
@@ -177,16 +184,14 @@ class UpdateObject
      *     to: inside the Fields tag.)
      *   The format is fairly strict: this method will throw exceptions if e.g.
      *   data / format is invalid / not recognized.
-     * @param string $parent_type
-     *   (Optional) If nonempty, the return value will be suitable for embedding
-     *   inside the parent type, which can have a slightly different structure
-     *   (e.g. allowed fields) in some cases.
      * @param string $action
      *   (Optional) The action to perform on the data: "insert", "update" or
-     *   "delete". Only "insert" is known to have an effect in the first version
-     *   of this class, but that might change later, with changes to code or
-     *   AFAS behavior. Unlike $parent_type, this does not have to be provided
-     *   at object creation; it can also be set later.
+     *   "delete". @see setAction() or the comments above.
+     * @param string $parent_type
+     *   (Optional) If nonempty, the return value will be suitable for
+     *   embedding inside the parent type, which can have a slightly different
+     *   structure (e.g. allowed fields) in some cases.  Unlike $action, this
+     *   cannot be changed after the object is instantiated.
      *
      * @return static
      *
@@ -194,12 +199,12 @@ class UpdateObject
      *   If a type/action is not known, the data contains unknown field/object
      *   names, or the values have an unrecognized / invalid format.
      */
-    public static function create($type, array $object_data = [], $parent_type = '', $action = '') {
+    public static function create($type, array $object_data = [], $action = '', $parent_type = '') {
         // If a custom class is defined for this type, instantiate that one.
         if (isset(static::$classMap[$type])) {
-            return new static::$classMap[$type]($object_data, $type, $parent_type, $action);
+            return new static::$classMap[$type]($object_data, $action, $type, $parent_type);
         }
-        return new static($object_data, $type, $parent_type, $action);
+        return new static($object_data, $action, $type, $parent_type);
     }
 
     /**
@@ -210,25 +215,29 @@ class UpdateObject
      * This constructor will likely not stay fully forward compatible for all
      * object types; the constructor will start throwing exceptions for more
      * types over time, as they are implemented in dedicated child classes.
+     * (This warning pertains to this specific class; child classes may allow
+     * callers to call their constructor directly.)
      *
-     * Child classes may allow callers to call the constructor directly, though.
-     *
-     * The first two arguments have switched order from create(), and $type is
-     * optional, to allow e.g. 'new CustomType($values)' more easily. ($type is
-     * not actually optional in this class; an empty value will cause an
-     * exception to be thrown. But many child classes will likely ignore the
-     * 2nd-4th argument. So if they're lazy, they can get away with not
-     * reimplementing a constructor.)
+     * The arguments have switched order from create(), and $type is optional,
+     * to allow e.g. 'new CustomType($values)' more easily. ($type is not
+     * actually optional in this class; an empty value will cause an exception
+     * to be thrown. But many child classes will likely ignore the 3nd/4th
+     * argument. So if they're lazy, they can get away with not reimplementing
+     * a constructor.)
      *
      * @see create()
      */
-    public function __construct(array $object_data = [], $type = '', $parent_type = '', $action = '')
+    public function __construct(array $object_data = [], $action = '', $type = '', $parent_type = '')
     {
         // If $type is empty or unrecognized, addObjectData() will throw an
         // exception. A wrong $parent_type will just... most likely, act as an
-        // empty $parent_type (depending on what getProperties() does).
-        $this->type = $type;
+        // empty $parent_type (depending on what getProperties() does). But we
+        // check the format here, since there is no setter to do that.
+        if (!is_string($parent_type)) {
+            throw new InvalidArgumentException('$parent_type argument is not a string.');
+        }
         $this->parentType = $parent_type;
+        $this->type = $type;
         $this->setAction($action);
         $this->addObjectData($object_data);
     }
@@ -247,7 +256,7 @@ class UpdateObject
      * Returns the action which is set to perform on one or all objects.
      *
      * @param int $element_index
-     *   (Optional) The zero-based index of the object whose action is
+     *   (Optional) The zero-based index of the element whose action is
      *   requested. Usually this class will contain data for only one object,
      *   in which case this argument does not need to be specified (or should be
      *   0).
@@ -261,31 +270,25 @@ class UpdateObject
      */
     public function getAction($element_index = null)
     {
-        // For the case that empty($this->actions):
-        $action = '';
-        $check_all = false;
-        if (!isset($element_index)) {
-            // We expect most code to not care about passing an index, which is
-            // fine because it would be a really rare occasion that differing
-            // actions are set (which results in an exception).
-            $check_all = true;
-        } elseif (isset($this->actions[$element_index])) {
+        if (empty($this->actions)) {
+            $action = '';
+        } elseif (isset($element_index) && isset($this->actions[$element_index])) {
             $action = $this->actions[$element_index];
-        } elseif (!empty($this->actions)) {
-            // If the element with this index exists, we have added an element
-            // (through addObject()) without adding an explicit action for it.
-            // We'll allow this if all the actions which are set, are the same.
-            if (!isset($this->elements[$element_index])) {
+        } else {
+            // Throw an exception when requesting an action for a nonexistent
+            // element. (Unless the action with this index was set anyway,
+            // which is a valid use case, but that was covered above.)
+            if (isset($element_index)  && !isset($this->elements[$element_index])) {
                 throw new OutOfBoundsException("No action or element defined for index $element_index.");
             }
-            $check_all = true;
-        }
-        if ($check_all) {
-            // Check if all set actions are the same.
-            if (count(array_unique($this->actions)) > 1) {
+            // We have element data without an explicit action defined for it,
+            // which is fine - if all the actions which are set, are the same.
+            $unique = array_unique($this->actions);
+            if (count($unique) > 1) {
                 $addition = isset($element_index) ? " but not for $element_index" : '';
                 throw new UnexpectedValueException("Multiple different action values are set$addition, so getAction() has to be called with a valid index parameter.");
             }
+            $action = $unique[0];
         }
 
         return $action;
@@ -295,9 +298,10 @@ class UpdateObject
      * Returns the action values that were set in this class.
      *
      * This is not known to be of any practical use to outside callers; it's
-     * probably easier to call getAction() because callers will set only one
-     * object, or several objects without adding differing actions, in the vast
-     * majority of cases. Still, it's possible for who knows which use case...
+     * probably easier to call getAction() without argument and get a single
+     * string returned, because in the vast majority of cases callers will set
+     * only one element in an UpdateObject, or set several elements with the
+     * same action. Still, it's possible for who knows which use case...
      *
      * @return string[]
      *   The array of all action values. Usually this will be an array of one
@@ -311,11 +315,24 @@ class UpdateObject
     /**
      * Sets the action to perform on object data.
      *
-     * Setting "insert" is known to have an effect in the first version of this
-     * class: it can add extra default values in the validate() phase. Except
-     * for this, the only effect is that the value is inserted in the XML
-     * output. (There are currently no plans for extra behavior, but who knows
-     * we discover some extra AFAS behavior / other necessity later.)
+     * 'Actions' are a bit of an oddity: the only value that is known to have
+     * an effect (and may be required to generate proper output) is "insert",
+     * if this object's output will be used for inserting new data into AFAS.
+     * This value can also be passed in create() so calling setAction() should
+     * not often be necessary.
+     *
+     * It's still implemented as a string with other possible values, in order
+     * to be able to output all known forms of XML for sending to the SOAP
+     * API. It's possible that we discover a situation later, where embedding
+     * a specific action value in the XML is a necessity.
+     *
+     * For now, just remember: set "insert" for updates (which will
+     * automatically take care of setting necessary default values), otherwise
+     * set "update" to be future proof. ("delete" has not been tested so we
+     * can't comment on that yet.) This is only to assure future compatibility:
+     * "update" does not have any effect on the REST API currently; it will
+     * change the XML used for the SOAP API slightly but that is not known to
+     * have any practical effect, at the moment.
      *
      * This method should not be called after validate(); the effect of changing
      * action after validation is not defined.
@@ -323,13 +340,17 @@ class UpdateObject
      * @param string $action
      *   The action to perform on the data: "insert", "update" or "delete". ""
      *   is also accepted as a valid value, though it has no known use.
-     * @param int $index
-     *   The index of the object for which to set the action. Do not specify
-     *   this; it's usually not needed even when the UpdateObject holds data for
-     *   multiple objects. It's only of theoretical use (which is: outputting
-     *   multiple objects with different "action" values as XML).
+     * @param bool $set_embedded
+     *   (Optional) If false, only set the current object, By default, the
+     *   action is also set/overwritten in any embedded objects.
+     * @param int $element_index
+     *   (Optional) The zero-based index of the element for which to set the
+     *   action. Do not specify this; it's usually not needed even when the
+     *   UpdateObject holds data for multiple objects. It's only of theoretical
+     *   use (which is: outputting multiple objects with different "action"
+     *   values as XML).
      */
-    public function setAction($action, $index = 0)
+    public function setAction($action, $set_embedded = true, $element_index = -1)
     {
         // Unify $action. We'll silently accept PUT/POST too, as long as the
         // REST API keeps the one-to-one relationship of these to update/insert.
@@ -344,7 +365,38 @@ class UpdateObject
             throw new InvalidArgumentException('Unknown action value' . var_export($action, true) . '.');
         }
 
-        $this->actions[$index] = $action;
+        if ($element_index == -1) {
+            // Set the value in any defined actions. (Usually the actions
+            // variable contains only one entry with index 0, regardless of
+            // how many elements are present in this UpdateObject, which is
+            // fine.)
+            if (empty($this->actions) || !is_array($this->actions)) {
+                $this->actions = [$action];
+            } else {
+                foreach ($this->actions as $index => $a) {
+                    $this->actions[$index] = $action;
+                }
+            }
+        } else {
+            $this->actions[$element_index] = $action;
+        }
+
+        if ($set_embedded && !empty($this->elements) && is_array($this->elements)) {
+            // Set all actions in embedded objects of the element corresponding
+            // to the index we passed into this method.
+            foreach ($this->elements as $i => $element) {
+                if ($element_index == -1 || $i == $element_index) {
+
+                    if (!empty($element['Objects']) && is_array($element['Objects'])) {
+                        foreach ($element['Objects'] as $object) {
+                            if ($object instanceof UpdateObject) {
+                                $object->setAction($action, true);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -542,8 +594,7 @@ class UpdateObject
                     if ($value_present) {
                         if ($value instanceof UpdateObject) {
                             $normalized_element['Objects'][$name] = $value;
-                        }
-                        else {
+                        } else {
                             if (!is_array($value)) {
                                 $property = $name . (isset($alias) ? " ($alias)" : '');
                                 throw new InvalidArgumentException("Value for '$property' object embedded inside '{$this->getType()}' object must be array.");
@@ -568,7 +619,7 @@ class UpdateObject
                                 $action = $this->getAction();
                             }
 
-                            $normalized_element['Objects'][$name] = static::create($name, $value, $this->getType(), $action);
+                            $normalized_element['Objects'][$name] = static::create($name, $value, $action, $this->getType());
                         }
                     }
                 }
@@ -758,12 +809,11 @@ class UpdateObject
                     // several places.
                     if ($defaults[$name] instanceof UpdateObject) {
                         $element['Objects'][$name] = clone $defaults[$name];
-                    }
-                    else {
+                    } else {
                         if (!is_array($defaults[$name])) {
                             throw new UnexpectedValueException("Default value for '$name' object embedded in $object_type_msg must be array.");
                         }
-                        $element['Objects'][$name] = static::create($name, $defaults[$name], $this->getType());
+                        $element['Objects'][$name] = static::create($name, $defaults[$name], $this->getAction($element_index), $this->getType());
                     }
                 }
             }
