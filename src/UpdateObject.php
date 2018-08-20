@@ -92,6 +92,12 @@ class UpdateObject
      *
      * Any object types not mentioned here are implemented by this class.
      *
+     * Please note that names of object types (the keys in this variable) are
+     * not necessarily equal to the names of 'object reference fields' in
+     * property definitions (see getProperties()). e.g. the object type defined
+     * here would be KnBasicAddress whereas the 'reference field' defined
+     * inside a KnPerson object is called KnBasicAddressAdr / KnBasicAddressPad.
+     *
      * A project which wants to implement custom behavior for specific object
      * types can create a 'class OverriddenType implements UpdateObject' and can
      * do two things:
@@ -619,7 +625,12 @@ class UpdateObject
                                 $action = $this->getAction();
                             }
 
-                            $normalized_element['Objects'][$name] = static::create($name, $value, $action, $this->getType());
+                            // The object type is sometimes equal to the name
+                            // of the 'reference field' inside the parent
+                            // object, but not always.
+                            $type = !empty($object_properties['type']) ? $object_properties['type'] : $name;
+
+                            $normalized_element['Objects'][$name] = static::create($type, $value, $action, $this->getType());
                         }
                     }
                 }
@@ -813,6 +824,8 @@ class UpdateObject
                         if (!is_array($defaults[$name])) {
                             throw new UnexpectedValueException("Default value for '$name' object embedded in $object_type_msg must be array.");
                         }
+                        // The intended 'action' value is always assumed to be
+                        // equal to its parent's current value.
                         $element['Objects'][$name] = static::create($name, $defaults[$name], $this->getAction($element_index), $this->getType());
                     }
                 }
@@ -950,30 +963,36 @@ class UpdateObject
      *               KnSubject this is 'SbId', because a subject always has a
      *               "@SbId" entry. ID fields are distinguished by being
      *               outside of the 'Fields' section and being prefixed by "@".)
-     *   'fields':   Arrays describing properties of fields, keyed by AFAS field
-     *               names. An array may be empty but must be defined for a
-     *               field to be recognized. Properties known to this class:
-     *     'alias':    A name for this field that is more readable than AFAS'
+     *   'fields':   Arrays describing properties of fields, keyed by AFAS
+     *               field names. An array may be empty but must be defined for
+     *               a field to be recognized. Properties known to this class:
+     *   - 'alias':    A name for this field that is more readable than AFAS'
      *                 field name and that can be used in input data structures.
-     *     'type':     Data type of the field, used for validation ond output
+     *   - 'type':     Data type of the field, used for validation ond output
      *                 formatting. Values: boolean, date, int, decimal.
      *                 Optional; unspecified types are treated as strings.
-     *     'required': If TRUE, this field is required and our validate()
+     *   - 'required': If true, this field is required and our validate()
      *                 method will throw an exception if the field is not
      *                 populated. If (int)1, this is done even if validate() is
      *                 not instructed to validated required values; this can be
      *                 useful to set if it is known that AFAS itself will throw
      *                 an unclear error when it receives no value for the field.
-     *   'objects':  Arrays describing properties of the 'object references'
-     *               defined for this object type, keyed by their AFAS names.
-     *               which are objects that are, keyed by AFAS field names. An
+     *   'objects':  Arrays describing properties of the 'object reference
+     *               fields' defined for this object type, keyed by their names.
      *               An array may be empty but must be defined for an embedded
      *               object to be recognized. Properties known to this class:
-     *     'alias':    A name for this field that can be used instead of the
+     *    - 'type':    The name of the AFAS object type which this reference
+     *                 points to. If not provided, the type is assumed to be
+     *                 equal to the name of the reference field. (It's likely
+     *                 that AFAS does not explain the difference between 'type'
+     *                 and 'reference field' names anywhere, but there must be
+     *                 a difference if e.g. one object has two fields
+     *                 referencing object of the same type. See the code.)
+     *   - 'alias':    A name for this field that can be used instead of the
      *                 AFAS name and that can be used in input data structures.
-     *     'multiple': If TRUE, the embedded object can hold more than one
+     *   - 'multiple': If true, the embedded object can hold more than one
      *                 element.
-     *     'required': See 'fields' above.
+     *   - 'required': See 'fields' above.
      */
     public function getProperties()
     {
