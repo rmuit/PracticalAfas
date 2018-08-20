@@ -23,69 +23,80 @@ use UnexpectedValueException;
 class UpdateObject
 {
     /**
-     * @see validate(); this is a bitmask for the $validation_behavior argument.
+     * @see getObjectData(); bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ESSENTIAL = 0;
+    const ADD_ELEMENT_WRAPPER = 1;
 
     /**
-     * @see validate(); this is a bitmask for the $validation_behavior argument.
+     * @see getObjectData(); bitmask for the $change_behavior argument.
      */
-    const VALIDATE_REQUIRED = 1;
+    const KEEP_EMBEDDED_OBJECTS = 2;
 
     /**
-     * Default behavior for validate($validation_behavior).
-     *
-     * If future versions of this class introduce new behavior through
-     * additional bitmask values, this value may or may not be changed to
-     * incorporate that behavior by default.
-     */
-    const VALIDATE_DEFAULT = 1;
-
-    /**
-     * @see validate(); this is a bitmask for the $change_behavior argument.
+     * @see output(); this is a bitmask for the $change_behavior argument.
      */
     const VALIDATE_ALLOW_NO_CHANGES = 0;
 
     /**
-     * @see validate(); this is a bitmask for the $change_behavior argument.
+     * @see output(); this is a bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ALLOW_EMBEDDED_CHANGES = 1;
+    const VALIDATE_ALLOW_EMBEDDED_CHANGES = 4;
 
     /**
-     * @see validate(); this is a bitmask for the $change_behavior argument.
+     * @see output(); this is a bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ALLOW_DEFAULTS_ON_INSERT = 2;
+    const VALIDATE_ALLOW_DEFAULTS_ON_INSERT = 8;
 
     /**
-     * @see validate(); this is a bitmask for the $change_behavior argument.
+     * @see output(); this is a bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ALLOW_DEFAULTS_ON_UPDATE = 4;
+    const VALIDATE_ALLOW_DEFAULTS_ON_UPDATE = 16;
 
     /**
-     * @see validate(); this is a bitmask for the $change_behavior argument.
+     * @see output(); this is a bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ALLOW_REFORMAT = 8;
+    const VALIDATE_ALLOW_REFORMAT = 32;
 
     /**
-     * @see validate(); this is a bitmask for the $change_behavior argument.
+     * @see output(); this is a bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ALLOW_CHANGES = 16;
+    const VALIDATE_ALLOW_CHANGES = 64;
 
     /**
-     * Default behavior for validate(,$modification_behavior).
+     * Default behavior for output(,$change_behavior).
      *
-     * This is all defined behavior except VALIDATE_ALLOW_DEFAULTS_ON_UPDATE.
+     * This is all defined VALIDATE_ALLOW_* behavior except
+     * VALIDATE_ALLOW_DEFAULTS_ON_UPDATE.
      *
      * If future versions of this class introduce new behavior through
      * additional bitmask values, this value may or may not be changed to
      * incorporate that behavior by default.
      */
-    const VALIDATE_ALLOW_DEFAULT = 27;
+    const VALIDATE_ALLOW_DEFAULT = 108;
 
     /**
-     * Line indentation (number of spaces) for XML output.
+     * @see output(); this is a bitmask for the $validation_behavior argument.
      */
-    const XML_INDENT = 2;
+    const VALIDATE_NOTHING = 0;
+
+    /**
+     * @see output(); this is a bitmask for the $validation_behavior argument.
+     */
+    const VALIDATE_ESSENTIAL = 1;
+
+    /**
+     * @see output(); this is a bitmask for the $validation_behavior argument.
+     */
+    const VALIDATE_REQUIRED = 2;
+
+    /**
+     * Default behavior for output(,,$validation_behavior).
+     *
+     * If future versions of this class introduce new behavior through
+     * additional bitmask values, this value may or may not be changed to
+     * incorporate that behavior by default.
+     */
+    const VALIDATE_DEFAULT = 2;
 
     /**
      * A mapping from object type to the class name implementing the type.
@@ -152,7 +163,7 @@ class UpdateObject
     /**
      * The "Element" data representing one or several objects.
      *
-     * @see getElements()
+     * @see getObjectData()
      *
      * @var array[]
      */
@@ -340,9 +351,6 @@ class UpdateObject
      * change the XML used for the SOAP API slightly but that is not known to
      * have any practical effect, at the moment.
      *
-     * This method should not be called after validate(); the effect of changing
-     * action after validation is not defined.
-     *
      * @param string $action
      *   The action to perform on the data: "insert", "update" or "delete". ""
      *   is also accepted as a valid value, though it has no known use.
@@ -403,31 +411,6 @@ class UpdateObject
                 }
             }
         }
-    }
-
-    /**
-     * Returns the "Element" data representing one or several objects.
-     *
-     * This is the 'getter' equivalent for setObjectData() but the data is
-     * normalized / de-aliased, and wrapped inside another array (also if it
-     * represents only one object). Nitpick: we return "Element" data that would
-     * be valid for JSON output; the XML output can have a different structure.
-     *
-     * @return array[]
-     *   A structure roughly equal to the "Element" structure as output in JSON
-     *   format for sending to the REST API. That means: it's at least one array
-     *   of object data containing one to three keys: the name of the ID field,
-     *   "Fields" and "Objects". But:
-     *   - This array of object data is always wrapped in another array (with
-     *     numeric keys), for the sake of uniformity (whereas the "Element"
-     *     value in the JSON output may be one object or an array of objects.)
-     *   - The "Object" value, if present, is an array of UpdateObjects keyed by
-     *     the object type. (That is: a single UpdateObject per type, which may
-     *     contain data for one or several objects.)
-     */
-    protected function getElements()
-    {
-        return $this->elements;
     }
 
     /**
@@ -648,99 +631,118 @@ class UpdateObject
     }
 
     /**
-     * Validates our object data and change/add values where needed.
+     * Returns the "Element" data representing one or several objects.
      *
-     * If an object cannot be validated (so an UnexpectedValueException is
-     * thrown), it's possible that some of the object data gets changed, by
-     * e.g. adding default values or reformatting values. This specific method
-     * implementation behaves the following way:
-     * - If the object data holds only one element, the field data is not
-     *   changed but the data for embedded objects could be.
-     * - If the object data holds multiple elements, (both fields and embedded
-     *   objects in) already fully validated objects could be changed.
+     * This is the 'getter' equivalent for setObjectData() but the data is
+     * normalized / de-aliased, and possibly validated and changed.
      *
-     * @param int $validation_behavior
-     *   (Optional) By default, this method performs validation checks. This
-     *   argument is a bitmask that can be used to disable validation checks (or
-     *   add additional ones in child classes). Possible values are:
-     *   - VALIDATE_ESSENTIAL: Perform only checks that we know will make the
-     *     AFAS Update Connector call fail, but skip others. This can be useful
-     *     for e.g. updating data which is present in AFAS but does not pass all
-     *     our validation checks. This value loses its meaning when passed
-     *     together with other values.
-     *   - VALIDATE_REQUIRED (default): Check for presence of field values which
-     *     this library considers 'required' even if an AFAS Update Connector
-     *     call would not fail if they're missing. Example: town/municipality in
-     *     an address object.
-     *   Child classes might define additional values.
      * @param int $change_behavior
-     *   (Optional) By default, this method can change values of fields and
-     *   embedded objects (for e.g. uniform formatting of values ar adding
-     *   defaults). This argument is a bitmask that can be used to modify which
-     *   data which can be changed, or disable changes. Possible values are:
-     *   - VALIDATE_ALLOW_NO_CHANGES: Do not allow any changes. This value loses
-     *     its meaning when passed together with other values.
-     *   - VALIDATE_ALLOW_EMBEDDED_CHANGES (default): Allow changes to be made
-     *     to embedded objects. If it is specified, the other bitmasks determine
-     *     which changes can be made to embedded objects (so if only this value
-     *     is specified, no changes are allowed to either this object or its
-     *     embedded objects). If it is not specified, the other bitmasks
-     *     determine only which changes can be made to this object, but any
-     *     changes to embedded objects are disallowed.
-     *   - VALIDATE_ALLOW_DEFAULTS_ON_INSERT (default): Allow adding default
-     *     values to empty fields when inserting a new object. Note that even if
-     *     this value is not specified, there are still some 'essential' values
-     *     which can be set in the object; see getDefaults(,$essential_only).
-     *   - VALIDATE_ALLOW_DEFAULTS_ON_UPDATE: Allow adding default values to
-     *     empty fields when updating an existing object. Also see
-     *     VALIDATE_ALLOW_DEFAULTS_ON_INSERT.
-     *   - VALIDATE_ALLOW_REFORMAT (default): Allow reformatting of singular
-     *     field values. For 'reformatting' a combination of values (e.g. moving
-     *     a house number from a street value into its own field) additional
-     *     values may need to be passed.
-     *   - VALIDATE_ALLOW_CHANGES (default): Allow changing field values, in
-     *     ways not covered by other bitmasks. Behavior is not precisely defined
-     *     by this class; child classes may use this value or implement their
-     *     own additional bitmasks.
-     *   Child classes might define additional values.
+     *   (Optional) by default, the literal value as stored in this object is
+     *   returned without being validated; see @return. This argument is a
+     *   bitmask that can influence which data can be changed in the return
+     *   value. Possible values are:
+     *   - ADD_ELEMENT_WRAPPER: add a two-layer wrapper around the returned data
+     *     (meaning the value is inside a one-element array inside a one-element
+     *     array), with keys being the object type and "Element". This is
+     *     necessary for generating valid JSON output.
+     *   - KEEP_EMBEDDED_OBJECTS: Keep embedded UpdateObjects in the 'Objects'
+     *     sub-array of each element. This will still validate any embedded
+     *     objects, but discard the resulting array structure instead of
+     *     replacing the UpdateObject with it (which is the default behavior
+     *     for a non-null $change_behavior).
+     *   - VALIDATE_ALLOW_*: see output() for description.
+     * @param int $validation_behavior
+     *   (Optional) see output().
      *
-     * @throws \InvalidArgumentException
-     *   If any of the behavior arguments have an unrecognized format.
+     * @return array[]
+     *   If $change_behavior is not specified, return only the elements as they
+     *   are stored in this UpdateObject. This means: return an array of one or
+     *   more sub-arrays representing an element. The sub arrays can contain
+     *   one to three keys: the name of the ID field, "Fields" and "Objects".
+     *   The "Object" value, if present, is an array of UpdateObjects keyed by
+     *   the object type. (That is: a single UpdateObject per type, which
+     *   itself may contain data for one or several elements.) If method
+     *   arguments are specified, this changes the return value according to
+     *   the modifiers passed.
+     *
      * @throws \UnexpectedValueException
      *   If this object's data does not pass validation. (This likely indicates
      *   the data is invalid, although in theory it can also indicate that the
      *   validation is based on improper logic/definitions.)
      */
-    public function validate($validation_behavior = self::VALIDATE_DEFAULT, $change_behavior = self::VALIDATE_ALLOW_DEFAULT)
+    public function getObjectData($change_behavior = null, $validation_behavior = self::VALIDATE_NOTHING)
     {
-        if (!is_int($validation_behavior)) {
-            throw new InvalidArgumentException('$validation_behavior argument is not an integer.');
-        }
-        if (!is_int($change_behavior)) {
-            throw new InvalidArgumentException('$change_behavior argument is not an integer.');
+        if (!isset($change_behavior)) {
+            if ($validation_behavior !== self::VALIDATE_NOTHING) {
+                throw new InvalidArgumentException('If $change_behavior argument is NULL, $validation_behavior argument cannot be passed.');
+            }
+
+            $return = $this->elements;
+        } else {
+            if (!is_int($change_behavior)) {
+                throw new InvalidArgumentException('$change_behavior argument is not an integer.');
+            }
+            if (!is_int($validation_behavior)) {
+                throw new InvalidArgumentException('$validation_behavior argument is not an integer.');
+            }
+
+            $elements = [];
+            foreach ($this->elements as $element_index => $element) {
+                $elements[] = $this->validateElement($element_index, $change_behavior, $validation_behavior);
+            }
+            $return = $change_behavior & self::ADD_ELEMENT_WRAPPER ? ['Element' => $elements] : $elements;
         }
 
-        foreach ($this->elements as $element_index => $element) {
-            $element = $this->validateEmbeddedObjects($element, $element_index, $validation_behavior, $change_behavior);
-            $element = $this->validateFields($element, $element_index, $validation_behavior, $change_behavior);
-
-            $this->elements[$element_index] = $element;
-        }
-
-        // @TODO maybe do the following only if the magical I-am-nearly-outputting property has been set?
-        //      (see validateFields TODO)
-        //
-        //@todo consider: should we re-validate whether all the element's
-        // properties are known? (Or do we do this also on generating the output string?.)
-        // ^^ fields and objects should be inside the 'validate..()' methods
-        //    and checking if nothing else is there on the first level, should be here.
+        return $return;
     }
 
     /**
-     * Validates an element's embedded objects against a list of definitions.
+     * Validates one element against a list of property definitions.
      *
-     * This is mainly split out from validate() in the hopes of being a little
-     * easier to override by a child class, if ever necessary.
+     * Code hint: if you want to loop through all elements contained in this
+     * object and then call validateElement() on them, you probably want to
+     * call getObjectData() instead.
+     *
+     * @param int $element_index
+     *   The index of the element in our object data; usually there is one
+     *   element and the index is 0.
+     * @param int $change_behavior
+     *   (Optional) see output().
+     * @param int $validation_behavior
+     *   (Optional) see output().
+     *
+     * @return array
+     *   The validated element, with changes applied if appropriate.
+     *
+     * @throws \UnexpectedValueException
+     *   If the element data does not pass validation. (This likely indicates
+     *   the data is invalid, although in theory it can also indicate that the
+     *   validation is based on improper logic/definitions.)
+     */
+    protected function validateElement($element_index, $change_behavior = self::VALIDATE_ALLOW_DEFAULT, $validation_behavior = self::VALIDATE_DEFAULT)
+    {
+        $element = $this->elements[$element_index];
+        // Design decision: validate embedded objects first ('depth first'),
+        // then validate the rest of this object while knowing that the
+        // 'children' are OK, and with their properties accessible (dependent
+        // on some $change_behavior values).
+        $element = $this->validateEmbeddedObjects($element, $element_index, $change_behavior, $validation_behavior);
+        $element = $this->validateFields($element, $element_index, $change_behavior, $validation_behavior);;
+
+        //@todo consider: should we re-validate whether all the element's
+        // properties are known? (Or do we do this also on generating the output string?.)
+        // ^^ fields and objects should be inside the 'validate..()' methods <<< not sure; makes some things harder for subclasses
+        //    and checking if nothing else is there on the first level, should be here.
+        // ^^ probably there should be a VAIDATE_ flag for that, which is on by default.
+        // @todo but first/also, check measures on addObjectData(). Should we do this both on input and output? Only on output?
+        return $element;
+    }
+
+    /**
+     * Validates an element's embedded objects and replaces them by arrays.
+     *
+     * This is mainly split out from validateElement() to be easier to override
+     * by child classes. It should generally not touch $this->elements.
      *
      * @param array $element
      *   The element (usually the single one contained in $this->elements)
@@ -748,22 +750,98 @@ class UpdateObject
      * @param int $element_index
      *   The index of the element in our object data; usually there is one
      *   element and the index is 0.
-     * @param int $validation_behavior
-     *   (Optional) see validate().
      * @param int $change_behavior
-     *   (Optional) see validate(). Note that this is the behavior for the
+     *   (Optional) see output(). Note that this is the behavior for the
      *   complete object, and may still need to be amended to apply to embedded
      *   objects.
+     * @param int $validation_behavior
+     *   (Optional) see output().
      *
      * @return array
-     *   The element with its embedded objects validated.
+     *   The element with its embedded fields plus the objects contained within
+     *   them validated, and changed if appropriate. Dependent on
+     *   $change_behavior, all UpdateObjects are replaced by their validated
+     *   array representation, and possibly wrapped inside 'Element' structures.
      *
      * @throws \UnexpectedValueException
      *   If the element data does not pass validation. (This likely indicates
      *   the data is invalid, although in theory it can also indicate that the
      *   validation is based on improper logic/definitions.)
      */
-    protected function validateEmbeddedObjects(array $element, $element_index, $validation_behavior = self::VALIDATE_DEFAULT, $change_behavior = self::VALIDATE_ALLOW_DEFAULT)
+    protected function validateEmbeddedObjects(array $element, $element_index, $change_behavior = self::VALIDATE_ALLOW_DEFAULT, $validation_behavior = self::VALIDATE_DEFAULT)
+    {
+        $element = $this->validateReferenceFields($element, $element_index, $change_behavior, $validation_behavior);
+
+        if (isset($element['Objects'])) {
+            $object_type_msg = "'{$this->getType()}' object" . ($element_index ? ' with index ' . ($element_index + 1) : '') . '.';
+            $embedded_change_behavior = ($change_behavior & self::VALIDATE_ALLOW_EMBEDDED_CHANGES)
+                ? $change_behavior : self::VALIDATE_ALLOW_NO_CHANGES;
+
+            foreach ($element['Objects'] as $ref_name => $object) {
+                // Doublecheck; unlikely to fail because it's also in
+                // addObjectData().
+                if (!$object instanceof UpdateObject) {
+                    throw new UnexpectedValueException("'$ref_name' object embedded in $object_type_msg must be an object of type UpdateObject.");
+                }
+
+                // Validation of a full object is done by getObjectData() (if
+                // we want to get an array structure returned).
+                $object_data = $object->getObjectData($embedded_change_behavior, $validation_behavior);
+
+                // Validate if this reference field is allowed to have multiple
+                // elements.
+                if (empty($object_properties['multiple'])) {
+                    $embedded_elements = $change_behavior & self::ADD_ELEMENT_WRAPPER ? $object_data['Element'] : $object_data;
+                    if (count($embedded_elements) > 1) {
+                        throw new UnexpectedValueException("'$ref_name' object embedded in $object_type_msg contains " . count($embedded_elements) . 'elements but can only contain a single element.');
+                    }
+                }
+
+                // By default, replace any UpdateObjects with their validated
+                // array representation.
+                if (!($change_behavior & self::KEEP_EMBEDDED_OBJECTS)) {
+                    $element['Objects'][$ref_name] = $object_data;
+                }
+            }
+        }
+
+        return $element;
+    }
+
+    /**
+     * Validates an element's object reference fields.
+     *
+     * This only validates the 'status of embedded objects in relation to our
+     * own object', not the contents of the embedded objects; the objects' own
+     * getObjectData() / validateElement() / ... calls are responsible for that.
+     *
+     * This is mainly split out from validateEmbeddedObjects() to be easier to
+     * override by child classes. It should generally not touch $this->elements.
+     *
+     * @param array $element
+     *   The element (usually the single one contained in $this->elements)
+     *   whose embedded objects should be validated.
+     * @param int $element_index
+     *   The index of the element in our object data; usually there is one
+     *   element and the index is 0.
+     * @param int $change_behavior
+     *   (Optional) see output(). Note that this is the behavior for the
+     *   complete object, and may still need to be amended to apply to embedded
+     *   objects.
+     * @param int $validation_behavior
+     *   (Optional) see output().
+     *
+     * @return array
+     *   The element with its embedded fields validated, and possibly default
+     *   objects added if appropriate. All values in the 'Objects' sub array
+     *   are guaranteed to be UpdateObjects.
+     *
+     * @throws \UnexpectedValueException
+     *   If the element data does not pass validation. (This likely indicates
+     *   the data is invalid, although in theory it can also indicate that the
+     *   validation is based on improper logic/definitions.)
+     */
+    protected function validateReferenceFields(array $element, $element_index, $change_behavior = self::VALIDATE_ALLOW_DEFAULT, $validation_behavior = self::VALIDATE_DEFAULT)
     {
         $properties = $this->getProperties();
         // Doublechecks; unlikely to fail because also in addObjectData().
@@ -776,7 +854,6 @@ class UpdateObject
             throw new UnexpectedValueException($this->getType() . " object has a non-array 'objects' property defined.");
         }
 
-
         $action = $this->getAction($element_index);
         $defaults = [];
         if (($action === 'insert' && $change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT)
@@ -785,7 +862,7 @@ class UpdateObject
             $defaults = $this->getDefaults($element);
             if (!isset($defaults['objects'])) {
                 $defaults = [];
-            } elseif (!$defaults($properties['objects'])) {
+            } elseif (!is_array($defaults['objects'])) {
                 throw new UnexpectedValueException($this->getType() . " object defaults definition has a non-array 'objects' property.");
             } else {
                 $defaults = $defaults['objects'];
@@ -793,58 +870,39 @@ class UpdateObject
         }
 
         $object_type_msg = "'{$this->getType()}' object" . ($element_index ? ' with index ' . ($element_index + 1) : '') . '.';
-        $embedded_change_behavior = ($change_behavior & self::VALIDATE_ALLOW_EMBEDDED_CHANGES)
-            ? $change_behavior : self::VALIDATE_ALLOW_NO_CHANGES;
-        foreach ($properties['objects'] as $name => $object_properties) {
-            // Check requiredness for embeddable objects, and create defaults
-            // for missing objects. This is unlikely to ever be needed but
-            // still... it's a possibility. Code is largely the same as
+        foreach ($properties['objects'] as $ref_name => $object_properties) {
+            // Check requiredness for embeddable object, and create a default
+            // value if it's missing. (The latter is unlikely to ever be needed
+            // but still... it's a possibility.) Code is largely the same as
             // validateFields(); see there for comments.
             $validate_required_value = !empty($object_properties['required!'])
-                && ($object_properties['required'] === 1 || ($validation_behavior & self::VALIDATE_REQUIRED));
-            if ($validate_required_value && !isset($element['Objects'][$name])
-                && (!array_key_exists($name, $defaults)
-                    || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Objects'])))
+                && ($validation_behavior & self::VALIDATE_REQUIRED
+                    || ($object_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
+            if ($validate_required_value && !isset($element['Objects'][$ref_name])
+                && (!array_key_exists($ref_name, $defaults)
+                    || (isset($defaults[$ref_name]) && is_null($defaults[$ref_name]) && array_key_exists($ref_name, $element['Objects'])))
             ) {
-                throw new UnexpectedValueException("No value given for required '$name' object embedded in $object_type_msg.");
+                throw new UnexpectedValueException("No value given for required '$ref_name' object embedded in $object_type_msg.");
             }
 
-            if (array_key_exists($name, $defaults)) {
-                $null_required_value = !isset($element['Objects'][$name]) && !empty($object_properties['required']);
-                if ($null_required_value || !array_key_exists($name, $element['Objects'])) {
+            if (array_key_exists($ref_name, $defaults)) {
+                $null_required_value = !isset($element['Objects'][$ref_name]) && !empty($object_properties['required']);
+                if ($null_required_value || !array_key_exists($ref_name, $element['Objects'])) {
                     // We would expect a default value to be the same data
                     // definition (array) that we use to create UpdateObjects.
                     // It can be defined as an UpdateObject itself, though we
                     // don't expect that; in this case, clone the object to be
                     // sure we don't end up adding some default object in
                     // several places.
-                    if ($defaults[$name] instanceof UpdateObject) {
-                        $element['Objects'][$name] = clone $defaults[$name];
+                    if ($defaults[$ref_name] instanceof UpdateObject) {
+                        $element['Objects'][$ref_name] = clone $defaults[$ref_name];
                     } else {
-                        if (!is_array($defaults[$name])) {
-                            throw new UnexpectedValueException("Default value for '$name' object embedded in $object_type_msg must be array.");
+                        if (!is_array($defaults[$ref_name])) {
+                            throw new UnexpectedValueException("Default value for '$ref_name' object embedded in $object_type_msg must be array.");
                         }
                         // The intended 'action' value is always assumed to be
                         // equal to its parent's current value.
-                        $element['Objects'][$name] = static::create($name, $defaults[$name], $this->getAction($element_index), $this->getType());
-                    }
-                }
-            }
-
-            // Validate embedded objects; also the defaults we've just created.
-            if (isset($element['Objects'][$name])) {
-                // Doublecheck; unlikely to fail because it's also in
-                // addObjectData().
-                if (!$element['Objects'][$name] instanceof UpdateObject) {
-                    throw new UnexpectedValueException("'$name' object embedded in $object_type_msg must be an object of type UpdateObject.");
-                }
-
-                $element['Objects'][$name]->validate($validation_behavior, $embedded_change_behavior);
-
-                if (empty($object_properties['multiple'])) {
-                    $embedded_elements = $element['Objects'][$name]->getElements();
-                    if (count($embedded_elements) > 1) {
-                        throw new UnexpectedValueException("'$name' object embedded in $object_type_msg contains " . count($embedded_elements) . 'elements but can only contain a single element.');
+                        $element['Objects'][$ref_name] = static::create($ref_name, $defaults[$ref_name], $this->getAction($element_index), $this->getType());
                     }
                 }
             }
@@ -854,10 +912,10 @@ class UpdateObject
     }
 
     /**
-     * Validates an element's fields against a list of definitions.
+     * Validates an element's fields against a list of property definitions.
      *
-     * This is mainly split out from validate() in the hopes of being a little
-     * easier to override by a child class, if ever necessary.
+     * This is mainly split out from validateElement() to be easier to override
+     * by child classes. It should generally not touch $this->elements.
      *
      * @param array $element
      *   The element (usually the single one contained in $this->elements)
@@ -865,20 +923,20 @@ class UpdateObject
      * @param int $element_index
      *   The index of the element in our object data; usually there is one
      *   element and the index is 0.
-     * @param int $validation_behavior
-     *   (Optional) see validate().
      * @param int $change_behavior
-     *   (Optional) see validate().
+     *   (Optional) see output().
+     * @param int $validation_behavior
+     *   (Optional) see output().
      *
      * @return array
-     *   The element with its fields validated.
+     *   The element with its fields validated, and changed if appropriate.
      *
      * @throws \UnexpectedValueException
      *   If the element data does not pass validation. (This likely indicates
      *   the data is invalid, although in theory it can also indicate that the
      *   validation is based on improper logic/definitions.)
      */
-    protected function validateFields(array $element, $element_index, $validation_behavior = self::VALIDATE_DEFAULT, $change_behavior = self::VALIDATE_ALLOW_DEFAULT)
+    protected function validateFields(array $element, $element_index, $change_behavior = self::VALIDATE_ALLOW_DEFAULT, $validation_behavior = self::VALIDATE_DEFAULT)
     {
         $properties = $this->getProperties();
         // Doublechecks; unlikely to fail because also in addObjectData().
@@ -891,13 +949,6 @@ class UpdateObject
 
         $action = $this->getAction($element_index);
         $defaults = $action === 'insert'
-// @TODO no this is not OK; if we don't specify ALLOW_DEFAULTS this means we are
-//   not outputting values yet (because outputting values always validates) and
-//   in this case also the 'essential values' should not be set yet.
-//   We may need a way to "force adding essentials regardless of whether VALILDATE_ALLOW flag is set"
-//   _only_ on that last call to validate() which is made internally from the output method.
-// @TODO do I need an internal flag to set when "an object is being output, so afterwards its values cannot be changed anymore
-//     (except if addObjectData() is called again)?
             ? $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT))
             : $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_UPDATE));
         // Defaults can be empty, but if they're not, they must have a 'field'
@@ -921,7 +972,8 @@ class UpdateObject
         //   then null is passed.
         foreach ($properties['fields'] as $name => $field_properties) {
             $validate_required_value = !empty($field_properties['required'])
-                && ($field_properties['required'] === 1 || ($validation_behavior & self::VALIDATE_REQUIRED));
+                && ($validation_behavior & self::VALIDATE_REQUIRED
+                    || ($field_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
             // See above: throw an exception if we have no-or-null field
             // value and no default, OR if we have null field value and
             // non-null default.
@@ -950,6 +1002,260 @@ class UpdateObject
   */
 
     /**
+     * Outputs the object data as a string.
+     *
+     * @param string $format
+     *   (Optional) The format; 'json' (default) or 'xml'.
+     * @param array $format_options
+     *   (Optional) Options influencing the format. Known options:
+     *   - 'pretty' (boolean): If true, pretty-print (with newlines/spaces).
+     *   - 'indent' (integer): The number of spaces to prefix an indented line
+     *     with; 2 by default. Only valid for 'xml' format. ('json' always has
+     *     4 with pretty printing.) Ignored if 'pretty' is false. 'pretty'
+     *     effect is canceled if this is not an integer or <= 0.
+     * @param int $change_behavior
+     *   (Optional) By default, this method can change values of fields and
+     *   embedded objects (for e.g. uniform formatting of values ar adding
+     *   defaults). This argument is a bitmask that can influence which data
+     *   can be changed. Possible values are:
+     *   - VALIDATE_ALLOW_NO_CHANGES: Do not allow any changes. This value loses
+     *     its meaning when passed together with other values.
+     *   - VALIDATE_ALLOW_EMBEDDED_CHANGES (default): Allow changes to be made
+     *     to embedded objects. If it is specified, the other bitmasks determine
+     *     which changes can be made to embedded objects (so if only this value
+     *     is specified, no changes are allowed to either this object or its
+     *     embedded objects). If it is not specified, the other bitmasks
+     *     determine only which changes can be made to this object, but any
+     *     changes to embedded objects are disallowed.
+     *   - VALIDATE_ALLOW_DEFAULTS_ON_INSERT (default): Allow adding default
+     *     values to empty fields when inserting a new object. Note that even if
+     *     this value is not specified, there are still some 'essential' values
+     *     which can be set in the object; see getDefaults(,$essential_only).
+     *   - VALIDATE_ALLOW_DEFAULTS_ON_UPDATE: Allow adding default values to
+     *     empty fields when updating an existing object. Also see
+     *     VALIDATE_ALLOW_DEFAULTS_ON_INSERT.
+     *   - VALIDATE_ALLOW_REFORMAT (default): Allow reformatting of singular
+     *     field values. For 'reformatting' a combination of values (e.g. moving
+     *     a house number from a street value into its own field) additional
+     *     values may need to be passed.
+     *   - VALIDATE_ALLOW_CHANGES (default): Allow changing field values, in
+     *     ways not covered by other bitmasks. Behavior is not precisely defined
+     *     by this class; child classes may use this value or implement their
+     *     own additional bitmasks.
+     *   Child classes might define additional values.
+     * @param int $validation_behavior
+     *   (Optional) By default, this method performs validation checks. This
+     *   argument is a bitmask that can be used to disable validation checks (or
+     *   add additional ones in child classes). Possible values are:
+     *   - VALIDATE_NOTHING: Perform no validation checks at all.
+     *   - VALIDATE_ESSENTIAL: Perform requiredness checks that we know will
+     *     make the AFAS Update Connector call fail, but skip others. This can
+     *     be useful for e.g. updating data which is present in AFAS but does
+     *     not pass all our validation checks. This value loses its meaning
+     *     if VALIDATE_REQUIRED is passed as well.
+     *   - VALIDATE_REQUIRED (default): Check for presence of field values which
+     *     this library considers 'required' even if an AFAS Update Connector
+     *     call would not fail if they're missing. Example: town/municipality in
+     *     an address object.
+     *
+     * @return string
+     *   The string representation of the object data, validated and possibly
+     *   modified according to the arguments passed.
+     *
+     * @throws \InvalidArgumentException
+     *   If any of the arguments have an unrecognized value.
+     * @throws \UnexpectedValueException
+     *   If this object's data does not pass validation. (This likely indicates
+     *   the data is invalid, although in theory it can also indicate that the
+     *   validation is based on improper logic/definitions.)
+     */
+    public function output($format = 'json', array $format_options = [], $change_behavior = self::VALIDATE_ALLOW_DEFAULT, $validation_behavior = self::VALIDATE_DEFAULT)
+    {
+        if (!is_int($change_behavior)) {
+            throw new InvalidArgumentException('$change_behavior argument is not an integer.');
+        }
+        if (!is_int($validation_behavior)) {
+            throw new InvalidArgumentException('$validation_behavior argument is not an integer.');
+        }
+        if (!is_string($format)) {
+            throw new InvalidArgumentException('Invalid format.');
+        }
+
+        // ADD_ELEMENT_WRAPPER and KEEP_EMBEDDED_OBJECTS make no sense in this
+        // method in general. (They are only set in very specific places.) Hard
+        // unset them without checking.
+        $change_behavior = $change_behavior & ~(self::ADD_ELEMENT_WRAPPER | self::KEEP_EMBEDDED_OBJECTS);
+
+        switch (strtolower($format)) {
+            case 'json':
+                // getObjectData() returns a one-element array with key
+                // 'Element' and value being the one or several elements in
+                // this DataObject. The JSON structure should be like this
+                // except it needs another one-element array wrapper with key
+                // being the object type.
+                $data = [$this->getType() => $this->getObjectData($change_behavior | self::ADD_ELEMENT_WRAPPER, $validation_behavior)];
+                return empty($format_options['pretty']) ? json_encode($data) : json_encode($data, JSON_PRETTY_PRINT);
+
+            case 'xml':
+                // The XML also needs one 'outer' wrapper tag (only around the
+                // full object, not around embedded ones), but since this
+                // calls output() recursively, we just take care of that
+                // inside outputXml().
+                return $this->outputXml($format_options, $change_behavior, $validation_behavior);
+
+            default:
+                throw new InvalidArgumentException("Invalid format '$format'.");
+        }
+    }
+
+    /**
+     * Encode data as XML, suitable for sending through SOAP connector.
+     *
+     * @param array $format_options
+     *    (Optional) Options influencing the format. Known options:
+     *    'pretty' (boolean): see output().
+     *    'indent' (integer): see output().
+     *    'indent_start' (integer): the number of spaces to start each line
+     *      with; this is relevant when generating an XML fragment for
+     *      embedding inside other indented XML.
+     * @param int $change_behavior
+     *   (Optional) see output().
+     * @param int $validation_behavior
+     *   (Optional) see output().
+     *
+     * @return string
+     *   XML payload to send to an Update Connector on a SOAP API/Connection.
+     */
+    protected function outputXml(array $format_options = [], $change_behavior = self::VALIDATE_ALLOW_DEFAULT, $validation_behavior = self::VALIDATE_DEFAULT)
+    {
+        $xml = $indent_str0 = $indent_str1 = $indent_str2 = $indent_str3 = '';
+        $pretty = !empty($format_options['pretty']) && (!isset($format_options['indent'])
+                || (is_int($format_options['indent']) && $format_options['indent'] > 0));
+        if ($pretty) {
+            $indent = isset($format_options['indent']) ? $format_options['indent'] : 2;
+            if (!empty($format_options['indent_start']) && is_int($format_options['indent_start'])) {
+               $xml = str_repeat(' ', $format_options['indent_start']);
+            }
+            $extra_spaces = str_repeat(' ', $indent);
+            if ($this->parentType) {
+                // LF + Indentation before Element tag:
+                $indent_str1 = "\n$xml";
+            } else {
+                // LF + Indentation before 'type end tag':
+                $indent_str0 = "\n$xml";
+                // LF + Indentation before Element tag:
+                $indent_str1 = $indent_str0 . $extra_spaces;
+            }
+            // LF + Indentation before Fields/Objects tag:
+            $indent_str2 = $indent_str1 . $extra_spaces;
+            // LF + Indentation before individual field values:
+            $indent_str3 = $indent_str2 . $extra_spaces;
+        }
+        // Only include the start tag with object type if we're not recursing.
+        if (!$this->parentType) {
+            $xml .= "<{$this->getType()} xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">";
+        }
+
+        // Fully validate the element(s) in this object, but keep embedded
+        // objects in the form of UpdateObjects because we need to call
+        // output() on the individual objects (because e.g. they need to know
+        // their own getAction() while generating output). This means that we
+        // validate all embedded objects multiple times (here and while
+        // generating the output); objects that are 2 levels deep even get
+        // validated 3 times. but there's not much we can do about that, since
+        // our 'design decision' is to validate all embedded objects before
+        // being able to fully validate the main one.
+        foreach ($this->getObjectData($change_behavior | self::KEEP_EMBEDDED_OBJECTS, $validation_behavior) as $element_index => $element) {
+            $action_attribute = '';
+            $action = $this->getAction($element_index);
+            if ($action) {
+                // Add the Action attribute only if it's explicitly specified.
+                // (This method makes no assumptions about what it does or
+                // whether its behavior affects embedded objects; it only
+                // assumes that "" is not a valid Action value.)
+                $action_attribute = ' Action="' . $action . '"';
+            }
+// @todo probably below block is unnecessary when we put something similar in validateElement()? Or?
+            $id_attribute = '';
+            $fields = isset($element['Fields']) ? $element['Fields'] : [];
+            $objects = isset($element['Objects']) ? $element['Objects'] : [];
+            if (count($element) > ($fields ? 1 : 0) + ($objects ? 1 : 0)) {
+                // There can be maximum 3 keys; the third must be the ID.
+                unset($element['Fields']);
+                unset($element['Objects']);
+                // We insert extra checks though, to prevent against strange
+                // internal bugs that can end up overwriting other data.
+                if (count($element) > 1) {
+                    throw new InvalidArgumentException("Element must hold maximum one ID value besides Fields/Objects, but we found more than one; keys are " . implode(', ', $element) . '.');
+                }
+                $value = reset($element);
+                $key = (string) key($element);
+                if (substr($key, 0, 1) !== '@') {
+                    throw new InvalidArgumentException("Illegal key '$key' found inside Element, which can only hold keys 'Fields', 'Objects' and a special @Id key.");
+                }
+                if (!is_int($value) && !is_string($value)) {
+                    throw new InvalidArgumentException("'$key' key in inside Element must hold integer/string value.");
+                }
+                $id_attribute = ' ' . substr($key, 1) . '="' . $value . '"';
+            }
+
+            // Each element is in its own 'Element' tag (unlike the input
+            // argument which has an array of elements in one 'Element' key,
+            // because multiple 'Element' keys cannot exist in one object or
+            // JSON string),
+            $xml .= "$indent_str1<Element$id_attribute>";
+
+            // Always add Fields tag, also if it's empty. (No idea if that's
+            // necessary, but that's apparently how I tested it 5 years ago.)
+            $xml .= "$indent_str2<Fields$action_attribute>";
+            if (!is_array($fields)) {
+                throw new InvalidArgumentException("'Fields' property of '{$this->getType()}' object must be an array.");
+            }
+            foreach ($fields as $name => $value) {
+                if (!is_scalar($value)) {
+                    throw new InvalidArgumentException("'$name' field of '{$this->getType()}' object must be scalar.");
+                }
+                if (is_bool($value)) {
+                    // Boolean values are encoded as 0/1 in AFAS XML.
+                    $value = $value ? '1' : '0';
+                }
+                $xml .= $indent_str3 . (isset($value)
+                        ? "<$name>" . htmlspecialchars($value, ENT_QUOTES | ENT_XML1) . "</$name>"
+                        // Value is passed but null or default value is null
+                        : "<$name xsi:nil=\"true\"/>");
+            }
+            $xml .= "$indent_str2</Fields>";
+
+
+            if ($objects) {
+                $xml .= "$indent_str2<Objects>";
+                foreach ($objects as $ref_name => $value) {
+                    if (!$value instanceof UpdateObject) {
+                        // This should never happen.
+                        throw new InvalidArgumentException("Value for '$ref_name' object embedded in '{$this->getType()}' object must be UpdateObject.");
+                    }
+                    if ($pretty) {
+                        $format_options['indent_start'] = empty($format_options['indent_start'])
+                            ? '' : $format_options['indent_start'] + str_repeat(' ', $format_options['indent'] * 4);
+                    }
+                    $xml .= "$indent_str3<$ref_name>" . ($pretty ? "\n" : '')
+                        . $value->output('xml', $format_options, $change_behavior, $validation_behavior)
+                        . "$indent_str3</$ref_name>";
+                }
+                $xml .= "$indent_str2</Objects>";
+            }
+
+            $xml .= "$indent_str1</Element>";
+        }
+        if (!$this->parentType) {
+            // Add closing XML tag. Do not end with newline even if 'pretty'.
+            $xml .= "$indent_str0</{$this->getType()}>";
+        }
+
+        return $xml;
+    }
+
+    /**
      * Returns property definitions for this specific object type.
      *
      * The format is not related to AFAS but a structure specific to this class.
@@ -971,9 +1277,9 @@ class UpdateObject
      *   - 'type':     Data type of the field, used for validation ond output
      *                 formatting. Values: boolean, date, int, decimal.
      *                 Optional; unspecified types are treated as strings.
-     *   - 'required': If true, this field is required and our validate()
+     *   - 'required': If true, this field is required and our output()
      *                 method will throw an exception if the field is not
-     *                 populated. If (int)1, this is done even if validate() is
+     *                 populated. If (int)1, this is done even if output() is
      *                 not instructed to validated required values; this can be
      *                 useful to set if it is known that AFAS itself will throw
      *                 an unclear error when it receives no value for the field.
@@ -1014,6 +1320,7 @@ class UpdateObject
      *   defaults for fields that always need to have values filled. (Those
      *   values are usually not for 'real' fields, but for metadata or a kind of
      *   'change record'.)
+// @TODO this is not implemented. I hope it can be scrapped.
      *
      * @return array
      *   An array with up to two keys (other keys will be ignored):
@@ -1567,552 +1874,6 @@ class UpdateObject
             }
             // Note if there's both a dot and spaces in 'first_name' we skip it.
         }
-    }
-
-    /**
-     * Construct XML representing one or more AFAS objects.
-     *
-     * The only reason this has not been officially deprecated yet is that we're
-     * afraid callers might forget passing $embed_action=true (which is
-     * essential).
-     *
-     * @param $type
-     *   See normalizeDataToSend().
-     * @param array $data
-     *   See normalizeDataToSend().
-     * @param string $fields_action
-     *   See normalizeDataToSend().
-     * @param string $parent_type
-     *   (optional) Leave empty.
-     * @param int $indent
-     *   (optional) Add spaces before each tag and end each line except the last
-     *   one with newline, unless $indent < 0 (then do not add anything).
-     *
-     * @return string
-     *   XML payload to send to an Update Connector on a SOAP API/Connection.
-     *
-     * @see normalizeDataToSend()
-     * @see xmlEncodeNormalizedData()
-     */
-    public static function constructXml($type, array $data, $fields_action = '', $parent_type = '', $indent = -1)
-    {
-        return static::xmlEncodeNormalizedData(
-            static::normalizeDataToSend($type, $data, $fields_action, true, $parent_type),
-            $indent,
-            $parent_type
-        );
-    }
-
-    /**
-     * Encode already normalized data as XML, suitable for sending through SOAP.
-     *
-     * @param array $data
-     *   Data which is already normalized, i.e. the return value from
-     *   normalizeDataToSend(). (Generally speaking, this must have #action keys
-     *   so the $embed_action parameter to normalizeDataToSend() must have been
-     *   true.
-     * @param int $indent
-     *   (optional) Add spaces before each tag and end each line except the last
-     *   one with newline. By default / if $indent < 0, do not add any spacing.
-     * @param string $parent_type
-     *   (optional) In practice, this is only set by recursive calls (and it's
-     *   effectively used as a boolean, to indicate that we're creating an XML
-     *   snippet for embedding inside a larger string).
-     *
-     * @return string
-     *   XML payload to send to an Update Connector on a SOAP API/Connection.
-     */
-    public static function xmlEncodeNormalizedData(array $data, $indent = -1, $parent_type = '') {
-        // Data is always a one-element array with inside it a one-element array
-        // whose key is 'Element'. We can be this strict because we assume our
-        // value is always a normalizeDataToSend() return value.
-        if (count($data) != 1) {
-            throw new InvalidArgumentException("Data argument must be a single array value, keyed by the object/Update Connector name. (Which again must be one array value, keyed by 'Element'");
-        }
-        $type = key($data);
-        $data = reset($data);
-        $expected_key = key($data);
-        if (count($data) != 1 || $expected_key !== 'Element') {
-            throw new InvalidArgumentException("Data argument must be a single array value containing yet another single array value whose key is 'Element'.");
-        }
-        $data = reset($data);
-        // $data is now either an array of elements or a single element, which
-        // must have either a 'Fields' or 'Objects' key defined, at least.
-        if (!is_array($data)) {
-            // We're not accepting objects for individual Elements; only
-            // alphanumerically keyed arrays, like the normalizeDataToSend()
-            // return value.
-            throw new InvalidArgumentException("'Element' entry for $type is not an array.");
-        }
-        if (isset($data['Fields']) || isset($data['Objects'])) {
-            // No checks; we'll do that in below foreach.
-            $data = array($data);
-        }
-
-        // Object header
-        $xml = $indent_str1 = $indent_str2 = $indent_str3 = '';
-        if ($indent >= 0) {
-            // This is how the XML starts, and also the number of spaces before
-            // the 'type end tag' below. We won't use a $indent_str0 for that:
-            // we'll always need an if/then anyway since this has no LF.
-            $xml = str_repeat(' ', $indent);
-            $extra_spaces = str_repeat(' ', static::XML_INDENT);
-            // LF + Indentation before Element tag:
-            $indent_str1 = "\n" . $xml . $extra_spaces;
-            // LF + Indentation before Fields/Objects tag:
-            $indent_str2 = $indent_str1 . $extra_spaces;
-            // LF + Indentation before individual field values:
-            $indent_str3 = $indent_str2 . $extra_spaces;
-        }
-        $xml .= '<' . $type . ($parent_type ? '>' : ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">');
-
-        $expected_key = 0;
-        foreach ($data as $element_key => $element) {
-            // Be strict and allow only zero-based arrays of elements.
-            if ($element_key !== $expected_key) {
-                throw new InvalidArgumentException("'Element' entry for $type contains an array of elements whose keys are not (sequentially) zero-based: key '$element_key' was found in the wrong place'.");
-            }
-            $expected_key++;
-
-            $fields = isset($element['Fields']) ? $element['Fields'] : array();
-            $objects = isset($element['Objects']) ? $element['Objects'] : array();
-            $id_attribute = '';
-            $action_attribute = '';
-            if (isset($element['#action'])) {
-                if (!is_string($element['#action'])) {
-                    throw new InvalidArgumentException("'#action' key in inside Element must hold string value.");
-                }
-                if ($element['#action']) {
-                    // Add the Action attribute if it's explicitly specified;
-                    // otherwise don't. (In this method, we make no assumptions
-                    // on what it does or whether its behavior recurses into
-                    // child elements; we only assume that "" is not a valid
-                    // Action value so we should not set that.)
-                    $action_attribute = ' Action="' . $element['#action'] . '"';
-                }
-                unset($element['#action']);
-            }
-            if (count($element) > ($fields ? 1 : 0) + ($objects ? 1 : 0)) {
-                // We'll have to do more checking. There can be maximum 4 keys,
-                // and the fourth must be the ID.
-                unset($element['Fields']);
-                unset($element['Objects']);
-                if (count($element) > 1) {
-                    // We'll ignore #action in this message; that's a strange
-                    // construct that might have been inserted by
-                    // normalizeDataToSend() rather than the calling code.
-                    throw new InvalidArgumentException("Element must hold maximum one ID value besides Fields/Objects, but we found more than one; keys are " . implode(', ', $element) . '.');
-                }
-                $value = reset($element);
-                $key = (string) key($element);
-                if (substr($key, 0, 1) !== '@') {
-                    throw new InvalidArgumentException("Illegal key '$key' found inside Element, which can only hold keys 'Fields', 'Objects' and a special @Id key.");
-                }
-                if (!is_int($value) && !is_string($value)) {
-                    throw new InvalidArgumentException("'$key' key in inside Element must hold integer/string value.");
-                }
-                $id_attribute = ' ' . substr($key, 1) . '="' . $value . '"';
-            }
-
-            // Each element is in its own 'Element' tag (unlike the input
-            // argument which has an array of elements in one 'Element' key,
-            // because multiple 'Element' keys cannot exist in one object or
-            // JSON string),
-            $xml .= "$indent_str1<Element$id_attribute>";
-
-            // Always add Fields tag, also if it's empty. (No idea if that's
-            // necessary, but that's apparently how I tested it 5 years ago.)
-            $xml .= "$indent_str2<Fields$action_attribute>";
-            if (!is_array($fields)) {
-                throw new InvalidArgumentException("'Fields' property of '$type' object must be an array.");
-            }
-            foreach ($fields as $name => $value) {
-                if (!is_scalar($value)) {
-                    throw new InvalidArgumentException("'$name' field of '$type' object must be scalar.");
-                }
-                if (is_bool($value)) {
-                    // Boolean values are encoded as 0/1 in AFAS XML.
-                    $value = $value ? '1' : '0';
-                }
-                $xml .= $indent_str3 . (isset($value)
-                        ? "<$name>" . htmlspecialchars($value, ENT_QUOTES | ENT_XML1) . "</$name>"
-                        // Value is passed but null or default value is null
-                        : "<$name xsi:nil=\"true\"/>");
-            }
-            $xml .= "$indent_str2</Fields>";
-
-            if (!is_array($objects)) {
-                throw new InvalidArgumentException("'Objects' property of '$type' object must be an array.");
-            }
-            if ($objects) {
-                $xml .= "$indent_str2<Objects>";
-                foreach ($objects as $name => $value) {
-                    if (!is_array($value)) {
-                        throw new InvalidArgumentException("Value for '$name' object embedded inside '$type' object must be array.");
-                    }
-                    // We'll do more checks on $value in the recursive call.
-                    // (This is again supposed to be a one-element array with
-                    // 'Element' as key, and object(s) as value.)
-                    $xml .= ($indent < 0 ? '' : "\n") . static::xmlEncodeNormalizedData(
-                            [ $name => $value ],
-                            $indent < 0 ? $indent : $indent + 3 * static::XML_INDENT,
-                            $type
-                        );
-                }
-                $xml .= "$indent_str2</Objects>";
-            }
-            $xml .= "$indent_str1</Element>";
-        }
-        // Add closing XML tag.
-        if ($indent >= 0) {
-            // Do not end the whole string with newline.
-            $xml .= "\n" . str_repeat(' ', $indent) . "</$type>";
-        } else {
-            $xml .= "</$type>";
-        }
-
-        return $xml;
-    }
-
-
-    /**
-     * 'Normalizes' AFAS object representation to send in insert/update queries.
-     *
-     * TL/DR: Always pass $action ("insert" or "update"; "update" should not be
-     * necessary for REST, but still); always set $embed_action to true when
-     * wanting to output XML; pass ID values in '#id' key, not '@__Id'.
-     *
-     * 'Normalizing' means validating the structure, adding default values where
-     * necessary, converting 'more readable' aliases' to system field names used
-     * by AFAS.
-     *
-     * At the time of writing this, REST/JSON is untested and it is not known
-     * whether all the arguments make sense in the REST/JSON world. However, at
-     * least the structure of the output seems suitable for sending in to the
-     * REST API, so it's ready for extensive testing by whoever wants to. The
-     * output has been tested with the SOAP API: when $embed_action is true,
-     * it can be converted to XML which will work correctly for updating /
-     * inserting objects.
-     *
-     * AFAS installations with custom fields will typically want to extend
-     * objectTypeInfo() in a subclass, and call this method either through that
-     * subclass or through Connection::sendData() after injecting the subclass
-     * name into the Connection. That should make the custom fields available.
-     *
-     * We hope that the below code catches all strange/dangerous combinations of
-     * 'id' /  $action / AutoNum / MatchXXX values and 'embedding
-     * objects'. AFAS behavior and our assumptions are explained in
-     * update-payloads.md, and in code comments in objectTypeInfo(). We can't be
-     * totally sure, though. Please read the ocumentation before dealing with
-     * knPerson/knOrganisation objects; it may save lots of time and wrong
-     * assumptions.
-     *
-     * @param $type
-     *   The type of object, i.e. the 'Update Connector' name to send this data
-     *   into. See objectTypeInfo() for possible values.
-     * @param array $data
-     *   Data to normalize, representing one or more objects; see
-     *   objectTypeInfo() for possible values in an object. If any value in the
-     *   (first dimension of the) array is scalar, it's assumed to be a single
-     *   object; if it contains only non-scalars (which must be arrays), it's
-     *   assumed to be several objects. Note that it's possible to pass one
-     *   object containing no fields and only embedded 'child' objects, only by
-     *   passing it as an 'array containing one object'. The keys inside a
-     *   single object can be:
-     *   - field names or aliases (as defined in objectTypeInfo());
-     *   - names of object types (see $type argument)
-     *   - '#id', which holds the 'id value' for an object. (For REST payloads,
-     *     this will be converted to a '@__Id' key; passing this key itself as
-     *     a field name is not allowed here. For XML/SOAP payloads, this will be
-     *     converted to an id attribute in the Element tag.)
-     *   - #action: this is for fringe cases: it's only allowed as part of
-     *     'child' objects, to specify a $action for the child object which
-     *     differs from its parents. See update-payloads for one of the very few
-     *     examples currently known.
-     *   The format is fairly strict: this method will throw exceptions when
-     *   e.g. required data is not present, present data is not recognized, ...
-     * @param string $action
-     *   (optional) Allowed values: "insert", "update", "delete", "". These
-     *   can influence elements' fields in the return value, by e.g. adding
-     *   default values. (Until now, only "insert" is known to have an effect
-     *   for REST/JSON generation. For XML, the difference between "update" and
-     *   "" is only the Action attribute included in the XML. While XML without
-     *   an 'Action' attribute is not known to make any sense, we allow "" for
-     *   at least being able to generate it.
-     * @param bool $embed_action
-     *   (optional) If true, embed '#action' values in all elements in the
-     *   return value, containing the $action value (or an existing '#action'
-     *   value of an embedded element). The return value will not be suitable
-     *   for passing into the REST API but suitable for passing into
-     *   xmlEncodeNormalizedData(), for rendering correct Action attributes.
-     *   In practice,  when generating an XML message for the SOAP API, it is
-     *   required to pass true here, or to insert #action values into the
-     *   returned objects by yourself.
-     * @param string $parent_type
-     *   (optional) If nonempty, the return value will be suitable for embedding
-     *   inside the parent type, which in some cases is a little different from
-     *   a 'standalone' value.
-     *
-     * @return array
-     *   An array which is suitable either for sending in to POST/PUT(/DELETE?)
-     *   REST API requests, after converting it to JSON - or for converting it
-     *   to XML for the SOAP API, depending on the value of $embed_action.
-     *
-     * @throws \InvalidArgumentException
-     *   If arguments have an unrecognized / invalid format.
-     *
-     * @see objectTypeInfo()
-     */
-    public static function normalizeDataToSend($type, array $data, $action = '', $embed_action = false, $parent_type = '')
-    {
-        if (!in_array($action, ['insert', 'update', 'delete', ''], true)) {
-            throw new InvalidArgumentException("Unknown value $action for fields_action parameter.");
-        }
-        if (!$data) {
-            throw new InvalidArgumentException("'$type' object holds no data.");
-        }
-
-        // Determine if $element holds a single object or an array of objects:
-        // we assume the latter if all values are arrays.
-        foreach ($data as $key => $element) {
-            if (is_scalar($element)) {
-                // Normalize $data to an array of objects.
-                $data = [$data];
-                break;
-            }
-        }
-
-        $normalized_elements = [];
-        foreach ($data as $key => $element) {
-            // Construct new element with an optional id + fields + objects for
-            // this type (and #action, if specified by the caller).
-            $normalized_element = [];
-
-            // Derive $element_action. The only thing that this does (except for
-            // including it in the element if requested; see just below) is set
-            // the $action parameter to a recursive call, so it only has a
-            // possible effect on the return values of objectTypeInfo() calls
-            // made by those recursive calls.
-            if (isset($element['#action'])) {
-                if (empty($parent_type)) {
-                    // This really is an override that's implemented for some
-                    // edge cases where we have no other wayk and we want to
-                    // keep it that way. When possible, people must specify a
-                    // correct $action instead of #action, because it's much
-                    // more readable. Note however that '#action' will be set on
-                    // the first level of the _return value_, if $embed_action
-                    // is specified.
-                    throw new InvalidArgumentException('#action override is only allowed in embedded objects.');
-                }
-                // Not sure whether '' makes sense as an override; as we have
-                // documented in the readme, we assume it means nothing, but
-                // we'll at least make it technically possible to do so. Also...
-                // maybe we should disallow deletes inside inserts etc?
-                if (!in_array($element['#action'], ['insert', 'update', 'delete', ''], true)) {
-                    throw new InvalidArgumentException("Unknown value '{$element['#action']}' for #action inside '$type' object.");
-                }
-                $element_action = $element['#action'];
-                unset($element['#action']);
-            } else {
-                $element_action = $action;
-            }
-            // Include #action if requested by the caller (typically because
-            // it's needed inside XML). Rules:
-            // - The original 5 year old code, constructing XML, passed
-            //   $element_action up into recursive calls, meaning child elements
-            //   without #action defined explicitly, would still have the parent
-            //   value set explicitly. We're going to keep doing this, in the
-            //   structure we create in this method. (It probably makes sense in
-            //   practice, especially since an empty $element_action does not
-            //   really 'mean' anything, and we mostly want to act as if an
-            //   action is always defined, unless it's explicitly set to "" in a
-            //   child object.)
-            // - (Unlike the old code) if we have an empty $element_action,
-            //   we'll also include that. (This will lead to action _not_ being
-            //   set in the resulting XML, because 'Action=""' is not a valid
-            //   thing. This also allows 'emptying the action in child elements'
-            //   to make it technically possible to construct the corresponding
-            //   XML... even though we assume it to be senseless.)
-            // Both things mean we won't need to make assumptions about whether/
-            // how the separate new XML construction code implements
-            // 'inheritance' of actions; the XML will always end up the same as
-            // with the old code.
-            if ($embed_action) {
-                $normalized_element['#action'] = $element_action;
-            }
-
-            // Get type info. We do this for each element inside the loop,
-            // because $info can differ with $element.
-            $info = static::objectTypeInfo($type, $parent_type, $element, $element_action);
-            if (empty($info)) {
-                throw new InvalidArgumentException("'$type' object has no type info.");
-            }
-
-            if (!empty($element['#id'])) {
-                if (empty($info['id_field'])) {
-                    throw new InvalidArgumentException("Id value provided but no id-field defined for '$type' object.");
-                }
-                $normalized_element['@' . $info['id_field']] = $element['#id'];
-            }
-            unset($element['#id']);
-
-            // Convert our element data into fields, check required fields, and
-            // add default values for fields (where defined). About definitions:
-            // - if required = true and default is given, then
-            //   - the default value is sent if no data value is passed
-            //   - an exception is (only) thrown if the passed value is null.
-            // - if the default is null (or value given is null & not
-            //   'required'), then null is passed.
-            foreach ($info['fields'] as $name => $map_properties) {
-                $value_present = true;
-
-                // Get value from the property equal to the field name (case
-                // sensitive!), or the alias. If two values are present with
-                // both field name and alias, we throw an exception.
-                $value_exists_by_alias = isset($map_properties['alias']) && array_key_exists($map_properties['alias'], $element);
-                if (array_key_exists($name, $element)) {
-                    if ($value_exists_by_alias) {
-                        throw new InvalidArgumentException("'$type' object has a value provided by both its field name $name and alias $map_properties[alias].");
-                    }
-                    $value = $element[$name];
-                    unset($element[$name]);
-                } elseif ($value_exists_by_alias) {
-                    $value = $element[$map_properties['alias']];
-                    unset($element[$map_properties['alias']]);
-                } elseif (array_key_exists('default', $map_properties)) {
-                    $value = $map_properties['default'];
-                } else {
-                    $value_present = false;
-                }
-
-                // Required fields will disallow non-passed values, or passed
-                // null values.
-                /* @todo Think about this and test: are we not treating required
-                 *   values in the wrong way? Why should a value be 'required'
-                 *   for sending in an _update_ of a record? (This has
-                 *   implications for e.g. how KnBasicAddressAdr.PbAd is
-                 *   defined; it at this moment is set to 'default!' because it
-                 *   should apparently be present on all updates. But that's
-                 *   silly; it means that it will effectively always be reset to
-                 *   false on every organisation update (because noone ever sets
-                 *   it explicitly). I can't imagine that this is actually
-                 *   required to be sent in on _updates_. But that raises the
-                 *   questions:
-                 *   - Should we just not check required fields on updates?
-                 *     That is: can we assume that required values always
-                 *     present in AFAS already, for an existing object? (I guess
-                 *     the answer is yes)
-                 *   - If the answer is yes: how useful is the 'required'
-                 *     property _really_? (I don't advocate for abolishing it,
-                 *     but it effectively does not do anything for all fields
-                 *     which also have a 'default' set. I guess it serves as
-                 *     a form of documentation, or security measure in case we
-                 *     ever remove the 'default' property...)
-                 */
-                if (!empty($map_properties['required'])
-                    && (!$value_present || !isset($value))
-                ) {
-                    $property = $name . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
-                    throw new InvalidArgumentException("No value given for required '$property' field of '$type' object.");
-                }
-
-                if ($value_present) {
-                    if (isset($value)) {
-                        if (!is_scalar($value)) {
-                            $property = $name . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
-                            throw new InvalidArgumentException("'$property' property of '$type' object must be scalar.");
-                        }
-                        if (!empty($map_properties['type'])) {
-                            switch ($map_properties['type']) {
-                                case 'boolean':
-                                    $value = (bool) $value;
-                                    break;
-                                case 'long':
-                                case 'decimal':
-                                    if (!is_numeric($value)) {
-                                        $property = $name . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
-                                        throw new InvalidArgumentException("'$property' property of '$type' object must be numeric.");
-                                    }
-                                    if ($map_properties['type'] === 'long' && strpos((string)$value, '.') !== false) {
-                                        $property = $name . (isset($map_properties['alias']) ? " ({$map_properties['alias']})" : '');
-                                        throw new InvalidArgumentException("'$property' field value of '$type' object must be a 'long'.");
-                                    }
-                                    // For decimal, we could also check digits,
-                                    // but we're not going that far yet.
-                                    break;
-                                case 'date':
-                                    // @todo format in standard way, once we know that's necessary
-                                    break;
-                                default:
-                                    $value = trim($value);
-                            }
-                        } else {
-                            $value = trim($value);
-                        }
-                    }
-                    $normalized_element['Fields'][$name] = $value;
-                }
-            }
-
-            if (!empty($element)) {
-                // Add other embedded objects. (We assume all remaining element
-                // values are indeed objects. If not, an error will be thrown.)
-                $normalized_element['Objects'] = [];
-
-                foreach ($info['objects'] as $name => $alias) {
-                    $value_present = true;
-
-                    // Get value from the property equal to the tag (case
-                    // sensitive!), or the alias. If two values are present with
-                    // both tag and alias, we throw an exception.
-                    if (array_key_exists($name, $element)) {
-                        if (array_key_exists($alias, $element)) {
-                            throw new InvalidArgumentException("'$type' object has a value provided by both its property name $name and alias $alias.");
-                        }
-                        $value = $element[$name];
-                        unset($element[$name]);
-                    } elseif (array_key_exists($alias, $element)) {
-                        $value = $element[$alias];
-                        unset($element[$alias]);
-                    } else {
-                        $value_present = false;
-                    }
-
-                    if ($value_present) {
-                        if (!is_array($value)) {
-                            $property = $name . (isset($alias) ? " ($alias)" : '');
-                            throw new InvalidArgumentException("Value for '$property' object embedded inside '$type' object must be array.");
-                        }
-                        // Since normalizeDataToSend always adds a one-element
-                        // array with $name as the key: we array_merge it
-                        // instead of appending it (which would add an extra
-                        // layer).
-                        $normalized_element['Objects'] = array_merge(
-                            $normalized_element['Objects'],
-                            static::normalizeDataToSend($name, $value, $element_action, $embed_action, $type)
-                        );
-                    }
-                }
-            }
-
-            // Throw error for unknown element data (for which we have not seen
-            // a field/object definition).
-            if (!empty($element)) {
-                $keys = "'" . implode(', ', array_keys($element)) . "'";
-                throw new InvalidArgumentException("Unmapped element values provided for '$type' object: keys are $keys.");
-            }
-
-            $normalized_elements[] = $normalized_element;
-        }
-
-        // 'Element' can hold a single object or an array. Apparently this is
-        // arbitrary. If we have a single object, 'de-normalize' it to make
-        // make notation simpler. (Note it's not proven to be arbitrary: some
-        // locations in an array structure might require 'Element' to be a
-        // single object or array of objects. But we don't know about this so we
-        // don't test this. In other words: this is a place where the current
-        // code is _not_ strict, despite what the function documentation says.)
-        return [$type => ['Element' => count($normalized_elements) == 1 ? $normalized_elements[0] : $normalized_elements]];
     }
 
     /**
