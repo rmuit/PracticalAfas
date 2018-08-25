@@ -96,7 +96,16 @@ class UpdateObject
      * additional bitmask values, this value may or may not be changed to
      * incorporate that behavior by default.
      */
-    const VALIDATE_DEFAULT = 2;
+    const VALIDATE_NO_UNKNOWN = 4;
+
+    /**
+     * Default behavior for output(,,$validation_behavior).
+     *
+     * If future versions of this class introduce new behavior through
+     * additional bitmask values, this value may or may not be changed to
+     * incorporate that behavior by default.
+     */
+    const VALIDATE_DEFAULT = 6;
 
     /**
      * A mapping from object type to the class name implementing the type.
@@ -105,21 +114,32 @@ class UpdateObject
      *
      * Please note that names of object types (the keys in this variable) are
      * not necessarily equal to the names of 'object reference fields' in
-     * property definitions (see getProperties()). e.g. the object type defined
-     * here would be KnBasicAddress whereas the 'reference field' defined
-     * inside a KnPerson object is called KnBasicAddressAdr / KnBasicAddressPad.
+     * property definitions (see getPropertyDefinitions()). e.g. the object
+     * type defined here would be KnBasicAddress whereas the 'reference field'
+     * defined inside a KnPerson object is called KnBasicAddressAdr /
+     * KnBasicAddressPad.
      *
      * A project which wants to implement custom behavior for specific object
-     * types can create a 'class OverriddenType implements UpdateObject' and can
-     * do two things:
-     * - call new OverriddenType($values) to work with these;
-     * - implement a child class that redefines this variable to contain a
-     *   mapping $type => OverriddenType, and call Child::create($type, $values)
-     *   to create these objects.
-     * The latter way enables creating custom embedded objects (e.g. using a
-     * custom FbSalesLines class while creating an 'FbSales' object). Note that
-     * Child and OverriddenType may be the same class; that's up to the
-     * implementer.
+     * types can do three things, from simple to complicated:
+     * - Implement OverriddenType as a child class of UpdateObject, define
+     *   its data in getPropertyDefinitions() etc, and call new
+     *   OverriddenType($values) to get an object representing this type.
+     * - Implement OverriddenUpdateObject as a child class of UpdateObject,
+     *   define 'OverriddenType' data in getPropertyDefinitions() etc - and
+     *   call OverriddenUpdateObject::create('OverriddenType', $values) to get
+     *   an object representing this type.
+     * The second way enables creating custom embedded objects, e.g. defining a
+     * custom object for line items and having that embedded inside an FbSales
+     * object through OverriddenUpdateObject::create('FbSales', $values).
+     * - A combination of the two, if you want to split out (a subset of) the
+     *   type definitions into their own classes:
+     *   - Define data for the overridden type in the OverriddenType class;
+     *   - Redefine OverriddenUpdateObject::$classMap, or change it in create(),
+     *     to contain a mapping 'OverriddenType' => 'OverriddenType' (from type
+     *     name to class name)
+     *   - Call OverriddenUpdateObject::create('OverriddenType', $values)
+     *     instead of new OverriddenType($values) to make use of the mapping
+     *     which enables embedded custom objects.
      *
      * @var string[]
      */
@@ -143,8 +163,8 @@ class UpdateObject
      * possible to lift this restriction and make a separate setter for this,
      * but that would need careful consideration. If we ever want to go there,
      * it might even be preferable to completely drop the $parentType property
-     * and cache a version of the getProperties() value instead, at construction
-     * time.)
+     * and cache a version of the getPropertyDefinitions() value instead, at
+     * construction time.)
      * @todo consider this. And only cache if necessary.
      *
      * @var string
@@ -181,17 +201,17 @@ class UpdateObject
      *
      * @param string $type
      *   The type of object, i.e. the 'Update Connector' name to send this data
-     *   into. See the getProperties() code for possible values.
+     *   into. See the getPropertyDefinitions() code for possible values.
      * @param array $object_data
      *   (Optional) Data to set in this class, representing one or more objects
-     *   of this type; see the getProperties() code for possible values.
+     *   of this type; see getPropertyDefinitions() for possible values.
      *   If any value in the (first dimension of the) array is scalar, it's
      *   assumed to be a single object; if it contains only non-scalars (which
      *   must be arrays), it's assumed to be several objects. Note that it's
      *   possible to pass one object containing no fields and only embedded
      *   sub-objects, only by passing it as an 'array containing one object'.
      *   The keys inside a single object can be:
-     *   - field names or aliases (as defined in getProperties());
+     *   - field names or aliases (as defined in getPropertyDefinitions());
      *   - type names for sub-objects which can be embedded into this type; the
      *     values must be an array of data to set for that object, or an
      *     UpdateObject;
@@ -248,8 +268,8 @@ class UpdateObject
     {
         // If $type is empty or unrecognized, addObjectData() will throw an
         // exception. A wrong $parent_type will just... most likely, act as an
-        // empty $parent_type (depending on what getProperties() does). But we
-        // check the format here, since there is no setter to do that.
+        // empty $parent_type (depending on what getPropertyDefinitions() does).
+        // But we check the format here, since there is no setter to do that.
         if (!is_string($parent_type)) {
             throw new InvalidArgumentException('$parent_type argument is not a string.');
         }
@@ -433,12 +453,12 @@ class UpdateObject
      *
      * @param array $object_data
      *   (Optional) Data to set in this class, representing one or more objects
-     *   of this type; see getProperties() for possible values per object type.
-     *   See create() for a more elaborate description of this argument. If the
-     *   data contains embedded objects, then those will inherit the 'action'
-     *   that is set for their parent object, so if the caller cares about which
-     *   action is set for embedded objects, it's advisable to call setAction()
-     *   before this method.
+     *   of this type; see getPropertyDefinitions() for possible values per
+     *   object type. See create() for a more elaborate description of this
+     *   argument. If the data contains embedded objects, then those will
+     *   inherit the 'action' that is set for their parent object, so if the
+     *   caller cares about which action is set for embedded objects, it's
+     *   advisable to call setAction() before this method.
      *
      * @throws \InvalidArgumentException
      *   If the data contains unknown field/object names or the values have an
@@ -461,15 +481,15 @@ class UpdateObject
             }
         }
 
-        $properties = $this->getProperties();
-        if (empty($properties)) {
-            throw new UnexpectedValueException($this->getType() . ' object has no properties defined.');
+        $definitions = $this->getPropertyDefinitions();
+        if (empty($definitions)) {
+            throw new UnexpectedValueException($this->getType() . ' object has no property definitions.');
         }
-        if (!isset($properties['fields']) || !is_array($properties['fields'])) {
-            throw new UnexpectedValueException($this->getType() . " object has no 'fields' property defined (or the property is not an array).");
+        if (!isset($definitions['fields']) || !is_array($definitions['fields'])) {
+            throw new UnexpectedValueException($this->getType() . " object has no 'fields' property definition (or the property is not an array).");
         }
-        if (isset($properties['objects']) && !is_array($properties['objects'])) {
-            throw new UnexpectedValueException($this->getType() . " object has a non-array 'objects' property defined.");
+        if (isset($definitions['objects']) && !is_array($definitions['objects'])) {
+            throw new UnexpectedValueException($this->getType() . " object has a non-array 'objects' property definition.");
         }
 
         foreach ($object_data as $key => $element) {
@@ -479,17 +499,17 @@ class UpdateObject
 
             // If this type has an ID field, check for it and set it in its
             // dedicated location.
-            if (empty($properties['id_field'])) {
-                $rest_id_field = '@' . $properties['id_field'];
-                if (array_key_exists($rest_id_field, $element)) {
+            if (empty($definitions['id_property'])) {
+                $id_property = '@' . $definitions['id_property'];
+                if (array_key_exists($id_property, $element)) {
                     if (array_key_exists('#id', $element)) {
                         throw new InvalidArgumentException($this->getType() . ' object has the ID field provided by both its field name $name and alias #id.');
                     }
-                    $normalized_element[$rest_id_field] = $element[$rest_id_field];
+                    $normalized_element[$id_property] = $element[$id_property];
                     // Unset so that we won't throw an exception at the end.
-                    unset($element[$rest_id_field]);
+                    unset($element[$id_property]);
                 } elseif (array_key_exists('#id', $element)) {
-                    $normalized_element[$rest_id_field] = $element['#id'];
+                    $normalized_element[$id_property] = $element['#id'];
                     unset($element['#id']);
                 }
             }
@@ -501,7 +521,7 @@ class UpdateObject
             //   - an exception is (only) thrown if the passed value is null.
             // - if the default is null (or value given is null & not
             //   'required'), then null is passed.
-            foreach ($properties['fields'] as $name => $field_properties) {
+            foreach ($definitions['fields'] as $name => $field_properties) {
                 $value_present = false;
                 // Get value from the property equal to the field name (case
                 // sensitive!), or the alias. If two values are present with
@@ -524,7 +544,7 @@ class UpdateObject
                     if (isset($value)) {
                         if (!is_scalar($value)) {
                             $property = $name . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
-                            throw new InvalidArgumentException("'$property' property of '{$this->getType()}' object must be scalar.");
+                            throw new InvalidArgumentException("'$property' field value of '{$this->getType()}' object must be scalar.");
                         }
                         if (!empty($field_properties['type'])) {
                             switch ($field_properties['type']) {
@@ -535,7 +555,7 @@ class UpdateObject
                                 case 'decimal':
                                     if (!is_numeric($value)) {
                                         $property = $name . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
-                                        throw new InvalidArgumentException("'$property' property of '{$this->getType()}' object must be numeric.");
+                                        throw new InvalidArgumentException("'$property' field value of '{$this->getType()}' object must be numeric.");
                                     }
                                     if ($field_properties['type'] === 'integer' && strpos((string)$value, '.') !== false) {
                                         $property = $name . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
@@ -558,10 +578,10 @@ class UpdateObject
                 }
             }
 
-            if (!empty($element) && !empty($properties['objects'])) {
+            if (!empty($element) && !empty($definitions['objects'])) {
                 // Add other embedded objects. (We assume all remaining element
                 // values are indeed objects. If not, an error will be thrown.)
-                foreach ($properties['objects'] as $name => $object_properties) {
+                foreach ($definitions['objects'] as $name => $object_properties) {
                     $value_present = false;
                     // Get value from the property equal to the object name
                     // (case sensitive!), or the alias. If two values are
@@ -721,7 +741,30 @@ class UpdateObject
      */
     protected function validateElement($element_index, $change_behavior = self::VALIDATE_ALLOW_DEFAULT, $validation_behavior = self::VALIDATE_DEFAULT)
     {
+        $definitions = $this->getPropertyDefinitions();
+        // Doublechecks; unlikely to fail because also in addObjectData(). (We
+        // won't repeat them in each individual validate method.)
+        if (empty($definitions)) {
+            throw new UnexpectedValueException($this->getType() . ' object has no property definitions.');
+        }
+        if (!isset($definitions['fields']) || !is_array($definitions['fields'])) {
+            throw new UnexpectedValueException($this->getType() . " object has no 'fields' property definition (or the property is not an array).");
+        }
+        if (isset($definitions['objects']) && !is_array($definitions['objects'])) {
+            throw new UnexpectedValueException($this->getType() . " object has a non-array 'objects' property definition.");
+        }
+
         $element = $this->elements[$element_index];
+        // Do most low level structure checks here so that the other validate*()
+        // methods are easier to override.
+        $object_type_msg = "'{$this->getType()}' object" . ($element_index ? ' with index ' . ($element_index + 1) : '') . '.';
+        if (!isset($element['Fields']) || !is_array($element['Fields'])) {
+            throw new UnexpectedValueException($this->getType() . " object has no 'Fields' property value (or it is not an array).");
+        }
+        if (isset($element['Objects']) && !is_array($element['Objects'])) {
+            throw new UnexpectedValueException($this->getType() . " object has a non-array 'Objects' property value.");
+        }
+
         // Design decision: validate embedded objects first ('depth first'),
         // then validate the rest of this object while knowing that the
         // 'children' are OK, and with their properties accessible (dependent
@@ -729,12 +772,59 @@ class UpdateObject
         $element = $this->validateEmbeddedObjects($element, $element_index, $change_behavior, $validation_behavior);
         $element = $this->validateFields($element, $element_index, $change_behavior, $validation_behavior);;
 
-        //@todo consider: should we re-validate whether all the element's
-        // properties are known? (Or do we do this also on generating the output string?.)
-        // ^^ fields and objects should be inside the 'validate..()' methods <<< not sure; makes some things harder for subclasses
-        //    and checking if nothing else is there on the first level, should be here.
-        // ^^ probably there should be a VAIDATE_ flag for that, which is on by default.
-        // @todo but first/also, check measures on addObjectData(). Should we do this both on input and output? Only on output?
+        // Validate scalar-ness of all fields. This is moved out of
+        // validateFields because (in case VALIDATE_NO_UNKNOWN is not passed)
+        // we want to validate all fields, not just the ones with definitions.
+        foreach ($element['Fields'] as $name => $value) {
+            if (!is_scalar($value)) {
+                throw new InvalidArgumentException("'$name' field of $object_type_msg must be a scalar value.");
+            }
+        }
+
+        // Do checks on 'id field' after validate*() methods, so they can still
+        // change it even though that's not officially their purpose.
+        if (!empty($definitions['id_property'])) {
+            $id_property = '@' . $definitions['id_property'];
+
+            if (isset($element[$id_property])) {
+                if (!is_int($element[$id_property]) && !is_string($element[$id_property])) {
+                    throw new InvalidArgumentException("'$id_property' property in $object_type_msg must hold integer/string value.");
+                }
+            } else {
+                // If action is "insert", we are guessing that there usually
+                // isn't, but still could be, a value for the ID field; it
+                // depends on 'auto numbering' for this object type (or the
+                // value of the 'Autonum' field). We don't validate this.
+                // (Yet?) We do validate that there is an ID value if action is
+                // different than "insert".
+                $action = $this->getAction($element_index);
+                if ($action !== 'insert') {
+                    throw new InvalidArgumentException("'$id_property' property in $object_type_msg must have a value, or Action '$action' must be set to 'insert'.");
+                }
+            }
+        }
+
+        if ($validation_behavior & self::VALIDATE_NO_UNKNOWN) {
+            // Validate that all Fields/Objects/other properties are known.
+            // This is a somewhat superfluous check because we already do this
+            // in addObjectData() (where we more or less have to, because our
+            // input is not divided over 'Objects' and 'Fields' so
+            // addObjectData() has to decide how/where to set each property).
+            if (!empty($element['Fields']) && $unknown = array_diff_key($element['Fields'], $definitions['fields'])) {
+                throw new UnexpectedValueException("Unknown field(s) encountered in $object_type_msg: " , implode(', ', array_keys($unknown)));
+            }
+            if (!empty($element['Objects']) && !empty($definitions['objects']) && $unknown = array_diff_key($element['Objects'], $definitions['objects'])) {
+                throw new UnexpectedValueException("Unknown object(s) encountered in $object_type_msg: " , implode(', ', array_keys($unknown)));
+            }
+            $known_properties = ['Fields', 'Objects'];
+            if (!empty($definitions['id_property'])) {
+                $known_properties[] = '@' . $definitions['id_property'];
+            }
+            if ($unknown = array_diff_key($element, $known_properties)) {
+                throw new UnexpectedValueException("Unknown properties encountered in $object_type_msg: " , implode(', ', array_keys($unknown)));
+            }
+        }
+
         return $element;
     }
 
@@ -843,17 +933,10 @@ class UpdateObject
      */
     protected function validateReferenceFields(array $element, $element_index, $change_behavior = self::VALIDATE_ALLOW_DEFAULT, $validation_behavior = self::VALIDATE_DEFAULT)
     {
-        $properties = $this->getProperties();
-        // Doublechecks; unlikely to fail because also in addObjectData().
-        if (empty($properties)) {
-            throw new UnexpectedValueException($this->getType() . ' object has no properties defined.');
-        }
-        if (!isset($properties['objects'])) {
+        $definitions = $this->getPropertyDefinitions();
+        if (!isset($definitions['objects'])) {
             return $element;
-        } elseif (!is_array($properties['objects'])) {
-            throw new UnexpectedValueException($this->getType() . " object has a non-array 'objects' property defined.");
         }
-
         $action = $this->getAction($element_index);
         $defaults = [];
         if (($action === 'insert' && $change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT)
@@ -870,7 +953,7 @@ class UpdateObject
         }
 
         $object_type_msg = "'{$this->getType()}' object" . ($element_index ? ' with index ' . ($element_index + 1) : '') . '.';
-        foreach ($properties['objects'] as $ref_name => $object_properties) {
+        foreach ($definitions['objects'] as $ref_name => $object_properties) {
             // Check requiredness for embeddable object, and create a default
             // value if it's missing. (The latter is unlikely to ever be needed
             // but still... it's a possibility.) Code is largely the same as
@@ -938,15 +1021,7 @@ class UpdateObject
      */
     protected function validateFields(array $element, $element_index, $change_behavior = self::VALIDATE_ALLOW_DEFAULT, $validation_behavior = self::VALIDATE_DEFAULT)
     {
-        $properties = $this->getProperties();
-        // Doublechecks; unlikely to fail because also in addObjectData().
-        if (empty($properties)) {
-            throw new UnexpectedValueException($this->getType() . ' object has no properties defined.');
-        }
-        if (!isset($properties['fields']) || !is_array($properties['fields'])) {
-            throw new UnexpectedValueException($this->getType() . " object has no 'fields' property defined (or the property is not an array).");
-        }
-
+        $definitions = $this->getPropertyDefinitions();
         $action = $this->getAction($element_index);
         $defaults = $action === 'insert'
             ? $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT))
@@ -970,7 +1045,7 @@ class UpdateObject
         //     null values which were explicitly set with other default values.)
         // - if the default is null (or value given is null & not 'required'),
         //   then null is passed.
-        foreach ($properties['fields'] as $name => $field_properties) {
+        foreach ($definitions['fields'] as $name => $field_properties) {
             $validate_required_value = !empty($field_properties['required'])
                 && ($validation_behavior & self::VALIDATE_REQUIRED
                     || ($field_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
@@ -981,7 +1056,7 @@ class UpdateObject
                 && (!array_key_exists($name, $defaults)
                     || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Fields'])))
             ) {
-                throw new UnexpectedValueException("No value given for required '$name' field of $object_type_msg object.");
+                throw new UnexpectedValueException("No value given for required '$name' field of $object_type_msg.");
             }
 
             // Add defaults if value is missing, or if value is null and field
@@ -1057,6 +1132,12 @@ class UpdateObject
      *     this library considers 'required' even if an AFAS Update Connector
      *     call would not fail if they're missing. Example: town/municipality in
      *     an address object.
+     *   - VALIDATE_NO_UNKNOWN (default): Check if all fields and objects
+     *     (reference fields) are known in our 'properties' definition, and if
+     *     no unknown other properties (on the same level as 'Fields' and
+     *     'Objects') exist. If this option is turned off, this may cause
+     *     unknown values to be included in the output, with unknown results
+     *     (depending on how the AFAS API treats these).
      *
      * @return string
      *   The string representation of the object data, validated and possibly
@@ -1175,30 +1256,14 @@ class UpdateObject
                 // assumes that "" is not a valid Action value.)
                 $action_attribute = ' Action="' . $action . '"';
             }
-// @todo probably below block is unnecessary when we put something similar in validateElement()? Or?
-            $id_attribute = '';
-            $fields = isset($element['Fields']) ? $element['Fields'] : [];
-            $objects = isset($element['Objects']) ? $element['Objects'] : [];
-            if (count($element) > ($fields ? 1 : 0) + ($objects ? 1 : 0)) {
-                // There can be maximum 3 keys; the third must be the ID.
-                unset($element['Fields']);
-                unset($element['Objects']);
-                // We insert extra checks though, to prevent against strange
-                // internal bugs that can end up overwriting other data.
-                if (count($element) > 1) {
-                    throw new InvalidArgumentException("Element must hold maximum one ID value besides Fields/Objects, but we found more than one; keys are " . implode(', ', $element) . '.');
-                }
-                $value = reset($element);
-                $key = (string) key($element);
-                if (substr($key, 0, 1) !== '@') {
-                    throw new InvalidArgumentException("Illegal key '$key' found inside Element, which can only hold keys 'Fields', 'Objects' and a special @Id key.");
-                }
-                if (!is_int($value) && !is_string($value)) {
-                    throw new InvalidArgumentException("'$key' key in inside Element must hold integer/string value.");
-                }
-                $id_attribute = ' ' . substr($key, 1) . '="' . $value . '"';
-            }
 
+            // Requiredness of the ID field and validity of its value has been
+            // checked elsewhere; we just include it if it's there.
+            $id_attribute = '';
+            $definitions = $this->getPropertyDefinitions();
+            if (!empty($definitions['id_property']) && isset($element[$definitions['id_property']])) {
+                $id_attribute = ' ' . $definitions['id_property'] . '="' . $element[$definitions['id_property']] . '"';
+            }
             // Each element is in its own 'Element' tag (unlike the input
             // argument which has an array of elements in one 'Element' key,
             // because multiple 'Element' keys cannot exist in one object or
@@ -1208,13 +1273,7 @@ class UpdateObject
             // Always add Fields tag, also if it's empty. (No idea if that's
             // necessary, but that's apparently how I tested it 5 years ago.)
             $xml .= "$indent_str2<Fields$action_attribute>";
-            if (!is_array($fields)) {
-                throw new InvalidArgumentException("'Fields' property of '{$this->getType()}' object must be an array.");
-            }
-            foreach ($fields as $name => $value) {
-                if (!is_scalar($value)) {
-                    throw new InvalidArgumentException("'$name' field of '{$this->getType()}' object must be scalar.");
-                }
+            foreach ($element['Fields'] as $name => $value) {
                 if (is_bool($value)) {
                     // Boolean values are encoded as 0/1 in AFAS XML.
                     $value = $value ? '1' : '0';
@@ -1226,14 +1285,10 @@ class UpdateObject
             }
             $xml .= "$indent_str2</Fields>";
 
-
-            if ($objects) {
+            if (!empty($element['Objects'])) {
                 $xml .= "$indent_str2<Objects>";
-                foreach ($objects as $ref_name => $value) {
-                    if (!$value instanceof UpdateObject) {
-                        // This should never happen.
-                        throw new InvalidArgumentException("Value for '$ref_name' object embedded in '{$this->getType()}' object must be UpdateObject.");
-                    }
+                /* @var UpdateObject $value */
+                foreach ($element['Objects'] as $ref_name => $value) {
                     if ($pretty) {
                         $format_options['indent_start'] = empty($format_options['indent_start'])
                             ? '' : $format_options['indent_start'] + str_repeat(' ', $format_options['indent'] * 4);
@@ -1265,10 +1320,11 @@ class UpdateObject
      *
      * @return array
      *   An array with the following keys:
-     *   'id_field': If the object type has an ID field, it's name. (e.g. for
-     *               KnSubject this is 'SbId', because a subject always has a
-     *               "@SbId" entry. ID fields are distinguished by being
-     *               outside of the 'Fields' section and being prefixed by "@".)
+     *   'id_property': If the object type has an ID property, it's name. (e.g.
+     *                  for KnSubject this is 'SbId', because a subject always
+     *                  has a "@SbId" property. ID properties are distinguished
+     *                  by being outside of the 'Fields' section and being
+     *                  prefixed by "@".)
      *   'fields':   Arrays describing properties of fields, keyed by AFAS
      *               field names. An array may be empty but must be defined for
      *               a field to be recognized. Properties known to this class:
@@ -1300,7 +1356,7 @@ class UpdateObject
      *                 element.
      *   - 'required': See 'fields' above.
      */
-    public function getProperties()
+    public function getPropertyDefinitions()
     {
         switch ($this->parentType) {
 
