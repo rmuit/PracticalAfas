@@ -25,12 +25,17 @@ class UpdateObject
     /**
      * @see getObjectData(); bitmask for the $change_behavior argument.
      */
-    const ADD_ELEMENT_WRAPPER = 1;
+    const KEEP_EMBEDDED_OBJECTS = 1;
 
     /**
      * @see getObjectData(); bitmask for the $change_behavior argument.
      */
-    const KEEP_EMBEDDED_OBJECTS = 2;
+    const ADD_ELEMENT_WRAPPER = 2;
+
+    /**
+     * @see output(); bitmask for the $change_behavior argument.
+     */
+    const FLATTEN_SINGLE_ELEMENT = 4;
 
     /**
      * @see output(); this is a bitmask for the $change_behavior argument.
@@ -40,39 +45,39 @@ class UpdateObject
     /**
      * @see output(); this is a bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ALLOW_EMBEDDED_CHANGES = 4;
+    const VALIDATE_ALLOW_EMBEDDED_CHANGES = 8;
 
     /**
      * @see output(); this is a bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ALLOW_DEFAULTS_ON_INSERT = 8;
+    const VALIDATE_ALLOW_DEFAULTS_ON_INSERT = 16;
 
     /**
      * @see output(); this is a bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ALLOW_DEFAULTS_ON_UPDATE = 16;
+    const VALIDATE_ALLOW_DEFAULTS_ON_UPDATE = 32;
 
     /**
      * @see output(); this is a bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ALLOW_REFORMAT = 32;
+    const VALIDATE_ALLOW_REFORMAT = 64;
 
     /**
      * @see output(); this is a bitmask for the $change_behavior argument.
      */
-    const VALIDATE_ALLOW_CHANGES = 64;
+    const VALIDATE_ALLOW_CHANGES = 128;
 
     /**
      * Default behavior for output(,$change_behavior).
      *
-     * This is all defined VALIDATE_ALLOW_* behavior except
-     * VALIDATE_ALLOW_DEFAULTS_ON_UPDATE.
+     * This is VALIDATE_ALLOW_EMBEDDED_CHANGES + VALIDATE_ALLOW_REFORMAT
+     * + VALIDATE_ALLOW_DEFAULTS_ON_INSERT + FLATTEN_SINGLE_ELEMENT,
      *
      * If future versions of this class introduce new behavior through
      * additional bitmask values, this value may or may not be changed to
      * incorporate that behavior by default.
      */
-    const VALIDATE_ALLOW_DEFAULT = 108;
+    const VALIDATE_ALLOW_DEFAULT = 92;
 
     /**
      * @see output(); this is a bitmask for the $validation_behavior argument.
@@ -241,7 +246,9 @@ class UpdateObject
         if (isset(static::$classMap[$type])) {
             return new static::$classMap[$type]($object_data, $action, $type, $parent_type);
         }
-        return new static($object_data, $action, $type, $parent_type);
+        // Use self(); static() yields errors when an overridden object
+        // creates a new embedded object which is defined in this base class.
+        return new self($object_data, $action, $type, $parent_type);
     }
 
     /**
@@ -499,10 +506,10 @@ class UpdateObject
 
             // If this type has an ID field, check for it and set it in its
             // dedicated location.
-            if (empty($definitions['id_property'])) {
+            if (!empty($definitions['id_property'])) {
                 $id_property = '@' . $definitions['id_property'];
                 if (array_key_exists($id_property, $element)) {
-                    if (array_key_exists('#id', $element)) {
+                    if (array_key_exists('#id', $element) && $element['#id'] !== $element[$id_property]) {
                         throw new InvalidArgumentException($this->getType() . ' object has the ID field provided by both its field name $name and alias #id.');
                     }
                     $normalized_element[$id_property] = $element[$id_property];
@@ -567,11 +574,7 @@ class UpdateObject
                                 case 'date':
                                     // @todo format in standard way, once we know that's necessary
                                     break;
-                                default:
-                                    $value = trim($value);
                             }
-                        } else {
-                            $value = trim($value);
                         }
                     }
                     $normalized_element['Fields'][$name] = $value;
@@ -616,7 +619,7 @@ class UpdateObject
                             // not explicitly set.
                             try {
                                 // count is 'current maximum index + 1'
-                                $action = $this->getAction(count($this->elements[]));
+                                $action = $this->getAction(count($this->elements));
                             }
                             catch (OutOfBoundsException $e) {
                                 // Get default action. This will fail if
@@ -669,7 +672,7 @@ class UpdateObject
      *     objects, but discard the resulting array structure instead of
      *     replacing the UpdateObject with it (which is the default behavior
      *     for a non-null $change_behavior).
-     *   - VALIDATE_ALLOW_*: see output() for description.
+     *   - VALIDATE_ALLOW_* & FLATTEN_SINGLE_ELEMENT: see output() for description.
      * @param int $validation_behavior
      *   (Optional) see output().
      *
@@ -708,6 +711,9 @@ class UpdateObject
             $elements = [];
             foreach ($this->elements as $element_index => $element) {
                 $elements[] = $this->validateElement($element_index, $change_behavior, $validation_behavior);
+            }
+            if ($change_behavior & self::FLATTEN_SINGLE_ELEMENT && count($elements) == 1) {
+                $elements = reset($elements);
             }
             $return = $change_behavior & self::ADD_ELEMENT_WRAPPER ? ['Element' => $elements] : $elements;
         }
@@ -770,10 +776,8 @@ class UpdateObject
         // on some $change_behavior values).
         $element = $this->validateEmbeddedObjects($element, $element_index, $change_behavior, $validation_behavior);
         $element = $this->validateFields($element, $element_index, $change_behavior, $validation_behavior);;
-
         // Validate scalar-ness of all fields. This is moved out of
-        // validateFields because (in case VALIDATE_NO_UNKNOWN is not passed)
-        // we want to validate all fields, not just the ones with definitions.
+        // validateFields() because it's expected to be easier for subclassing.
         foreach ($element['Fields'] as $name => $value) {
             if (!is_scalar($value)) {
                 throw new InvalidArgumentException("'$name' field of $object_type_msg must be a scalar value.");
@@ -815,9 +819,9 @@ class UpdateObject
             if (!empty($element['Objects']) && !empty($definitions['objects']) && $unknown = array_diff_key($element['Objects'], $definitions['objects'])) {
                 throw new UnexpectedValueException("Unknown object(s) encountered in $object_type_msg: " , implode(', ', array_keys($unknown)));
             }
-            $known_properties = ['Fields', 'Objects'];
+            $known_properties = ['Fields' => true, 'Objects' => true];
             if (!empty($definitions['id_property'])) {
-                $known_properties[] = '@' . $definitions['id_property'];
+                $known_properties['@' . $definitions['id_property']] = true;
             }
             if ($unknown = array_diff_key($element, $known_properties)) {
                 throw new UnexpectedValueException("Unknown properties encountered in $object_type_msg: " , implode(', ', array_keys($unknown)));
@@ -862,56 +866,79 @@ class UpdateObject
         $element = $this->validateReferenceFields($element, $element_index, $change_behavior, $validation_behavior);
 
         if (isset($element['Objects'])) {
-            $object_type_msg = "'{$this->getType()}' object" . ($element_index ? ' with index ' . ($element_index + 1) : '') . '.';
             $definitions = $this->getPropertyDefinitions($element, $element_index);
-            $embedded_change_behavior = ($change_behavior & self::VALIDATE_ALLOW_EMBEDDED_CHANGES)
-                ? $change_behavior : self::VALIDATE_ALLOW_NO_CHANGES;
+            $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+            // VALIDATE_ALLOW_EMBEDDED_CHANGES has no effect on
+            // ADD_ELEMENT_WRAPPER; if that is set, it keeps being set, because
+            // it's more or less 'owned' by output(), and doesn't really
+            // influence the structure of objects/elements themselves. That
+            // last thing also applies to FLATTEN_SINGLE_ELEMENT so let's keep
+            // that too.
+            $embedded_change_behavior = $change_behavior & self::VALIDATE_ALLOW_EMBEDDED_CHANGES
+                ? $change_behavior
+                : $change_behavior & (self::VALIDATE_ALLOW_EMBEDDED_CHANGES | self::FLATTEN_SINGLE_ELEMENT);
 
             foreach ($element['Objects'] as $ref_name => $object) {
                 // Doublecheck; unlikely to fail because it's also in
                 // addObjectData().
                 if (!$object instanceof UpdateObject) {
-                    throw new UnexpectedValueException("'$ref_name' object embedded in $object_type_msg must be an object of type UpdateObject.");
+                    throw new UnexpectedValueException("'$ref_name' object embedded in $element_descr must be an object of type UpdateObject.");
                 }
 
+                // We need to decide the exact structure of "Elements" in the
+                // embedded objects. I'm making assumptions here because I don't
+                // have real specifications from AFAS, or a means to test this:
+                // - Their own knowledge base examples (for UpdateConnector
+                //   which use KnSubject) specify a single element inside
+                //   the "Element" key, e.g. "@SbId" and "Fields" are
+                //   directly inside "Element".
+                // - That clearly doesn't work when multiple elements need to
+                //   be embedded as part of the same reference field, e.g. a
+                //   FbSales entity can have multiple elements inside the
+                //   FbSalesLines object. In this case its "Element" key
+                //   contains an array of elements.
+                // Our code has the FLATTEN_SINGLE_ELEMENT flag for output() so
+                // the caller can decide what to do with 'main' objects. (By
+                // default, one element is 'flattened' because see first point
+                // above, but multiple elements are supported.) For embedded
+                // objects, I officially do not know if AFAS accepts an array
+                // inside "Elements" for _any_field. So what we do here is:
+                // - If ADD_ELEMENT_WRAPPER is not provided, we pass the
+                //   existing value of FLATTEN_SINGLE_ELEMENT (because we are
+                //   apparently not building JSON anyway).
+                // Otherwise:
+                // - For reference fields that can embed multiple elements,
+                //   we keep the array, regardless whether we have one or
+                //   more elements at the moment. (This to keep the
+                //   structure of a particular reference field consistent; I do
+                //   not imagine AFAS will deny an array of 1 elements.)
+                // - For reference fields that can only embed one element,
+                //   we unwrap this array and place the element directly
+                //   inside "Element" (because I do not know if AFAS
+                //   accepts an array).
+                if ($embedded_change_behavior & self::ADD_ELEMENT_WRAPPER) {
+                    $cb = empty($definitions['objects'][$ref_name]['multiple'])
+                        ? $embedded_change_behavior | self::FLATTEN_SINGLE_ELEMENT
+                        : $embedded_change_behavior & ~self::FLATTEN_SINGLE_ELEMENT;
+                }
+                else {
+                    $cb = $embedded_change_behavior;
+                }
                 // Validation of a full object is done by getObjectData() (if
                 // we want to get an array structure returned).
-                $object_data = $object->getObjectData($embedded_change_behavior, $validation_behavior);
+                $object_data = $object->getObjectData($cb, $validation_behavior);
 
                 // Validate, and change the structure according to, whether
                 // this reference field is allowed to have multiple elements.
                 if (empty($definitions['objects'][$ref_name]['multiple'])) {
-                    // The returned structure depends on $change_behavior:
                     $embedded_elements = $change_behavior & self::ADD_ELEMENT_WRAPPER ? $object_data['Element'] : $object_data;
-                    // Here's where I'm making assumptions because I don't have
-                    // real specifications from AFAS, or a test setup:
-                    // - Their own knowledge base examples (for UpdateConnector
-                    //   which use KnSubject specify a single element inside
-                    //  the "Element" key, e.g. "@SbId" and "Fields" are
-                    //  directly inside "Element".
-                    // - That clearly doesn't work when multiple elements need
-                    //   to be embedded as part of the same reference field,
-                    //   e.g. a FbSales entity can have multiple elements
-                    //   inside the FbSalesLines object. In this case its
-                    //   "Element" key contains an array of elements.
-                    // Our code always returns an array of elements here. But
-                    // I officially do not know if AFAS accepts an array
-                    // inside "Elements" for _any_field. So what we do here is:
-                    // - For reference fields that can embed multiple elements,
-                    //   we keep the array, regardless whether we have one or
-                    //   more elements at the moment. (This to keep the
-                    //   structure consistent; I do not imagine AFAS will deny
-                    //   an array of 1 elements.)
-                    // - For reference fields that can only embed one element,
-                    //   we unwrap this array and place the element directly
-                    //   inside "Element" (because I do not know if AFAS
-                    //   accepts an array);
-                    // If ADD_ELEMENT_WRAPPER is not given, we always keep the
-                    // array 'wrapper'.
-                    if (count($embedded_elements) > 1) {
-                        throw new UnexpectedValueException("'$ref_name' object embedded in $object_type_msg contains " . count($embedded_elements) . 'elements but can only contain a single element.');
-                    } elseif ($change_behavior & self::ADD_ELEMENT_WRAPPER) {
-                        $object_data = ['Element' => reset($embedded_elements)];
+                    // We could have a flattened array here, depending on
+                    // whether the object has multiple elements and/or the
+                    // value of ADD_ELEMENT_WRAPPER. We assume one element
+                    // always has 'Fields', so if we don't find that on the
+                    // first level, we have an array of one/multiple elements.
+                    if (!isset($embedded_elements['Fields']) && count($embedded_elements) > 1) {
+                        throw new UnexpectedValueException("'$ref_name' object embedded in $element_descr contains " . count($embedded_elements) . ' elements but can only contain a single element.');
                     }
                 }
 
@@ -966,37 +993,30 @@ class UpdateObject
             return $element;
         }
         $action = $this->getAction($element_index);
-        $defaults = [];
-        if (($action === 'insert' && $change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT)
-            || ($action === 'update' && $change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_UPDATE)
-        ) {
-            $defaults = $this->getDefaults($element);
-            if (!isset($defaults['objects'])) {
-                $defaults = [];
-            } elseif (!is_array($defaults['objects'])) {
-                throw new UnexpectedValueException($this->getType() . " object defaults definition has a non-array 'objects' property.");
-            } else {
-                $defaults = $defaults['objects'];
-            }
-        }
+        $defaults_allowed = ($action === 'insert' && $change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT)
+            || ($action === 'update' && $change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_UPDATE);
 
-        $object_type_msg = "'{$this->getType()}' object" . ($element_index ? ' with index ' . ($element_index + 1) : '') . '.';
+        $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
         foreach ($definitions['objects'] as $ref_name => $object_properties) {
-            // Check requiredness for embeddable object, and create a default
-            // value if it's missing. (The latter is unlikely to ever be needed
-            // but still... it's a possibility.) Code is largely the same as
-            // validateFields(); see there for comments.
-            $validate_required_value = !empty($object_properties['required!'])
+            $default_available = $defaults_allowed && array_key_exists('default', $object_properties);
+            // Check requiredness for reference field, and create a default
+            // object if it's missing. (The latter is unlikely to ever be
+            // needed but still... it's a possibility.) Code is largely the
+            // same as validateFields(); see there for more comments.
+            $validate_required_value = !empty($object_properties['required'])
                 && ($validation_behavior & self::VALIDATE_REQUIRED
                     || ($object_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
+            // See validateFields(): throw an exception if we have no-or-null
+            // ref-field value and no default, OR if we have null ref-field
+            // value and non-null default.
             if ($validate_required_value && !isset($element['Objects'][$ref_name])
-                && (!array_key_exists($ref_name, $defaults)
-                    || (isset($defaults[$ref_name]) && is_null($defaults[$ref_name]) && array_key_exists($ref_name, $element['Objects'])))
+                && (!$default_available
+                    || (array_key_exists($ref_name, $element['Objects']) && $default_available && $object_properties['default'] !== null))
             ) {
-                throw new UnexpectedValueException("No value given for required '$ref_name' object embedded in $object_type_msg.");
+                throw new UnexpectedValueException("No value given for required '$ref_name' object embedded in $element_descr.");
             }
 
-            if (array_key_exists($ref_name, $defaults)) {
+            if ($default_available) {
                 $null_required_value = !isset($element['Objects'][$ref_name]) && !empty($object_properties['required']);
                 if ($null_required_value || !array_key_exists($ref_name, $element['Objects'])) {
                     // We would expect a default value to be the same data
@@ -1005,15 +1025,15 @@ class UpdateObject
                     // don't expect that; in this case, clone the object to be
                     // sure we don't end up adding some default object in
                     // several places.
-                    if ($defaults[$ref_name] instanceof UpdateObject) {
-                        $element['Objects'][$ref_name] = clone $defaults[$ref_name];
+                    if ($object_properties['default'] instanceof UpdateObject) {
+                        $element['Objects'][$ref_name] = clone $object_properties['default'];
                     } else {
-                        if (!is_array($defaults[$ref_name])) {
-                            throw new UnexpectedValueException("Default value for '$ref_name' object embedded in $object_type_msg must be array.");
+                        if (!is_array($object_properties['default'])) {
+                            throw new UnexpectedValueException("Default value for '$ref_name' object embedded in $element_descr must be array.");
                         }
                         // The intended 'action' value is always assumed to be
                         // equal to its parent's current value.
-                        $element['Objects'][$ref_name] = static::create($ref_name, $defaults[$ref_name], $this->getAction($element_index), $this->getType());
+                        $element['Objects'][$ref_name] = static::create($ref_name, $object_properties['default'], $this->getAction($element_index), $this->getType());
                     }
                 }
             }
@@ -1051,17 +1071,10 @@ class UpdateObject
     {
         $definitions = $this->getPropertyDefinitions();
         $action = $this->getAction($element_index);
-        $defaults = $action === 'insert'
-            ? $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT))
-            : $this->getDefaults($element, !($change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_UPDATE));
-        // Defaults can be empty, but if they're not, they must have a 'field'
-        // key, to prevent mistakes in the definition.
-        if (!empty($defaults) && (!isset($defaults['fields']) || !is_array($defaults['fields']))) {
-            throw new UnexpectedValueException($this->getType() . " object defaults definition has no 'fields' property (or a non-array one).");
-        }
-        $defaults = isset($defaults['fields']) ? [] : $defaults['fields'];
+        $defaults_allowed = ($action === 'insert' && $change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_INSERT)
+            || ($action === 'update' && $change_behavior & self::VALIDATE_ALLOW_DEFAULTS_ON_UPDATE);
 
-        $object_type_msg = "'{$this->getType()}' object" . ($element_index ? ' with index ' . ($element_index + 1) : '') . '.';
+        $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
         // Check required fields and add default values for fields (where
         // defined). About definitions:
         // - if required = true, then
@@ -1074,27 +1087,42 @@ class UpdateObject
         // - if the default is null (or value given is null & not 'required'),
         //   then null is passed.
         foreach ($definitions['fields'] as $name => $field_properties) {
+            $default_available = $defaults_allowed && array_key_exists('default', $field_properties);
+            // Requiredness is only checked for action "insert". The
+            // VALIDATE_ESSENTIAL bit does not play a role here. (Admittedly
+            // the below logic may be a bit too complicated and there isn't a
+            // good known example where required==1 / VALIDATE_ESSENTIAL is a
+            // good solution. If it turns out that somehow some value is also
+            // required on updates, then... we might consider tying required==1
+            // to that situation?
             $validate_required_value = !empty($field_properties['required'])
+                && $action === 'insert'
                 && ($validation_behavior & self::VALIDATE_REQUIRED
                     || ($field_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
             // See above: throw an exception if we have no-or-null field
             // value and no default, OR if we have null field value and
             // non-null default.
             if ($validate_required_value && !isset($element['Fields'][$name])
-                && (!array_key_exists($name, $defaults)
-                    || (isset($defaults[$name]) && is_null($defaults[$name]) && array_key_exists($name, $element['Fields'])))
+                && (!$default_available
+                    || (array_key_exists($name, $element['Fields']) && $default_available && $field_properties['default'] !== null))
             ) {
-                throw new UnexpectedValueException("No value given for required '$name' field of $object_type_msg.");
+                throw new UnexpectedValueException("No value given for required '$name' field of $element_descr.");
             }
 
-            // Add defaults if value is missing, or if value is null and field
-            // is required (and if we can change it, but that's always the case
-            // if $defaults is set).
-            if (array_key_exists($name, $defaults)) {
+            // Set default if value is missing, or if value is null and field
+            // is required (and if we are allowed to set it, but that's always
+            // the case if $default_available).
+            if ($default_available) {
                 $null_required_value = !isset($element['Fields'][$name]) && !empty($field_properties['required']);
                 if ($null_required_value || !array_key_exists($name, $element['Fields'])) {
-                    $element['Fields'][$name] = $defaults[$name];
+                    $element['Fields'][$name] = $field_properties['default'];
                 }
+            }
+
+            // Trim value if allowed. (Do this only for field values known in
+            // the definitions.)
+            if ($change_behavior & self::VALIDATE_ALLOW_REFORMAT && isset($element['Fields'][$name]) && is_string($element['Fields'][$name])) {
+                $element['Fields'][$name] = trim($element['Fields'][$name]);
             }
         }
 
@@ -1110,12 +1138,9 @@ class UpdateObject
      * @param string $format
      *   (Optional) The format; 'json' (default) or 'xml'.
      * @param array $format_options
-     *   (Optional) Options influencing the format. Known options:
+     *   (Optional) Options influencing the format. General options:
      *   - 'pretty' (boolean): If true, pretty-print (with newlines/spaces).
-     *   - 'indent' (integer): The number of spaces to prefix an indented line
-     *     with; 2 by default. Only valid for 'xml' format. ('json' always has
-     *     4 with pretty printing.) Ignored if 'pretty' is false. 'pretty'
-     *     effect is canceled if this is not an integer or <= 0.
+     *   See outputXml() for XML specific options.
      * @param int $change_behavior
      *   (Optional) By default, this method can change values of fields and
      *   embedded objects (for e.g. uniform formatting of values ar adding
@@ -1141,10 +1166,16 @@ class UpdateObject
      *     field values. For 'reformatting' a combination of values (e.g. moving
      *     a house number from a street value into its own field) additional
      *     values may need to be passed.
-     *   - VALIDATE_ALLOW_CHANGES (default): Allow changing field values, in
+     *   - VALIDATE_ALLOW_CHANGES: Allow changing field values, in
      *     ways not covered by other bitmasks. Behavior is not precisely defined
      *     by this class; child classes may use this value or implement their
      *     own additional bitmasks.
+     *   - FLATTEN_SINGLE_ELEMENT (default): If this object holds only one
+     *     element, then output this single element inside the "Element"
+     *     section rather than an array containing one element. (This is only
+     *     applicable to JSON output; it's not expected to make a difference to
+     *     AFAS though we're not 100% sure. It is not passed into embedded
+     *     objects; those have hardcoded logic around this.)
      *   Child classes might define additional values.
      * @param int $validation_behavior
      *   (Optional) By default, this method performs validation checks. This
@@ -1224,9 +1255,7 @@ class UpdateObject
      *    (Optional) Options influencing the format. Known options:
      *    'pretty' (boolean): see output().
      *    'indent' (integer): see output().
-     *    'indent_start' (integer): the number of spaces to start each line
-     *      with; this is relevant when generating an XML fragment for
-     *      embedding inside other indented XML.
+     *   - 'indent_start' (string): a prefix to start each line with.
      * @param int $change_behavior
      *   (Optional) see output().
      * @param int $validation_behavior
@@ -1238,13 +1267,15 @@ class UpdateObject
     protected function outputXml(array $format_options = [], $change_behavior = self::VALIDATE_ALLOW_DEFAULT, $validation_behavior = self::VALIDATE_DEFAULT)
     {
         $xml = $indent_str0 = $indent_str1 = $indent_str2 = $indent_str3 = '';
+        $skip_start = false;
         $pretty = !empty($format_options['pretty']) && (!isset($format_options['indent'])
                 || (is_int($format_options['indent']) && $format_options['indent'] > 0));
+        if (!empty($format_options['indent_start']) && is_string($format_options['indent_start'])) {
+            $xml = $format_options['indent_start'];
+            $skip_start = true;
+        }
         if ($pretty) {
             $indent = isset($format_options['indent']) ? $format_options['indent'] : 2;
-            if (!empty($format_options['indent_start']) && is_int($format_options['indent_start'])) {
-               $xml = str_repeat(' ', $format_options['indent_start']);
-            }
             $extra_spaces = str_repeat(' ', $indent);
             if ($this->parentType) {
                 // LF + Indentation before Element tag:
@@ -1263,6 +1294,7 @@ class UpdateObject
         // Only include the start tag with object type if we're not recursing.
         if (!$this->parentType) {
             $xml .= "<{$this->getType()} xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">";
+            $skip_start = false;
         }
 
         // Fully validate the element(s) in this object, but keep embedded
@@ -1274,7 +1306,8 @@ class UpdateObject
         // validated 3 times. but there's not much we can do about that, since
         // our 'design decision' is to validate all embedded objects before
         // being able to fully validate the main one.
-        foreach ($this->getObjectData($change_behavior | self::KEEP_EMBEDDED_OBJECTS, $validation_behavior) as $element_index => $element) {
+        $cb = ($change_behavior & ~self::FLATTEN_SINGLE_ELEMENT) | self::KEEP_EMBEDDED_OBJECTS;
+        foreach ($this->getObjectData($cb, $validation_behavior) as $element_index => $element) {
             $action_attribute = '';
             $action = $this->getAction($element_index);
             if ($action) {
@@ -1288,15 +1321,20 @@ class UpdateObject
             // Requiredness of the ID field and validity of its value has been
             // checked elsewhere; we just include it if it's there.
             $id_attribute = '';
-            $definitions = $this->getPropertyDefinitions();
-            if (!empty($definitions['id_property']) && isset($element[$definitions['id_property']])) {
-                $id_attribute = ' ' . $definitions['id_property'] . '="' . $element[$definitions['id_property']] . '"';
+            $definitions = $this->getPropertyDefinitions($element, $element_index);
+            if (!empty($definitions['id_property']) && isset($element['@' . $definitions['id_property']])) {
+                $id_attribute = ' ' . $definitions['id_property'] . '="' . $element['@' . $definitions['id_property']] . '"';
             }
             // Each element is in its own 'Element' tag (unlike the input
             // argument which has an array of elements in one 'Element' key,
             // because multiple 'Element' keys cannot exist in one object or
             // JSON string),
-            $xml .= "$indent_str1<Element$id_attribute>";
+            if ($skip_start) {
+                $skip_start = false;
+            } else {
+                $xml .= $indent_str1;
+            }
+            $xml .= "<Element$id_attribute>";
 
             // Always add Fields tag, also if it's empty. (No idea if that's
             // necessary, but that's apparently how I tested it 5 years ago.)
@@ -1315,12 +1353,13 @@ class UpdateObject
 
             if (!empty($element['Objects'])) {
                 $xml .= "$indent_str2<Objects>";
+                if ($pretty) {
+                    // $indent is defined above.
+                    $format_options['indent_start'] = (empty($format_options['indent_start']) ? '' : $format_options['indent_start'])
+                        . str_repeat(' ', $indent * ($this->parentType ? 3 : 4));
+                }
                 /* @var UpdateObject $value */
                 foreach ($element['Objects'] as $ref_name => $value) {
-                    if ($pretty) {
-                        $format_options['indent_start'] = empty($format_options['indent_start'])
-                            ? '' : $format_options['indent_start'] + str_repeat(' ', $format_options['indent'] * 4);
-                    }
                     $xml .= "$indent_str3<$ref_name>" . ($pretty ? "\n" : '')
                         . $value->output('xml', $format_options, $change_behavior, $validation_behavior)
                         . "$indent_str3</$ref_name>";
