@@ -1,0 +1,45 @@
+KnSubject
+; For 'id properties' we can specify either '#id' or '@SbId'.
+[
+  [ '#id' =>   1957, 'type' => 1, 'description' => 'öndèrwérp', ],
+  [ '@SbId' => 1958, 'type' => 2, 'description' => 'öndèrwérp twee', ],
+]
+--
+; "Element" is an array of 2 elements here. If only one element is given, it
+; will not be wrapped in an array (but be directly inside "Element", unless
+; FLATTEN_SINGLE_ELEMENT is removed from the output($change_behavior) parameter.
+{
+    "KnSubject": {
+        "Element": [
+            {
+                "@SbId": 1957,
+                "Fields": {
+                    "StId": 1,
+                    "Ds": "\u00f6nd\u00e8rw\u00e9rp"
+                }
+            },
+            {
+                "@SbId": 1958,
+                "Fields": {
+                    "StId": 2,
+                    "Ds": "\u00f6nd\u00e8rw\u00e9rp twee"
+                }
+            }
+        ]
+    }
+}
+--
+<KnSubject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Element SbId="1957">
+    <Fields>
+      <StId>1</StId>
+      <Ds>öndèrwérp</Ds>
+    </Fields>
+  </Element>
+  <Element SbId="1958">
+    <Fields>
+      <StId>2</StId>
+      <Ds>öndèrwérp twee</Ds>
+    </Fields>
+  </Element>
+</KnSubject>

@@ -366,7 +366,7 @@ class Connection
         // We've specified a rest verb instead of "insert" / "update" / "delete"
         // because this way, it is still easier to change things if necessary
         // with regards to the $fields_action argument to the Helper methods.
-        // For how, there is a direct relation between the verb and the action.
+        // For now, there is a direct relation between the verb and the action.
         // If there are ever situations in which this should change, then
         // (documented) PRs are welcomed.
         if (!is_string($data)) {

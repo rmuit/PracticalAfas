@@ -1,4 +1,4 @@
-Copyright (c) 2016 Roderik Muit <rm@wyz.biz>
+Copyright (c) 2016-2018 Roderik Muit <rm@wyz.biz>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

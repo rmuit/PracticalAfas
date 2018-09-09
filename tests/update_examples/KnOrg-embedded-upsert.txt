@@ -1,0 +1,135 @@
+; This represents an insert of a new contact/person object inside an existing
+; organisation object. If the organisation data/address does not change, the
+; 'name' and 'address' fields/objects are not necessary.
+; We always specify action "update" just to be sure, for XML updates; see
+; KnOrg-embedded-update.txt.
+; We need to specify DEFAULT_CHANGE | ALLOW_CHANGES to get In & SeNm populated
+; and to split the house number off the street field.
+KnOrganisation:update:220
+[
+  'code' => '1100000',
+  'name' => 'Wyz',
+  'address' => [
+    'street' => 'Govert Flinckstraat 168A',
+    'zip_code' => '1072EP',
+    'town' => 'Amsterdam',
+    'country_iso' => 'NL',
+  ],
+  'contact' => [
+    'email' => 'rm@wyz.biz',
+    'phone' => '06-22517218',
+    'person' => [
+      'first_name' => 'Roderik',
+      'last_name' => 'Muit',
+    ],
+  ],
+]
+; After creating the object with above data and "update" action, we need to set
+; the embedded contact/organisation data to be an "insert" instead:
+eval: $obj->getElements()[0]['Objects']['KnContact']->setAction('insert');
+--
+{
+    "KnOrganisation": {
+        "Element": {
+            "Fields": {
+; MatchOga is set to 0 by default, because BcCo is specified.
+                "BcCo": "1100000",
+                "Nm": "Wyz",
+                "MatchOga": "0"
+            },
+            "Objects": {
+                "KnBasicAddressAdr": {
+                    "Element": {
+                        "Fields": {
+                            "Ad": "Govert Flinckstraat",
+                            "ZpCd": "1072EP",
+                            "Rs": "Amsterdam",
+                            "HmNr": "168",
+                            "HmAd": "A",
+                            "CoId": "NL",
+                            "BeginDate": {TODAY}
+                        }
+                    }
+                },
+                "KnContact": {
+                    "Element": {
+                        "Fields": {
+                            "TeNr": "06-22517218",
+                            "EmAd": "rm@wyz.biz",
+                            "ViKc": "PRS"
+                        },
+                        "Objects": {
+                            "KnPerson": {
+                                "Element": {
+                                    "Fields": {
+                                        "FiNm": "Roderik",
+                                        "LaNm": "Muit",
+                                        "In": "R.",
+                                        "SeNm": "MUIT",
+                                        "AutoNum": true,
+; MatchPer is set to 7 by default, because BcCo is not specified.
+                                        "MatchPer": "7",
+                                        "SpNm": false,
+                                        "ViGe": "O",
+                                        "Corr": false
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+--
+<KnOrganisation xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Element>
+    <Fields Action="update">
+      <BcCo>1100000</BcCo>
+      <Nm>Wyz</Nm>
+      <MatchOga>0</MatchOga>
+    </Fields>
+    <Objects>
+      <KnBasicAddressAdr>
+        <Element>
+          <Fields Action="update">
+            <Ad>Govert Flinckstraat</Ad>
+            <ZpCd>1072EP</ZpCd>
+            <Rs>Amsterdam</Rs>
+            <HmNr>168</HmNr>
+            <HmAd>A</HmAd>
+            <CoId>NL</CoId>
+            <BeginDate>{TODAY}</BeginDate>
+          </Fields>
+        </Element>
+      </KnBasicAddressAdr>
+      <KnContact>
+        <Element>
+          <Fields Action="insert">
+            <TeNr>06-22517218</TeNr>
+            <EmAd>rm@wyz.biz</EmAd>
+            <ViKc>PRS</ViKc>
+          </Fields>
+          <Objects>
+            <KnPerson>
+              <Element>
+                <Fields Action="insert">
+                  <FiNm>Roderik</FiNm>
+                  <LaNm>Muit</LaNm>
+                  <In>R.</In>
+                  <SeNm>MUIT</SeNm>
+                  <AutoNum>1</AutoNum>
+                  <MatchPer>7</MatchPer>
+                  <SpNm>0</SpNm>
+                  <ViGe>O</ViGe>
+                  <Corr>0</Corr>
+                </Fields>
+              </Element>
+            </KnPerson>
+          </Objects>
+        </Element>
+      </KnContact>
+    </Objects>
+  </Element>
+</KnOrganisation>

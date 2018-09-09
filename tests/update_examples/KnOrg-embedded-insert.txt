@@ -1,0 +1,132 @@
+; We need to specify DEFAULT_CHANGE | ALLOW_CHANGES to get In & SeNm populated
+; and to split the house number off the street field.
+KnOrganisation:insert:220
+[
+  'name' => 'Wyz',
+  'address' => [
+    'street' => 'Govert Flinckstraat 168A',
+    'zip_code' => '1072EP',
+    'town' => 'Amsterdam',
+; This is an ISO country code, not an AFAS code (though in the case of 'NL'
+; these are the same). The ObjectWithCountry class converts it to an AFAS code.
+    'country_iso' => 'NL',
+  ],
+  'contact' => [
+    'email' => 'rm@wyz.biz',
+    'phone' => '06-22517218',
+    'person' => [
+      'first_name' => 'Roderik',
+      'last_name' => 'Muit',
+    ],
+  ],
+]
+--
+{
+    "KnOrganisation": {
+        "Element": {
+            "Fields": {
+                "Nm": "Wyz",
+                "AutoNum": true,
+; MatchOga is set to 6 by default, because BcCo is not specified.
+                "MatchOga": "6",
+                "PbAd": true
+            },
+            "Objects": {
+                "KnBasicAddressAdr": {
+                    "Element": {
+                        "Fields": {
+                            "Ad": "Govert Flinckstraat",
+                            "ZpCd": "1072EP",
+                            "Rs": "Amsterdam",
+                            "HmNr": "168",
+                            "HmAd": "A",
+                            "CoId": "NL",
+                            "PbAd": false,
+                            "ResZip": false
+                        }
+                    }
+                },
+                "KnContact": {
+                    "Element": {
+                        "Fields": {
+                            "TeNr": "06-22517218",
+                            "EmAd": "rm@wyz.biz",
+                            "ViKc": "PRS"
+                        },
+                        "Objects": {
+                            "KnPerson": {
+                                "Element": {
+                                    "Fields": {
+                                        "FiNm": "Roderik",
+                                        "LaNm": "Muit",
+                                        "In": "R.",
+                                        "SeNm": "MUIT",
+                                        "AutoNum": true,
+; MatchPer is set to 7 by default, because BcCo is not specified.
+                                        "MatchPer": "7",
+                                        "SpNm": false,
+                                        "ViGe": "O",
+                                        "Corr": false
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+--
+<KnOrganisation xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Element>
+    <Fields Action="insert">
+      <Nm>Wyz</Nm>
+      <AutoNum>1</AutoNum>
+      <MatchOga>6</MatchOga>
+      <PbAd>1</PbAd>
+    </Fields>
+    <Objects>
+      <KnBasicAddressAdr>
+        <Element>
+          <Fields Action="insert">
+            <Ad>Govert Flinckstraat</Ad>
+            <ZpCd>1072EP</ZpCd>
+            <Rs>Amsterdam</Rs>
+            <HmNr>168</HmNr>
+            <HmAd>A</HmAd>
+            <CoId>NL</CoId>
+            <PbAd>0</PbAd>
+            <ResZip>0</ResZip>
+          </Fields>
+        </Element>
+      </KnBasicAddressAdr>
+      <KnContact>
+        <Element>
+          <Fields Action="insert">
+            <TeNr>06-22517218</TeNr>
+            <EmAd>rm@wyz.biz</EmAd>
+            <ViKc>PRS</ViKc>
+          </Fields>
+          <Objects>
+            <KnPerson>
+              <Element>
+                <Fields Action="insert">
+                  <FiNm>Roderik</FiNm>
+                  <LaNm>Muit</LaNm>
+                  <In>R.</In>
+                  <SeNm>MUIT</SeNm>
+                  <AutoNum>1</AutoNum>
+                  <MatchPer>7</MatchPer>
+                  <SpNm>0</SpNm>
+                  <ViGe>O</ViGe>
+                  <Corr>0</Corr>
+                </Fields>
+              </Element>
+            </KnPerson>
+          </Objects>
+        </Element>
+      </KnContact>
+    </Objects>
+  </Element>
+</KnOrganisation>

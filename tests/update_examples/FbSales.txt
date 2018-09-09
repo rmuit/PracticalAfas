@@ -1,0 +1,91 @@
+FbSales
+[
+  'sales_relation' => 'xxxxxxxxxxx',
+  'Unit' => '1',
+  'warehouse' => '*****',
+  'line_items' => [
+    [
+      'item_type' => 'Art',
+      'item_code' => 'xxxxx',
+      'unit_type' => 'stk',
+      'quantity' => '5'
+    ],
+    [
+      'item_type' => 'Art',
+      'item_code' => 'xxxxx-xxx',
+      'unit_type' => 'stk',
+      'quantity' => '1'
+    ]
+  ]
+]
+--
+; The FbSales element is directly inside "Element", because there is only one.
+; We assume AFAS could accept multiple elements in one call, in which case we
+; "Element" would contain an array of elements; see KnSubject for an example.
+{
+    "FbSales": {
+        "Element": {
+            "Fields": {
+                "DbId": "xxxxxxxxxxx",
+                "Unit": "1",
+                "War": "*****"
+            },
+            "Objects": {
+; By contrast, the FbSalesLines "Element" will always contain an array, even
+; if there's only one line item. The UpdateObject class always outputs an array
+; for embedded objects (object reference fields) which are allowed to contain
+; multiple values.
+                "FbSalesLines": {
+                    "Element": [
+                        {
+                            "Fields": {
+                                "VaIt": "Art",
+                                "ItCd": "xxxxx",
+                                "BiUn": "stk",
+                                "QuUn": "5"
+                            }
+                        },
+                        {
+                            "Fields": {
+                                "VaIt": "Art",
+                                "ItCd": "xxxxx-xxx",
+                                "BiUn": "stk",
+                                "QuUn": "1"
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}
+--
+<FbSales xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Element>
+    <Fields>
+      <DbId>xxxxxxxxxxx</DbId>
+      <Unit>1</Unit>
+      <War>*****</War>
+    </Fields>
+    <Objects>
+      <FbSalesLines>
+        <Element>
+          <Fields>
+            <VaIt>Art</VaIt>
+            <ItCd>xxxxx</ItCd>
+            <BiUn>stk</BiUn>
+            <QuUn>5</QuUn>
+          </Fields>
+        </Element>
+        <Element>
+          <Fields>
+            <VaIt>Art</VaIt>
+            <ItCd>xxxxx-xxx</ItCd>
+            <BiUn>stk</BiUn>
+            <QuUn>1</QuUn>
+          </Fields>
+        </Element>
+      </FbSalesLines>
+    </Objects>
+  </Element>
+</FbSales>
