@@ -661,10 +661,9 @@ class UpdateObject
      *   returned without being validated; see @return. This argument is a
      *   bitmask that can influence which data can be changed in the return
      *   value. Possible values are:
-     *   - ADD_ELEMENT_WRAPPER: add a two-layer wrapper around the returned data
-     *     (meaning the value is inside a one-element array inside a one-element
-     *     array), with keys being the object type and "Element". This is
-     *     necessary for generating valid JSON output.
+     *   - ADD_ELEMENT_WRAPPER: add an array wrapper around the returned data;
+     *     the return value will be a one-element array with key "Element".
+     *     This is necessary for generating valid JSON output.
      *   - KEEP_EMBEDDED_OBJECTS: Keep embedded UpdateObjects in the 'Objects'
      *     sub-array of each element. This will still validate any embedded
      *     objects, but discard the resulting array structure instead of
@@ -864,6 +863,7 @@ class UpdateObject
 
         if (isset($element['Objects'])) {
             $object_type_msg = "'{$this->getType()}' object" . ($element_index ? ' with index ' . ($element_index + 1) : '') . '.';
+            $definitions = $this->getPropertyDefinitions($element, $element_index);
             $embedded_change_behavior = ($change_behavior & self::VALIDATE_ALLOW_EMBEDDED_CHANGES)
                 ? $change_behavior : self::VALIDATE_ALLOW_NO_CHANGES;
 
@@ -878,12 +878,40 @@ class UpdateObject
                 // we want to get an array structure returned).
                 $object_data = $object->getObjectData($embedded_change_behavior, $validation_behavior);
 
-                // Validate if this reference field is allowed to have multiple
-                // elements.
-                if (empty($object_properties['multiple'])) {
+                // Validate, and change the structure according to, whether
+                // this reference field is allowed to have multiple elements.
+                if (empty($definitions['objects'][$ref_name]['multiple'])) {
+                    // The returned structure depends on $change_behavior:
                     $embedded_elements = $change_behavior & self::ADD_ELEMENT_WRAPPER ? $object_data['Element'] : $object_data;
+                    // Here's where I'm making assumptions because I don't have
+                    // real specifications from AFAS, or a test setup:
+                    // - Their own knowledge base examples (for UpdateConnector
+                    //   which use KnSubject specify a single element inside
+                    //  the "Element" key, e.g. "@SbId" and "Fields" are
+                    //  directly inside "Element".
+                    // - That clearly doesn't work when multiple elements need
+                    //   to be embedded as part of the same reference field,
+                    //   e.g. a FbSales entity can have multiple elements
+                    //   inside the FbSalesLines object. In this case its
+                    //   "Element" key contains an array of elements.
+                    // Our code always returns an array of elements here. But
+                    // I officially do not know if AFAS accepts an array
+                    // inside "Elements" for _any_field. So what we do here is:
+                    // - For reference fields that can embed multiple elements,
+                    //   we keep the array, regardless whether we have one or
+                    //   more elements at the moment. (This to keep the
+                    //   structure consistent; I do not imagine AFAS will deny
+                    //   an array of 1 elements.)
+                    // - For reference fields that can only embed one element,
+                    //   we unwrap this array and place the element directly
+                    //   inside "Element" (because I do not know if AFAS
+                    //   accepts an array);
+                    // If ADD_ELEMENT_WRAPPER is not given, we always keep the
+                    // array 'wrapper'.
                     if (count($embedded_elements) > 1) {
                         throw new UnexpectedValueException("'$ref_name' object embedded in $object_type_msg contains " . count($embedded_elements) . 'elements but can only contain a single element.');
+                    } elseif ($change_behavior & self::ADD_ELEMENT_WRAPPER) {
+                        $object_data = ['Element' => reset($embedded_elements)];
                     }
                 }
 
