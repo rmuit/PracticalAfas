@@ -8,7 +8,7 @@
  * that was distributed with this source code.
  */
 
-namespace PracticalAfas;
+namespace PracticalAfas\UpdateConnector;
 
 /**
  * An UpdateObject containing definitions / logic for physical addresses.

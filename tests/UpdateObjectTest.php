@@ -9,7 +9,7 @@
  */
 
 use PHPUnit\Framework\TestCase;
-use PracticalAfas\UpdateObject;
+use PracticalAfas\UpdateConnector\UpdateObject;
 
 class UpdateObjectTest extends TestCase
 {

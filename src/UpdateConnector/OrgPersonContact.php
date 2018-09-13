@@ -8,7 +8,7 @@
  * that was distributed with this source code.
  */
 
-namespace PracticalAfas;
+namespace PracticalAfas\UpdateConnector;
 
 use UnexpectedValueException;
 

@@ -8,7 +8,7 @@
  * that was distributed with this source code.
  */
 
-namespace PracticalAfas;
+namespace PracticalAfas\Client;
 
 use InvalidArgumentException;
 use RuntimeException;
@@ -233,8 +233,6 @@ class RestCurlClient
      *   For invalid function arguments or unknown connector type.
      * @throws \UnexpectedValueException
      *   If the SoapClient returned a response in an unknown format.
-     * @throws \SoapFault
-     *   If the SOAP function execution encountered an error.
      * @throws \Exception
      *   For anything else that went wrong, e.g. initializing the SoapClient.
      */

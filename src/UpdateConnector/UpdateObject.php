@@ -8,7 +8,7 @@
  * that was distributed with this source code.
  */
 
-namespace PracticalAfas;
+namespace PracticalAfas\UpdateConnector;
 
 use InvalidArgumentException;
 use OutOfBoundsException;
@@ -193,11 +193,11 @@ class UpdateObject
      * @var string[]
      */
     public static $classMap = [
-        'FbSales' => '\PracticalAfas\ObjectWithCountry',
-        'KnBasicAddress' => '\PracticalAfas\KnBasicAddress',
-        'KnContact' => '\PracticalAfas\OrgPersonContact',
-        'KnOrganisation' => '\PracticalAfas\OrgPersonContact',
-        'KnPerson' => '\PracticalAfas\OrgPersonContact',
+        'FbSales' => '\PracticalAfas\UpdateConnector\ObjectWithCountry',
+        'KnBasicAddress' => '\PracticalAfas\UpdateConnector\KnBasicAddress',
+        'KnContact' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
+        'KnOrganisation' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
+        'KnPerson' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
     ];
 
     /**
