@@ -250,7 +250,7 @@ class RestCurlClient
 
         // Unlike other input, we don't escape $function (we assume it is safe)
         // because otherwise we can't have slashes in there.
-        $endpoint = 'https://' . rawurlencode($this->options['customerId']) . ".afasonlineconnector.nl/ProfitRestServices/$function";
+        $endpoint = 'https://' . rawurlencode($this->options['customerId']) . ".rest.afas.online/profitrestservices/$function";
         if ($arguments) {
             $params = [];
             foreach ($arguments as $key => $value) {
