@@ -320,7 +320,7 @@ class ObjectWithCountry extends UpdateObject
         // Convert ISO codes to AFAS codes, and empty the ISO code fields.
         // 'iso_country_fields' must be present; if not, this type should not
         // have / extend class ObjectWithCountry.
-        $definitions = $this->getPropertyDefinitions($element, $element_index);
+        $definitions = $this->cachedPropertyDefinitions = $this->getPropertyDefinitions($element, $element_index);
         if (!isset($definitions['iso_country_fields']) || !is_array($definitions['iso_country_fields'])) {
             throw new UnexpectedValueException("'{$this->getType()}' object has no / a non-array 'iso_country_fields' property definition.");
         }

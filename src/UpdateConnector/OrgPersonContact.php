@@ -736,7 +736,7 @@ class OrgPersonContact extends ObjectWithCountry
         // real fields but 'operation modifiers' and they got defaults also for
         // non-"insert" actions. But these are not applied automatically.
         if ($this->getAction($element_index) !== 'insert') {
-            $definitions = $this->getPropertyDefinitions($element, $element_index);
+            $definitions = $this->cachedPropertyDefinitions = $this->getPropertyDefinitions($element, $element_index);
             foreach (['MatchOga', 'MatchPer'] as $property) {
                 if (isset($definitions['fields'][$property]) && !isset($element['Fields'][$property])) {
                     if (!isset($definitions['fields'][$property]['default'])) {
