@@ -1467,47 +1467,46 @@ class UpdateObject
         $action = $this->getAction($element_index);
         $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
             || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
-
         $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+
+        // Check requiredness for reference field, and create a default object
+        // if it's missing (where defined. Defaults are unlikely to ever be
+        // needed but still... they're possible.)
         foreach ($definitions['objects'] as $ref_name => $object_properties) {
-            $default_available = $defaults_allowed && array_key_exists('default', $object_properties);
-            // Check requiredness for reference field, and create a default
-            // object if it's missing. (The latter is unlikely to ever be
-            // needed but still... it's a possibility.) Code is largely the
-            // same as validateFields(); see there for more comments.
+            // The structure of this code is equivalent to validateFields() but
+            // there are differences:
+            // - a NULL default value means a default of NULL for a field,
+            //   whereas here it means 'no default available'
+            // - getObject() is considered too expensive to call if we don't
+            //   need it; by contrast validateFields() always calls getField(),
+            //   to encapsulate the logic of what constitutes a default value.
+            $default_available = $defaults_allowed && isset($object_properties['default']);
+            // Requiredness is only checked for action "insert"; the
+            // VALIDATE_ESSENTIAL bit does not change that. (So far, we've only
+            // seen 'required on update' situations only for fields which are
+            // not proper fields, and those situations are solved in custom
+            // code in child classes.)
             $validate_required_value = !empty($object_properties['required'])
                 && ($validation_behavior & self::VALIDATE_REQUIRED
                     || ($object_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
-            // See validateFields(): throw an exception if we have no-or-null
-            // ref-field value and no default, OR if we have null ref-field
-            // value and non-null default.
+            // Throw an exception if we have no-or-null ref-field value and no
+            // default, OR if we have null ref-field value and non-null default.
+            // (See validateFields() for details on this reasoning. Note the
+            // array_key_exists() means "is null",)
             if ($validate_required_value && !isset($element['Objects'][$ref_name])
-                && (!$default_available
-                    || (array_key_exists($ref_name, $element['Objects']) && $default_available && $object_properties['default'] !== null))
+                && (!$default_available || array_key_exists($ref_name, $element['Objects']))
             ) {
-                throw new UnexpectedValueException("No value given for required '$ref_name' object embedded in $element_descr.");
+                $name_and_alias = "'$ref_name'" . (isset($object_properties['alias']) ? " ({$object_properties['alias']})" : '');
+                throw new UnexpectedValueException("No value given for required $name_and_alias object embedded in $element_descr.");
             }
 
-            if ($default_available) {
-                $null_required_value = !isset($element['Objects'][$ref_name]) && !empty($object_properties['required']);
-                if ($null_required_value || !array_key_exists($ref_name, $element['Objects'])) {
-                    // We would expect a default value to be the same data
-                    // definition (array) that we use to create UpdateObjects.
-                    // It can be defined as an UpdateObject itself, though we
-                    // don't expect that; in this case, clone the object to be
-                    // sure we don't end up adding some default object in
-                    // several places.
-                    if ($object_properties['default'] instanceof UpdateObject) {
-                        $element['Objects'][$ref_name] = clone $object_properties['default'];
-                    } else {
-                        if (!is_array($object_properties['default'])) {
-                            throw new UnexpectedValueException("Default value for '$ref_name' object embedded in $element_descr must be array.");
-                        }
-                        // The intended 'action' value is always assumed to be
-                        // equal to its parent's current value.
-                        $element['Objects'][$ref_name] = static::create($ref_name, $object_properties['default'], $this->getAction($element_index), $this->getType());
-                    }
-                }
+            // Set default if value is missing, or if value is null and field
+            // is required (and if we are allowed to set it, but that's always
+            // the case if $default_available).
+            if ($default_available
+                && (!array_key_exists($ref_name, $element['Objects'])
+                    || !empty($object_properties['required']) && $element['Objects'][$ref_name] === null)) {
+                $element['Objects'][$ref_name] = $this->getObject($ref_name, $element_index, true);
             }
         }
 
@@ -1559,36 +1558,35 @@ class UpdateObject
         // - if the default is null (or value given is null & not 'required'),
         //   then null is passed.
         foreach ($definitions['fields'] as $name => $field_properties) {
-            $default_available = $defaults_allowed && array_key_exists('default', $field_properties);
-            // Requiredness is only checked for action "insert". The
-            // VALIDATE_ESSENTIAL bit does not play a role here. (Admittedly
-            // the below logic may be a bit too complicated and there isn't a
-            // good known example where required==1 / VALIDATE_ESSENTIAL is a
-            // good solution. If it turns out that somehow some value is also
-            // required on updates, then... we might consider tying required==1
-            // to that situation?
+            // $wrapped_default is empty if there is no value or default.
+            $wrapped_default = $defaults_allowed ? $this->getField($name, $element_index, true, true) : [];
+            // Requiredness is only checked for action "insert"; the
+            // VALIDATE_ESSENTIAL bit does not change that. (So far, we've only
+            // seen 'required on update' situations only for fields which are
+            // not proper fields, and those situations are solved in custom
+            // code in child classes.)
             $validate_required_value = !empty($field_properties['required'])
                 && $action === 'insert'
                 && ($validation_behavior & self::VALIDATE_REQUIRED
                     || ($field_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
             // See above: throw an exception if we have no-or-null field
             // value and no default, OR if we have null field value and
-            // non-null default.
+            // non-null default. (Note the array_key_exists() means "is null",)
             if ($validate_required_value && !isset($element['Fields'][$name])
-                && (!$default_available
-                    || (array_key_exists($name, $element['Fields']) && $default_available && $field_properties['default'] !== null))
+                && (!$wrapped_default
+                    || (array_key_exists($name, $element['Fields']) && $wrapped_default[0] !== null))
             ) {
-                throw new UnexpectedValueException("No value given for required '$name' field of $element_descr.");
+                $name_and_alias = "'$name'" . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
+                throw new UnexpectedValueException("No value given for required $name_and_alias field of $element_descr.");
             }
 
             // Set default if value is missing, or if value is null and field
             // is required (and if we are allowed to set it, but that's always
-            // the case if $default_available).
-            if ($default_available) {
-                $null_required_value = !isset($element['Fields'][$name]) && !empty($field_properties['required']);
-                if ($null_required_value || !array_key_exists($name, $element['Fields'])) {
-                    $element['Fields'][$name] = $field_properties['default'];
-                }
+            // the case if $wrapped_default).
+            if ($wrapped_default
+                && (!array_key_exists($name, $element['Fields'])
+                    || !empty($field_properties['required']) && $element['Fields'][$name] === null)) {
+                $element['Fields'][$name] = $wrapped_default[0];
             }
 
             if (isset($element['Fields'][$name])) {
