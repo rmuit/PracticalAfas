@@ -1474,12 +1474,8 @@ class UpdateObject
         // needed but still... they're possible.)
         foreach ($definitions['objects'] as $ref_name => $object_properties) {
             // The structure of this code is equivalent to validateFields() but
-            // there are differences:
-            // - a NULL default value means a default of NULL for a field,
-            //   whereas here it means 'no default available'
-            // - getObject() is considered too expensive to call if we don't
-            //   need it; by contrast validateFields() always calls getField(),
-            //   to encapsulate the logic of what constitutes a default value.
+            // a null default value means 'no default available' (instead of
+            // 'a default of null', which it does in validateFields().)
             $default_available = $defaults_allowed && isset($object_properties['default']);
             // Requiredness is only checked for action "insert"; the
             // VALIDATE_ESSENTIAL bit does not change that. (So far, we've only
@@ -1558,8 +1554,7 @@ class UpdateObject
         // - if the default is null (or value given is null & not 'required'),
         //   then null is passed.
         foreach ($definitions['fields'] as $name => $field_properties) {
-            // $wrapped_default is empty if there is no value or default.
-            $wrapped_default = $defaults_allowed ? $this->getField($name, $element_index, true, true) : [];
+            $default_available = $defaults_allowed && array_key_exists('default', $field_properties);
             // Requiredness is only checked for action "insert"; the
             // VALIDATE_ESSENTIAL bit does not change that. (So far, we've only
             // seen 'required on update' situations only for fields which are
@@ -1573,8 +1568,8 @@ class UpdateObject
             // value and no default, OR if we have null field value and
             // non-null default. (Note the array_key_exists() means "is null",)
             if ($validate_required_value && !isset($element['Fields'][$name])
-                && (!$wrapped_default
-                    || (array_key_exists($name, $element['Fields']) && $wrapped_default[0] !== null))
+                && (!$default_available
+                    || (array_key_exists($name, $element['Fields']) && $field_properties['default'] !== null))
             ) {
                 $name_and_alias = "'$name'" . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
                 throw new UnexpectedValueException("No value given for required $name_and_alias field of $element_descr.");
@@ -1582,11 +1577,11 @@ class UpdateObject
 
             // Set default if value is missing, or if value is null and field
             // is required (and if we are allowed to set it, but that's always
-            // the case if $wrapped_default).
-            if ($wrapped_default
+            // the case if $default_available).
+            if ($default_available
                 && (!array_key_exists($name, $element['Fields'])
                     || !empty($field_properties['required']) && $element['Fields'][$name] === null)) {
-                $element['Fields'][$name] = $wrapped_default[0];
+                $element['Fields'][$name] = $field_properties['default'];
             }
 
             if (isset($element['Fields'][$name])) {
