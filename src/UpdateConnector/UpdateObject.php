@@ -56,21 +56,15 @@ use UnexpectedValueException;
  */
 class UpdateObject
 {
-
     /**
      * @see getElements(); bitmask value for the $change_behavior argument.
      */
-    const KEEP_EMBEDDED_OBJECTS = 1;
-
-    /**
-     * @see getElements(); bitmask value for the $change_behavior argument.
-     */
-    const ADD_ELEMENT_WRAPPER = 2;
+    const ADD_ELEMENT_WRAPPER = 1;
 
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
-    const FLATTEN_SINGLE_ELEMENT = 4;
+    const FLATTEN_SINGLE_ELEMENT = 2;
 
     /**
      * @see output(); bitmask value for the $change_behavior argument.
@@ -80,27 +74,27 @@ class UpdateObject
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
-    const ALLOW_EMBEDDED_CHANGES = 8;
+    const ALLOW_EMBEDDED_CHANGES = 4;
 
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
-    const ALLOW_DEFAULTS_ON_INSERT = 16;
+    const ALLOW_DEFAULTS_ON_INSERT = 8;
 
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
-    const ALLOW_DEFAULTS_ON_UPDATE = 32;
+    const ALLOW_DEFAULTS_ON_UPDATE = 16;
 
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
-    const ALLOW_REFORMAT = 64;
+    const ALLOW_REFORMAT = 32;
 
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
-    const ALLOW_CHANGES = 128;
+    const ALLOW_CHANGES = 64;
 
     /**
      * Default behavior for output(,$change_behavior).
@@ -112,7 +106,7 @@ class UpdateObject
      * additional bitmask values, this value may or may not be changed to
      * incorporate that behavior by default.
      */
-    const DEFAULT_CHANGE = 92;
+    const DEFAULT_CHANGE = 46;
 
     /**
      * @see output(); bitmask value for the $validation_behavior argument.
@@ -1124,11 +1118,6 @@ class UpdateObject
      *   - ADD_ELEMENT_WRAPPER: add an array wrapper around the returned data;
      *     the return value will be a one-element array with key "Element".
      *     This is necessary for generating valid JSON output.
-     *   - KEEP_EMBEDDED_OBJECTS: Keep embedded UpdateObjects in the 'Objects'
-     *     sub-array of each element. This will still validate any embedded
-     *     objects, but discard the resulting array structure instead of
-     *     replacing the UpdateObject with it. (Replacing happens when this bit
-     *     is not set, except when $change_behavior is null).
      *   - ALLOW_* & FLATTEN_SINGLE_ELEMENT: see output() for description.
      * @param int $validation_behavior
      *   (Optional) see output().
@@ -1415,11 +1404,8 @@ class UpdateObject
                     }
                 }
 
-                // By default, replace any UpdateObjects with their validated
-                // array representation.
-                if (!($change_behavior & self::KEEP_EMBEDDED_OBJECTS)) {
-                    $element['Objects'][$ref_name] = $object_data;
-                }
+                // Replace UpdateObject with its validated array representation.
+                $element['Objects'][$ref_name] = $object_data;
             }
         }
 
@@ -1778,10 +1764,9 @@ class UpdateObject
             throw new InvalidArgumentException('Invalid format.');
         }
 
-        // ADD_ELEMENT_WRAPPER and KEEP_EMBEDDED_OBJECTS make no sense in this
-        // method in general. (They are only set in very specific places.) Hard
-        // unset them without checking.
-        $change_behavior = $change_behavior & ~(self::ADD_ELEMENT_WRAPPER | self::KEEP_EMBEDDED_OBJECTS);
+        // ADD_ELEMENT_WRAPPER makes no sense in this method in general; it's
+        // only set in very specific places. Hard unset it without checking.
+        $change_behavior = $change_behavior & ~self::ADD_ELEMENT_WRAPPER;
 
         switch (strtolower($format)) {
             case 'json':
@@ -1856,17 +1841,15 @@ class UpdateObject
             $skip_start = false;
         }
 
-        // Fully validate the element(s) in this object, but keep embedded
-        // objects in the form of UpdateObjects because we need to call
-        // output() on the individual objects (because e.g. they need to know
-        // their own getAction() while generating output). This means that we
+        // Fully validate the element(s) in this object, even though we won't
+        // need the embedded objects for generating output. This means that we
         // validate all embedded objects multiple times (here and while
         // generating the output); objects that are 2 levels deep even get
-        // validated 3 times. but there's not much we can do about that, since
-        // our 'design decision' is to validate all embedded objects before
-        // being able to fully validate the main one.
-        $cb = ($change_behavior & ~self::FLATTEN_SINGLE_ELEMENT) | self::KEEP_EMBEDDED_OBJECTS;
-        foreach ($this->getElements($cb, $validation_behavior) as $element_index => $element) {
+        // validated 3 times. But it's the only way to validate field values
+        // which depend on values in embedded objects (and stick to the 'design
+        // decision' to validate embedded objects before object fields). Never
+        // flatten the return value, otherwise we can't foreach().
+        foreach ($this->getElements($change_behavior & ~self::FLATTEN_SINGLE_ELEMENT, $validation_behavior) as $element_index => $element) {
             $action_attribute = '';
             $action = $this->getAction($element_index);
             if ($action) {
@@ -1910,6 +1893,9 @@ class UpdateObject
             }
             $xml .= "$indent_str2</Fields>";
 
+            // $element contains all embedded objects' array representations,
+            // but we need to call the UpdateObject's outputXml() to be able
+            // to insert the "action" attribute, if that's necessary.
             if (!empty($element['Objects'])) {
                 $xml .= "$indent_str2<Objects>";
                 if ($pretty) {
@@ -1917,10 +1903,14 @@ class UpdateObject
                     $format_options['indent_start'] = (empty($format_options['indent_start']) ? '' : $format_options['indent_start'])
                         . str_repeat(' ', $indent * ($this->parentType ? 3 : 4));
                 }
-                /* @var UpdateObject $value */
+                // Iterating over the keys in 'Objects' is fine; it contains
+                // all object values we need including defaults. (No need to
+                // recheck the property definitions here.) We also know
+                // getObject() should never return null for these.
                 foreach ($element['Objects'] as $ref_name => $value) {
                     $xml .= "$indent_str3<$ref_name>" . ($pretty ? "\n" : '')
-                        . $value->output('xml', $format_options, $change_behavior, $validation_behavior)
+                        . $this->getObject($ref_name, $element_index, true)
+                            ->output('xml', $format_options, $change_behavior, $validation_behavior)
                         . "$indent_str3</$ref_name>";
                 }
                 $xml .= "$indent_str2</Objects>";

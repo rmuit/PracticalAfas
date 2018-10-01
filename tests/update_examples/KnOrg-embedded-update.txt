@@ -8,7 +8,7 @@
 ; "Action" XML attributes are always present.
 ; We need to specify DEFAULT_CHANGE | ALLOW_CHANGES to get In & SeNm populated
 ; and to split the house number off the street field.
-KnOrganisation:update:220
+KnOrganisation:update:110
 [
   'code' => '1100000',
   'name' => 'Wyz',

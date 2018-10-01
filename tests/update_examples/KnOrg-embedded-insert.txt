@@ -1,6 +1,6 @@
 ; We need to specify DEFAULT_CHANGE | ALLOW_CHANGES to get In & SeNm populated
 ; and to split the house number off the street field.
-KnOrganisation:insert:220
+KnOrganisation:insert:110
 [
   'name' => 'Wyz',
   'address' => [
