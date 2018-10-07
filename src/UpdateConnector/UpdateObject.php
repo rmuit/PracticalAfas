@@ -57,16 +57,6 @@ use UnexpectedValueException;
 class UpdateObject
 {
     /**
-     * @see getElements(); bitmask value for the $change_behavior argument.
-     */
-    const ADD_ELEMENT_WRAPPER = 1;
-
-    /**
-     * @see output(); bitmask value for the $change_behavior argument.
-     */
-    const FLATTEN_SINGLE_ELEMENT = 2;
-
-    /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
     const ALLOW_NO_CHANGES = 0;
@@ -74,27 +64,32 @@ class UpdateObject
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
-    const ALLOW_EMBEDDED_CHANGES = 4;
+    const ALLOW_EMBEDDED_CHANGES = 2;
 
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
-    const ALLOW_DEFAULTS_ON_INSERT = 8;
+    const ALLOW_DEFAULTS_ON_INSERT = 4;
 
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
-    const ALLOW_DEFAULTS_ON_UPDATE = 16;
+    const ALLOW_DEFAULTS_ON_UPDATE = 8;
 
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
-    const ALLOW_REFORMAT = 32;
+    const ALLOW_REFORMAT = 16;
 
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      */
-    const ALLOW_CHANGES = 64;
+    const ALLOW_CHANGES = 32;
+
+    /**
+     * @see output(); bitmask value for the $change_behavior argument.
+     */
+    const FLATTEN_SINGLE_ELEMENT = 1;
 
     /**
      * Default behavior for output(,$change_behavior).
@@ -106,7 +101,7 @@ class UpdateObject
      * additional bitmask values, this value may or may not be changed to
      * incorporate that behavior by default.
      */
-    const DEFAULT_CHANGE = 46;
+    const DEFAULT_CHANGE = 23;
 
     /**
      * @see output(); bitmask value for the $validation_behavior argument.
@@ -1112,13 +1107,9 @@ class UpdateObject
      *
      * @param int $change_behavior
      *   (Optional) by default, the literal value as stored in this object is
-     *   returned without being validated; see the return value docs. This
-     *   argument is a bitmask that can influence which data can be changed in
-     *   the return value. Possible values are:
-     *   - ADD_ELEMENT_WRAPPER: add an array wrapper around the returned data;
-     *     the return value will be a one-element array with key "Element".
-     *     This is necessary for generating valid JSON output.
-     *   - ALLOW_* & FLATTEN_SINGLE_ELEMENT: see output() for description.
+     *   returned without being validated; see the return value docs. When
+     *   passed, this argument is a bitmask that can influence which data can
+     *    be changed in the return value; see output() for description.
      * @param int $validation_behavior
      *   (Optional) see output().
      *
@@ -1160,10 +1151,7 @@ class UpdateObject
             foreach ($this->elements as $element_index => $element) {
                 $elements[] = $this->validateElement($element, $element_index, $change_behavior, $validation_behavior);
             }
-            if ($change_behavior & self::FLATTEN_SINGLE_ELEMENT && count($elements) == 1) {
-                $elements = reset($elements);
-            }
-            $return = $change_behavior & self::ADD_ELEMENT_WRAPPER ? ['Element' => $elements] : $elements;
+            $return = $elements;
         }
 
         return $return;
@@ -1314,9 +1302,13 @@ class UpdateObject
      *
      * @return array
      *   The element with its embedded fields plus the objects contained within
-     *   them validated, and changed if appropriate. Dependent on
-     *   $change_behavior, all UpdateObjects are replaced by their validated
-     *   array representation, and possibly wrapped inside 'Element' structures.
+     *   them validated, and changed if appropriate. All UpdateObjects (values
+     *   inside the 'Objects' array) are replaced by their validated array
+     *   representation, wrapped inside a one-element array keyed by 'Element'
+     *   (as is necessary for the JSON representation of data sent to an
+     *   Update Connector). The array value represents either a single element,
+     *   or an array of one or more elements, depending on the 'multiple'
+     *   property definition for the corresponding object reference field.
      *
      * @throws \UnexpectedValueException
      *   If the element data does not pass validation. (This likely indicates
@@ -1329,27 +1321,25 @@ class UpdateObject
 
         if (isset($element['Objects'])) {
             $definitions = $this->cachedPropertyDefinitions ?: $this->getPropertyDefinitions($element, $element_index);
-            $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
-            // ALLOW_EMBEDDED_CHANGES has no effect on ADD_ELEMENT_WRAPPER; if
-            // that is set, it keeps being set, because it's more or less
-            // 'owned' by output(), and doesn't really influence the structure
-            // of objects/elements themselves. That last thing also applies to
-            // FLATTEN_SINGLE_ELEMENT so let's keep that too.
             $embedded_change_behavior = $change_behavior & self::ALLOW_EMBEDDED_CHANGES
-                ? $change_behavior
-                : $change_behavior & (self::ALLOW_EMBEDDED_CHANGES | self::FLATTEN_SINGLE_ELEMENT);
+                ? $change_behavior : self::ALLOW_NO_CHANGES;
 
             foreach ($element['Objects'] as $ref_name => $object) {
                 // Doublecheck; unlikely to fail because it's also in
                 // addElements().
                 if (!$object instanceof UpdateObject) {
+                    $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
                     $name_and_alias = "'$ref_name'" . (isset($definitions['objects'][$ref_name]['alias']) ? " ({$definitions['objects'][$ref_name]['alias']})" : '');
                     throw new UnexpectedValueException("$name_and_alias object embedded in $element_descr must be an object of type UpdateObject.");
                 }
 
-                // We need to decide the exact structure of "Elements" in the
-                // embedded objects. I'm making assumptions here because I don't
-                // have real specifications from AFAS, or a means to test this:
+                // Validation of a full object is done by getElements().
+                $elements = $object->getElements($embedded_change_behavior, $validation_behavior);
+                // Validate whether this reference field is allowed to have
+                // multiple elements. Also, decide the exact structure of
+                // "Elements" in the embedded objects. I'm making assumptions
+                // here because I don't have real specifications from AFAS, or
+                // a means to test this:
                 // - Their own knowledge base examples (for UpdateConnector
                 //   which use KnSubject) specify a single element inside
                 //   the "Element" key, e.g. "@SbId" and "Fields" are
@@ -1359,16 +1349,14 @@ class UpdateObject
                 //   FbSales entity can have multiple elements inside the
                 //   FbSalesLines object. In this case its "Element" key
                 //   contains an array of elements.
-                // Our code has the FLATTEN_SINGLE_ELEMENT flag for output() so
-                // the caller can decide what to do with 'main' objects. (By
+                // This class has the FLATTEN_SINGLE_ELEMENT bit for output()
+                // so the caller can decide what to do with 'main' objects. (By
                 // default, one element is 'flattened' because see first point
                 // above, but multiple elements are supported.) For embedded
                 // objects, I officially do not know if AFAS accepts an array
-                // inside "Elements" for _any_field. So what we do here is:
-                // - If ADD_ELEMENT_WRAPPER is not provided, we pass the
-                //   existing value of FLATTEN_SINGLE_ELEMENT (because we are
-                //   apparently not building JSON anyway).
-                // Otherwise:
+                // inside "Elements" for _any_ field. So we ignore the
+                // FLATTEN_SINGLE_ELEMENT bit here and let the 'multiple'
+                // property of the reference field drive what happens:
                 // - For reference fields that can embed multiple elements,
                 //   we keep the array, regardless whether we have one or
                 //   more elements at the moment. (This to keep the
@@ -1378,34 +1366,17 @@ class UpdateObject
                 //   we unwrap this array and place the element directly
                 //   inside "Element" (because I do not know if AFAS
                 //   accepts an array).
-                if ($embedded_change_behavior & self::ADD_ELEMENT_WRAPPER) {
-                    $cb = empty($definitions['objects'][$ref_name]['multiple'])
-                        ? $embedded_change_behavior | self::FLATTEN_SINGLE_ELEMENT
-                        : $embedded_change_behavior & ~self::FLATTEN_SINGLE_ELEMENT;
-                }
-                else {
-                    $cb = $embedded_change_behavior;
-                }
-                // Validation of a full object is done by getElements().
-                $object_data = $object->getElements($cb, $validation_behavior);
-
-                // Validate, and change the structure according to, whether
-                // this reference field is allowed to have multiple elements.
                 if (empty($definitions['objects'][$ref_name]['multiple'])) {
-                    $embedded_elements = $change_behavior & self::ADD_ELEMENT_WRAPPER ? $object_data['Element'] : $object_data;
-                    // We could have a flattened array here, depending on
-                    // whether the object has multiple elements and/or the
-                    // value of ADD_ELEMENT_WRAPPER. We assume one element
-                    // always has 'Fields', so if we don't find that on the
-                    // first level, we have an array of one/multiple elements.
-                    if (!isset($embedded_elements['Fields']) && count($embedded_elements) > 1) {
+                    if (count($elements) > 1) {
+                        $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
                         $name_and_alias = "'$ref_name'" . (isset($definitions['objects'][$ref_name]['alias']) ? " ({$definitions['objects'][$ref_name]['alias']})" : '');
-                        throw new UnexpectedValueException("$name_and_alias object embedded in $element_descr contains " . count($embedded_elements) . ' elements but can only contain a single element.');
+                        throw new UnexpectedValueException("$name_and_alias object embedded in $element_descr contains " . count($elements) . ' elements but can only contain a single element.');
+                    } else {
+                        $elements = reset($elements);
                     }
                 }
-
                 // Replace UpdateObject with its validated array representation.
-                $element['Objects'][$ref_name] = $object_data;
+                $element['Objects'][$ref_name] = ['Element' => $elements];
             }
         }
 
@@ -1499,7 +1470,10 @@ class UpdateObject
      * Validates an element's fields against a list of property definitions.
      *
      * This is mainly split out from validateElement() to be easier to override
-     * by child classes. It should generally not touch $this->elements.
+     * by child classes. It should generally not touch $this->elements. We
+     * can assume all embedded objects have already been validated and replaced
+     * by array structures (so this method should not be called in cases where
+     * this is not true).
      *
      * @param array $element
      *   The element (usually the single one contained in $this->elements)
@@ -1590,7 +1564,10 @@ class UpdateObject
      * This method is used both on 'input into' and 'output from' an element
      * (e.g. setField() / addElements() and validateFields() call it). It is
      * supposed to be called only with field names/aliases that we know to
-     * exist for this object type.
+     * exist for this object type. If an extending class implements validation
+     * that depends on other values inside this element: that is allowed but
+     * can get fussy / makes assumptions about how this method is called; see
+     * $element parameter.
      *
      * @param mixed $value
      *   A scalar value which is (going to be) assigned to an element's field.
@@ -1602,14 +1579,28 @@ class UpdateObject
      *   (Optional) see output().
      * @param array $element
      *   (Optional) The full element being validated, for the benefit of
-     *   validation checks which depend on other fields; these likely won't be
-     *   performed if this argument is not passed. (If the full element is
-     *   equal to $this->elements[index]... just pass that. It is often not
-     *   equal because the element may not be set yet or may change during
-     *   validation. This argument is fussy: child classes extending the method
-     *   should beware that not all fields may not be populated/validated yet,
-     *   and callers looping over field should do this in a well defined order,
-     *   for the benefit of validation checks.)
+     *   validation checks which depend on other values. (If the full element
+     *   is equal to $this->elements[index]... just pass that if possible, to
+     *   make sure that those validation checks can be performed. It is often
+     *   not equal to $this->elements[index] because the element may change
+     *   during validation.) This argument is fussy: callers looping over
+     *   fields while calling this function should do this in a well defined
+     *   order, for the benefit of validation checks. Child classes extending
+     *   this method should be aware of its limitations which we'll illustrate
+     *   by the standard callers in this class:
+     *   - When called while an element is being populated, we cannot assume
+     *     all other fields are populated yet. (addElements() does this in the
+     *     order in which fields occur in the return value of
+     *     getPropertyDefinitions().) We also cannot assume any fields are
+     *     validated. (That depends on 'validation behavior' when those fields
+     *     were populated.)
+     *   - When called by setField(), we cannot assume other fields are
+     *     validated; see previous point.
+     *   - When called while an element is being validated through
+     *     getElements() -> validateElement(): we cannot assume all other
+     *     fields are validated (see first point about field order); individual
+     *     objects in the 'objects' array are replaced by one-element arrays
+     *     as returned by validateEmbeddedObjects().
      * @param int $element_index
      *   (Optional) The index of the element in our object data. Often only
      *   used for logging; may also have a minor effect on the property
@@ -1655,6 +1646,8 @@ class UpdateObject
                 } catch (InvalidArgumentException $e) {
                     // Catch and rethrow so we don't need to call
                     // getPropertyDefinitions() on every call if not needed.
+                    // (Don't pass $element as an argument, so we never
+                    // propagate the uncertainty about its state/contents.)
                     $definitions = $this->cachedPropertyDefinitions ?: $this->getPropertyDefinitions();
                     $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
                     $name_and_alias = "'$field_name'" . (isset($definitions['fields'][$field_name]['alias']) ? " ({$definitions['fields'][$field_name]['alias']})" : '');
@@ -1711,10 +1704,13 @@ class UpdateObject
      *     classes may use this value or implement their own additional bits.
      *   - FLATTEN_SINGLE_ELEMENT (default): If this object holds only one
      *     element, then output this single element inside the "Element"
-     *     section rather than an array containing one element. (This is only
-     *     applicable to JSON output; it's not expected to make a difference to
+     *     section rather than an array containing one element. (This bit only
+     *     has effect for calls to output(), unlike other bits which have
+     *     effect for every call that has a $change_behavior argument. It only
+     *     applies to JSON output and is not expected to make a difference to
      *     AFAS though we're not 100% sure. It is not passed into embedded
-     *     objects; those have hardcoded logic around this.)
+     *     objects; those have hardcoded logic around this, in
+     *     validateEmbeddedObjects().)
      *   Child classes might define additional values.
      * @param int $validation_behavior
      *   (Optional) By default, this method performs validation checks. This
@@ -1764,18 +1760,23 @@ class UpdateObject
             throw new InvalidArgumentException('Invalid format.');
         }
 
-        // ADD_ELEMENT_WRAPPER makes no sense in this method in general; it's
-        // only set in very specific places. Hard unset it without checking.
-        $change_behavior = $change_behavior & ~self::ADD_ELEMENT_WRAPPER;
+        // The 'flatten' bit only makes sense for JSON output, and only inside
+        // this method. (For embedded elements, 'flattening' is governed by a
+        // reference field property instead; see validateEmbeddedObjects().)
+        $flatten = $change_behavior & self::FLATTEN_SINGLE_ELEMENT;
+        $change_behavior = $change_behavior & ~self::FLATTEN_SINGLE_ELEMENT;
 
         switch (strtolower($format)) {
             case 'json':
-                // getElements() returns a one-element array with key
-                // 'Element' and value being the one or several elements in
-                // this DataObject. The JSON structure should be like this
-                // except it needs another one-element array wrapper with key
-                // being the object type.
-                $data = [$this->getType() => $this->getElements($change_behavior | self::ADD_ELEMENT_WRAPPER, $validation_behavior)];
+                $elements = $this->getElements($change_behavior, $validation_behavior);
+                if ($flatten && count($elements) == 1) {
+                    $elements = reset($elements);
+                }
+                // The JSON structure should have two one-element wrappers
+                // around the element data, with keys being the object type
+                // and 'Element'. (Embedded objects have the 'Element' wrapper
+                // added by validateEmbeddedObjects().)
+                $data = [$this->getType() => ['Element' => $elements]];
                 return empty($format_options['pretty']) ? json_encode($data) : json_encode($data, JSON_PRETTY_PRINT);
 
             case 'xml':
@@ -1849,7 +1850,7 @@ class UpdateObject
         // which depend on values in embedded objects (and stick to the 'design
         // decision' to validate embedded objects before object fields). Never
         // flatten the return value, otherwise we can't foreach().
-        foreach ($this->getElements($change_behavior & ~self::FLATTEN_SINGLE_ELEMENT, $validation_behavior) as $element_index => $element) {
+        foreach ($this->getElements($change_behavior, $validation_behavior) as $element_index => $element) {
             $action_attribute = '';
             $action = $this->getAction($element_index);
             if ($action) {
@@ -1979,10 +1980,13 @@ class UpdateObject
      *   things like requiredness or default value of one field are dependent
      *   on the value of another field. Passing the element into here in calls
      *   from e.g. validateFields(), while logically inconsistent, is a
-     *   shortcut to handling these situations, which would otherwise need to
+     *   shortcut to handling these situations which would otherwise need to
      *   be solved by copying the full validateFields() code into a child class
      *   and modifying it. We can't refer to $this->elements[$element_index]
-     *   because the value may be changed during validation-for-output.
+     *   because the value may be changed during validation-for-output. We
+     *   cannot assume that the contents of fields are validated, and the type
+     *   of data present in embedded objects could be either UpdateObjects or
+     *   arrays.
      * @param int $element_index
      *   (Optional) The index of the element in our object data.
      *

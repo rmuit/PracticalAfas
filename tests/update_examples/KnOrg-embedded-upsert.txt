@@ -5,7 +5,7 @@
 ; KnOrg-embedded-update.txt.
 ; We need to specify DEFAULT_CHANGE | ALLOW_CHANGES to get In & SeNm populated
 ; and to split the house number off the street field.
-KnOrganisation:update:110
+KnOrganisation:update:55
 [
   'code' => '1100000',
   'name' => 'Wyz',
