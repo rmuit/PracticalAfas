@@ -10,6 +10,7 @@
 
 namespace PracticalAfas\UpdateConnector;
 
+use InvalidArgumentException;
 use UnexpectedValueException;
 
 /**
@@ -23,6 +24,61 @@ use UnexpectedValueException;
  */
 class OrgPersonContact extends ObjectWithCountry
 {
+    /**
+     * @see output(); bitmask value for the $change_behavior argument.
+     *
+     * This has been implemented separately from ALLOW_CHANGE / ALLOW_REFORMAT
+     * so that it can (and needs to be) explicitly specified if you want to
+     * format phone numbers uniformly, separately from other changes. The
+     * dangerous thing about it is that the default format template drops the
+     * country code.
+     *
+     * Validating (but not reformatting) the phone number is driven by the
+     * standard VALIDATE_FORMAT value for the $validation_behavior argument;
+     * that is also not 'on' by default.
+     */
+    const ALLOW_REFORMAT_PHONE_NR = 1024;
+
+    /**
+     * A format template for the phone number. Must include %A and %L.
+     *
+     * Replacement tokens are %C for country code (numeric part), %A for area
+     * code (without trailing 0) and %L for the local part. There are no
+     * mechanisms for escaping / using these tokens literally in the template.
+     *
+     * The default value is really only applicable for administrations that
+     * have phone numbers in a single country; then again, our code currently
+     * only validates Dutch phone numbers.
+     *
+     * @var string
+     */
+    protected static $phoneNumberFormat = '0%A-%L';
+
+    /**
+     * Returns the phone number format template.
+     *
+     * @return string
+     */
+    public static function getPhoneNumberFormat()
+    {
+        return static::$phoneNumberFormat;
+    }
+
+    /**
+     * Sets the phone number format template.
+     *
+     * @param $format
+     *   The format
+     */
+    public static function setPhoneNumberFormat($format)
+    {
+        if (strpos($format, '%A') === false || strpos($format, '%L') === false) {
+            throw new InvalidArgumentException('Phone number format does not contain both %A and %L.');
+        }
+
+        static::$phoneNumberFormat = $format;
+    }
+
     /**
      * {@inheritdoc}
      */
@@ -698,10 +754,14 @@ class OrgPersonContact extends ObjectWithCountry
 
         // If the definition contains reference fields for both address and
         // postal address, and the data has an address but no postal address
-        // set, then the default becomes postal_address_is_address = true.
+        // set, then the default becomes postal_address_is_address = true. (If
+        // both addresses are set, then we don't set the default to false and /
+        // or compare the two addresses; we assume that's not necessary.)
         // That postal_address_is_address is called KnContact.PadAdr,
         // KnPerson.PadAdr and KnOrganisation.PbAd; I'm not 100% sure if this
-        // is a mistake so we'll just do the two names, always.
+        // is a mistake so we'll just do the two names, always. (Note that PbAd
+        // means something different in KnBasicAddress, but that is not defined
+        // by this class.)
         if (isset($definitions['objects']['KnBasicAddressAdr'])
             && isset($definitions['objects']['KnBasicAddressPad'])
             && !empty($element['Objects']['KnBasicAddressAdr'])
@@ -726,7 +786,7 @@ class OrgPersonContact extends ObjectWithCountry
         if ($this->getType() === 'KnPerson') {
             // ALLOW_CHANGES is not set by default.
             if ($change_behavior & self::ALLOW_CHANGES) {
-                $element['Fields'] = static::convertNameFields($element['Fields']);
+                $element['Fields'] = $this->convertNameFields($element['Fields'], $element_index);
             }
         }
 
@@ -751,22 +811,205 @@ class OrgPersonContact extends ObjectWithCountry
     }
 
     /**
+     * @inheritDoc
+     */
+    protected function validateFieldValue($value, $field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, $element_index = null, array $element = null)
+    {
+        $value = parent::validateFieldValue($value, $field_name, $change_behavior, $validation_behavior, $element_index, $element);
+
+        // Validate and/or change the format of a Dutch phone number, for an
+        // element which has an address present in this element (which may also
+        // be inside an embedded object in most cases. Note it does not
+        // validate if the address is in a parent object; that is done in
+        // validateReferenceFields(). This code isn't guaranteed to absolutely
+        // always behave correctly... but the relevant bits are 'off' by
+        // default, and the code is a good start.
+        if (isset($value) && in_array($field_name, ['TeNr', 'MbNr', 'FaNr', 'TeN2', 'MbN2'], true)
+            && ($change_behavior & self::ALLOW_REFORMAT_PHONE_NR || $validation_behavior & self::VALIDATE_FORMAT)) {
+            // First, establish whether we even know the country code, since
+            // that is inside an address object. This means this validation /
+            // change is not water tight; it will be skipped for updates (or
+            // addElement() calls where the action was not set yet) which do
+            // not include address objects. Compare country in main address if
+            // available; otherwise in postal address if available. (It's a
+            // little doubtful whether we want to take the postal address as
+            // the base, but it probably works out for updates that happen to
+            // update only the postal address at the same time...) If still not
+            // found then:
+            // - If this is a KnContact, then check the embedded knPerson or
+            //   KnOrganisation's address. (We assume a business phone number.)
+            // - If KnPerson, then check knContact or KnOrganisation, but do
+            //   not throw validation errors for TeN2 & MbN2 which are private.
+            //   (Only allow reformatting.)
+            // - If KnOrganisation, then don't use individual people's address
+            //   to validate the company's phone number.
+            // Again: this is all a bit wishy-washy, but a good start...
+            switch ($this->getType()) {
+                case 'KnContact':
+                    $search_embedded_types = ['KnOrganisation', 'KnPerson'];
+                    break;
+
+                case 'KnPerson':
+                    $search_embedded_types = ['KnContact', 'KnOrganisation'];
+                    break;
+
+                default:
+                    $search_embedded_types = [];
+            }
+            $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad'], $search_embedded_types);
+            if ($address && (!isset($address['CoId']) || strtoupper($address['CoId']) === 'NL')) {
+                $parts = static::validateDutchPhoneNr($value);
+                if (!$parts && $validation_behavior & self::VALIDATE_FORMAT && !in_array($field_name, ['TeN2', 'MbN2'], true)) {
+                    throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
+                }
+                if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
+                    // Only replace area code and local part into here;
+                    // country code is lost.
+                    $value = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
+                }
+            }
+        }
+
+        return $value;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function validateReferenceFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
+    {
+        $element = parent::validateReferenceFields($element, $element_index, $change_behavior, $validation_behavior);
+
+        // If we have an address object and another OrgPersonContact embedded,
+        // check if there's a phone field inside those objects that we should
+        // retroactively validate / reformat. We need to do that once both
+        // objects are already validated, so this seems a good place.
+        $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad']);
+        if ($address && (!isset($address['CoId']) || strtoupper($address['CoId']) === 'NL')) {
+            // This is the reverse of validateFieldValue():
+            // - If this is a KnContact, then validate the embedded knPerson's
+            //   phone, but do not throw validation errors for TeN2 & MbN2
+            //   which are private. (We assume the address to be a company
+            //   address. Only allow reformatting of those numbers.) Don't
+            //   validate KnOrganisation phone against this KnContact address.
+            // - If KnPerson, validate KnContact phone; not KnOrganisation.
+            // - If KnOrganisation, validate embedded KnContact and KnPerson's
+            //   phone, but do not throw validation errors for TeN2 & MbN2.
+            foreach (['KnContact', 'KnPerson'] as $type) {
+                // Each embedded type has only one element, keyed by 'Element'.
+                if (!empty($element['Objects'][$type]['Element']['Fields'])) {
+                    foreach (['TeNr', 'MbNr', 'FaNr', 'TeN2', 'MbN2'] as $field_name) {
+                        if (!empty($element['Objects'][$type]['Element']['Fields'][$field_name])) {
+                            $parts = static::validateDutchPhoneNr($element['Objects'][$type]['Element']['Fields'][$field_name]);
+                            if (!$parts && $validation_behavior & self::VALIDATE_FORMAT && !in_array($field_name, ['TeN2', 'MbN2'], true)) {
+                                throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
+                            }
+                            if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
+                                // Only replace area code and local part into here;
+                                // country code is lost.
+                                $element['Objects'][$type]['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
+                            }
+                        }
+                    }
+                    if ($type === 'KnContact' && !empty($element['Objects'][$type]['Element']['Fields'])) {
+                        foreach (['TeNr', 'MbNr', 'FaNr', 'TeN2', 'MbN2'] as $field_name) {
+                            if (!empty($element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name])) {
+                                $parts = static::validateDutchPhoneNr($element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name]);
+                                if (!$parts && $validation_behavior & self::VALIDATE_FORMAT && !in_array($field_name, ['TeN2', 'MbN2'], true)) {
+                                    throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
+                                }
+                                if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
+                                    // Only replace area code and local part into here;
+                                    // country code is lost.
+                                    $element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return $element;
+    }
+
+    /**
+     * Returns the 'Fields' part of an address object for a certain element.
+     *
+     * @param array $element
+     *   The element, which may represent a single element from parent object
+     *   containing an address object. This code tries to work with the same
+     *   uncertainties as validateFieldValue() does re. the contents.
+     * @param array $search_address_types
+     *   The address types to check. By default only the regular address, but
+     *   this can be appended or replaced with ['KnBasicAddressAdr'] to (also)
+     *   check the postal address.
+     * @param array $search_embedded_types
+     *   If no embedded address object is found in directly in the element
+     *   itself, then check these embedded object types for addresses,
+     *   recursively. (E.g. if $element is a KnOrganisation, then specify
+     *   ['KnContact', 'KnPerson'] to check for an address in an embedded
+     *   contact object, and then if not present, check in a person object
+     *   embedded in the contact.)
+     *
+     * @return array|mixed
+     */
+    protected static function getAddressFields(array $element, array $search_address_types = ['KnBasicAddressAdr'], array $search_embedded_types = []) {
+        $address = [];
+        // First, see if there's an address directly inside this element.
+        foreach ($search_address_types as $name) {
+            if (!empty($element['Objects'][$name])) {
+                $address = $element['Objects'][$name];
+                break;
+            }
+        }
+        if ($address) {
+            // $address is an object or a one-element array, depending on the
+            // caller. Convert to an array without 'Element' wrapper.
+            $address = $address instanceof UpdateObject ? $address->getElements(self::DEFAULT_CHANGE, self::VALIDATE_NOTHING)[0] : $address['Element'];
+        } elseif ($search_embedded_types) {
+            // Check for address in embedded elements, in the argument's order.
+            foreach ($search_embedded_types as $reference_field_name) {
+                if (!empty($element['Objects'][$reference_field_name])) {
+                    $embedded_element = $element['Objects'][$reference_field_name];
+                    $embedded_element = $embedded_element instanceof UpdateObject ? $embedded_element->getElements(self::DEFAULT_CHANGE, self::VALIDATE_NOTHING)[0] : $embedded_element['Element'];
+                    $address = static::getAddressFields($embedded_element, $search_embedded_types);
+                    break;
+                }
+            }
+        }
+
+        return $address ? $address['Fields'] : [];
+    }
+
+    /**
      * Derives initials / prefix / search name field from first / last name.
      *
      * @param array $fields
      *   The 'Fields' array of a KnContact element that is being validated.
+     * @param int $element_index
+     *   (optional) The index of the element in our object data; usually there
+     *   is one element and the index is 0. For modifying a set of fields which
+     *   are not stored in this object, do not pass this value.
      *
      * @return array
      *   The same fields array, possibly modified.
      */
-    public static function convertNameFields($fields)
+    public function convertNameFields(array $fields, $element_index = 0)
     {
+        // Not-officially-documented behavior of this method: if the action
+        // related to $fields is not "insert", then most fields we want to
+        // populate get set to either a derived value or '' - so any value
+        // currently in AFAS can be overwritten. If the action is "insert",
+        // most fields which are not set to a derived value, are not set at all.
+
         // Split off (Dutch) prefix from last name. NOTE: creepily hardcoded
         // stuff. Trailing spaces are necessary, and sometimes ordering matters.
         // ('van de ' before 'van '.)
-        if (!empty($fields['LaNm']) && empty($fields['Is'])) {
+        if (!empty($fields['LaNm']) && (!isset($fields['Is']) || $fields['Is'] === '')) {
             $fields['LaNm'] = trim($fields['LaNm']);
             $name = strtolower($fields['LaNm']);
+            $found = false;
             foreach ([
                          'de ',
                          'v.',
@@ -781,42 +1024,55 @@ class OrgPersonContact extends ObjectWithCountry
                 if (strpos($name, $value) === 0) {
                     $fields['Is'] = rtrim($value);
                     $fields['LaNm'] = trim(substr($fields['LaNm'], strlen($value)));
+                    $found = true;
                     break;
                 }
+            }
+            // If the prefix is not set, then set it to empty string for the
+            // non-"insert" action.
+            if (!$found && !isset($fields['Is']) && $this->getAction($element_index) !== 'insert') {
+                $fields['Is'] = '';
             }
         }
 
         // Derive initials from first name, if not set yet. If first name seems
         // to be only initials, move to initials field and empty first name.
-        if (!empty($fields['FiNm']) && empty($fields['In'])) {
+        if (!empty($fields['FiNm']) && (!isset($fields['In']) || $fields['In'] === '')) {
             $fields['FiNm'] = trim($fields['FiNm']);
 
-            // Check if first name is really only initials. If so, move it.
-            // AFAS' automatic resolving code in its new-(contact)person UI
-            // thinks anything is initials if it contains a dot. It will then
-            // insert spaces in between every letter of the initials, but we
-            // won't do that last part. (It may be good for user UI input, but
-            // coded data does not expect it.)
+            // Check if the first name field really contains only initials. If
+            // so, move the value to the initials field and empty out the first
+            // name. AFAS' automatic resolving code in its (contact)person UI
+            // (tested in 2012) thinks anything is initials if it contains a
+            // dot. It will then insert spaces in between every letter of the
+            // initials, but we won't do that last part. (It may be good for
+            // user UI input, but coded data does not expect it.)
             if (strlen($fields['FiNm']) == 1
                 || strlen($fields['FiNm']) < 16
                 && strpos($fields['FiNm'], '.') !== false
                 && strpos($fields['FiNm'], ' ') === false
             ) {
-                // Dot but no spaces, or just one letter: all initials; move it.
+                // Dot but no spaces, or just one letter: we consider these all
+                // initials (just like the AFAS UI does.)
                 $fields['In'] = strlen($fields['FiNm']) == 1 ?
                     strtoupper($fields['FiNm']) . '.' : $fields['FiNm'];
-                unset($fields['FiNm']);
+                if ($this->getAction($element_index) !== 'insert') {
+                    unset($fields['FiNm']);
+                } else {
+                    $fields['FiNm'] = '';
+                }
             } elseif (preg_match('/^[A-Za-z \-]+$/', $fields['FiNm'])) {
-                // First name only contains letters, spaces and hyphens. In this
-                // case (which is probably stricter than the AFAS UI), create
-                // initials.
+                // First name only contains letters, spaces and hyphens. In
+                // this case (which is probably stricter than the AFAS UI),
+                // create initials from all parts of the first name.
                 $fields['In'] = '';
                 foreach (preg_split('/[- ]+/', $fields['FiNm']) as $part) {
                     // Don't separate initials by spaces, only dot.
-                    $fields['In'] .= strtoupper(substr($part, 0, 1)) . '.';
+                    $fields['In'] .= strtoupper($part[0]) . '.';
                 }
             }
-            // Note if there's both a dot and spaces in first name, we skip it.
+            // If the first name field contains both a dot and spaces, we
+            // change nothing.
         }
 
         // Derive search name from last name, if not set yet.
@@ -837,9 +1093,11 @@ class OrgPersonContact extends ObjectWithCountry
      *
      * This can be used as a starter to implement uniform formatting of
      * phone numbers throughout an AFAS instance, by calling this and using the
-     * output in validateFields(). This is not done by default  because its's
-     * not sure which format is 'the uniform one' (and also, AFAS might have
-     * implemented some functionality since I last used this code.)
+     * output in validateFields(). This is not done by default because its's
+     * not sure which format is 'the uniform one'. (Also, AFAS might have
+     * implemented some functionality since I last used this code.) Passing
+     * the VALIDATE_FORMAT to output(,,,$validation_behavior) will activate
+     * this validation.
      *
      * There's only a "Dutch" function since AFAS will have 99% Dutch clients.
      * Extended helper functionality can be added as needed.
@@ -849,8 +1107,8 @@ class OrgPersonContact extends ObjectWithCountry
      *
      * @return array
      *   If not recognized, empty array. If recognized: 2-element array with
-     *   area(/mobile) code and local part. The local part is not uniformly
-     *   re-formatted.
+     *   area(/mobile) code without the trailing zero, and local part. The
+     *   local part is not uniformly re-formatted.
      */
     public static function validateDutchPhoneNr($phone_number)
     {
@@ -901,8 +1159,8 @@ class OrgPersonContact extends ObjectWithCountry
                 ];
                 // $return[0] is a space-less area code now, with or without
                 // trailing 0. $return[1] is not formatted.
-                if ($return[0][0] !== '0') {
-                    $return[0] = "0$return[0]";
+                if ($return[0][0] === '0') {
+                    $return[0] = substr($return[0], 1);
                 }
                 return $return;
             }

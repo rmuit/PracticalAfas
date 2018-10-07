@@ -144,14 +144,11 @@ class KnBasicAddress extends ObjectWithCountry
 
         $element = parent::validateFields($element, $element_index, $change_behavior, $validation_behavior);
 
-        // See comments on top of getPropertyDefinitions(): remove BeginDate
-        // from output for inserts, and always insert a value for non-inserts.
-        if ($this->getAction($element_index) === 'insert') {
-            unset($element['Fields']['BeginDate']);
-        }
-        elseif (empty($element['Fields']['BeginDate'])) {
-            // (We can't do this by setting 'default' because defaults are not
-            // applied on non-inserts.)
+        // See comments on top of getPropertyDefinitions(): always insert a
+        // value for non-inserts (irrespective of ALLOW_DEFAULTS_ON_UPDATE). We
+        // can't do this by setting 'default' because defaults are not usually
+        // applied on non-inserts.
+        if ($this->getAction($element_index) !== 'insert') {
             $element['Fields']['BeginDate'] = date('Y-m-d');
         }
 
@@ -166,27 +163,38 @@ class KnBasicAddress extends ObjectWithCountry
      * 'HmAd' fields are empty, this splits the house number + ext off into
      * those fields.
      *
+     * Also sets PbAd ('is P.O. box') for Dutch addresses.
+     *
      * @param array $fields
      *   The 'Fields' array of an element that is being validated.
+     * @param int $element_index
+     *   (optional) The index of the element in our object data; usually there
+     *   is one element and the index is 0. For modifying a set of fields which
+     *   are not stored in this object, do not pass this value.
      *
      * @return array
      *   The same fields array, possibly modified.
      */
-    public static function convertStreetName($fields)
+    public function convertStreetName(array $fields, $element_index = 0)
     {
+        // Not-officially-documented behavior of this method: if the action
+        // related to $fields is not "insert", then most fields we want to
+        // populate get set to either a derived value or '' - so any value
+        // currently in AFAS can be overwritten. If the action is "insert",
+        // most fields which are not set to a derived value, are not set at all.
+
         $matches = [];
-        if (!empty($fields['Ad']) && empty($fields['HmNr']) && empty($fields['HmAd'])
+        if (!empty($fields['Ad']) && (!isset($fields['HmNr']) || $fields['HmNr'] === '') && (!isset($fields['HmAd']) || $fields['HmAd'] === '')
             // Split off house number and possible extension from street,
             // because AFAS has separate fields for those. We do this only for
             // defined countries where the splitting of house numbers is common.
             // (This is a judgment call, and the list of countries is arbitrary,
             // but there's slightly less risk of messing up foreign addresses
-            // that way.) 'No country' is assumed to be 'NL' since AFAS is
+            // that way.) Empty country is assumed to be 'NL' since AFAS is
             // NL-centric.
             // This code comes from addressfield_tfnr module and was adjusted
             // later to conform to AFAS' definition of "extension".
-            && (empty($fields['CoId']) || in_array($fields['CoId'],
-                    ['B', 'D', 'DK', 'F', 'FIN', 'H', 'NL', 'NO', 'S']))
+            && (!isset($fields['CoId']) || in_array($fields['CoId'], ['', 'B', 'D', 'DK', 'F', 'FIN', 'H', 'NL', 'NO', 'S'], true))
             && preg_match('/^
           (.*?\S) \s+ (\d+) # normal thoroughfare, followed by spaces and a number;
                             # non-greedy because for STREET NR1 NR2, "nr1" should
@@ -208,8 +216,10 @@ class KnBasicAddress extends ObjectWithCountry
             $fields['HmNr'] = $matches[2];
             if (!empty($matches[3])) {
                 $fields['HmAd'] = rtrim($matches[3]);
+            } elseif ($this->getAction($element_index) !== 'insert') {
+                $fields['HmAd'] = '';
             }
-        } elseif (!empty($fields['HmNr']) && empty($fields['HmAd'])) {
+        } elseif (!empty($fields['HmNr']) && (!isset($fields['HmAd']) || $fields['HmAd'] === '')) {
             // Split off extension from house number
             $matches = [];
             if (preg_match('/^ \s* (\d+) (?:\s+)? (\S.{0,29})? \s* $/x', $fields['HmNr'], $matches)) {
@@ -219,7 +229,18 @@ class KnBasicAddress extends ObjectWithCountry
                 if (!empty($matches[2])) {
                     $fields['HmNr'] = $matches[1];
                     $fields['HmAd'] = rtrim($matches[2]);
+                } elseif ($this->getAction($element_index) !== 'insert') {
+                    $fields['HmNr'] = $fields['HmAd'] = '';
                 }
+            }
+        }
+
+        // Set 'is P.O. box' for NL addresses. Empty country is considered NL.
+        if (empty($fields['PbAd']) && (empty($fields['CoId']) || $fields['CoId'] === 'NL')) {
+            if (!empty($fields['Ad']) && strtolower($fields['Ad']) === 'postbus') {
+                $fields['PbAd'] = true;
+            } elseif (!isset($fields['PbAd']) && $this->getAction($element_index) !== 'insert') {
+                $fields['PbAd'] = false;
             }
         }
 

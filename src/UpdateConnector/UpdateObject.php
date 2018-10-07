@@ -836,7 +836,7 @@ class UpdateObject
     {
         if (!isset($definitions['fields'][$field_name])) {
             // Check if we have an alias; resolve to field name.
-            foreach ($definitions as $real_field_name => $definition) {
+            foreach ($definitions['fields'] as $real_field_name => $definition) {
                 if (isset($definition['alias']) && $definition['alias'] === $field_name) {
                     $field_name = $real_field_name;
                     break;
@@ -864,9 +864,9 @@ class UpdateObject
      */
     protected function checkObjectReferenceFieldName($reference_field_name, $definitions)
     {
-        if (!isset($definitions['fields'][$reference_field_name])) {
+        if (!isset($definitions['objects'][$reference_field_name])) {
             // Check if we have an alias; resolve to field name.
-            foreach ($definitions as $real_field_name => $definition) {
+            foreach ($definitions['objects'] as $real_field_name => $definition) {
                 if (isset($definition['alias']) && $definition['alias'] === $reference_field_name) {
                     $reference_field_name = $real_field_name;
                     break;
@@ -1742,10 +1742,10 @@ class UpdateObject
         // reference field property instead; see validateObjectValue().)
         $flatten = $change_behavior & self::FLATTEN_SINGLE_ELEMENT;
         $change_behavior = $change_behavior & ~self::FLATTEN_SINGLE_ELEMENT;
+        $elements = $this->getElements($change_behavior, $validation_behavior);
 
         switch (strtolower($format)) {
             case 'json':
-                $elements = $this->getElements($change_behavior, $validation_behavior);
                 if ($flatten && count($elements) == 1) {
                     $elements = reset($elements);
                 }
@@ -1757,11 +1757,21 @@ class UpdateObject
                 return empty($format_options['pretty']) ? json_encode($data) : json_encode($data, JSON_PRETTY_PRINT);
 
             case 'xml':
-                // The XML also needs one 'outer' wrapper tag (only around the
-                // full object, not around embedded ones), but since outputXml()
-                // calls output() recursively, there's no advantage to
-                // adding that here. We add it inside outputXml().
-                return $this->outputXml($format_options, $change_behavior, $validation_behavior);
+                $line_prefix = '';
+                if (!empty($format_options['line_prefix']) && is_string($format_options['line_prefix'])) {
+                    $line_prefix = $format_options['line_prefix'];
+                }
+                $pretty = !empty($format_options['pretty']) && (!isset($format_options['indent'])
+                        || (is_int($format_options['indent']) && $format_options['indent'] >= 0));
+                if ($pretty) {
+                    // We want to indent all the outputXml() output because
+                    // we're generating the XML 'wrapper' here.
+                    $indent = isset($format_options['indent']) ? $format_options['indent'] : 2;
+                    $format_options['line_prefix'] = $line_prefix . str_repeat(' ', $indent);
+                }
+                return $line_prefix . "<{$this->getType()} xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">"
+                    . $this->outputXml($elements, $format_options)
+                    . "\n$line_prefix</{$this->getType()}>";
 
             default:
                 throw new InvalidArgumentException("Invalid format '$format'.");
@@ -1771,52 +1781,41 @@ class UpdateObject
     /**
      * Encode data as XML, suitable for sending through SOAP connector.
      *
+     * @param array $elements
+     *   The validated elements. Note we still call outputXml() in any embedded
+     *   objects recursively but only to have access to each object's
+     *   'actions' (and the 'id_property' definition) even though we do not use
+     *   / validate the objects' element values anymore. (If we did, we could
+     *   miss some effects of having validated the full elements including
+     *   embedded objects.)
      * @param array $format_options
      *    (Optional) Options influencing the format:
      *   - 'pretty' (boolean): If true, pretty-print (with newlines/spaces).
+     *     Start with a newline, to concatenate to the header tag which is not
+     *     this method's responsibility.
      *   - 'indent' (integer): The number of spaces to prefix an indented line
      *     with; 2 by default. 'pretty' effect is canceled if this is not an
-     *     integer or <= 0.
-     *   - 'indent_start' (string): a prefix to start each line with.
-     * @param int $change_behavior
-     *   (Optional) see output().
-     * @param int $validation_behavior
-     *   (Optional) see output().
+     *     integer or < 0.
+     *   - 'line_prefix' (string): a prefix to start each line with.
      *
      * @return string
-     *   XML payload to send to an Update Connector on a SOAP API/Connection.
+     *   XML payload to send to an Update Connector on a SOAP API/Connection,
+     *   excluding the XML start/end tag.
      */
-    protected function outputXml(array $format_options = [], $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
+    protected function outputXml(array $elements, array $format_options = [])
     {
-        $xml = $indent_str0 = $indent_str1 = $indent_str2 = $indent_str3 = '';
-        $skip_start = false;
+        $xml = $indent_str1 = $indent_str2 = $indent_str3 = '';
         $pretty = !empty($format_options['pretty']) && (!isset($format_options['indent'])
-                || (is_int($format_options['indent']) && $format_options['indent'] > 0));
-        if (!empty($format_options['indent_start']) && is_string($format_options['indent_start'])) {
-            $xml = $format_options['indent_start'];
-            $skip_start = true;
-        }
+                || (is_int($format_options['indent']) && $format_options['indent'] >= 0));
         if ($pretty) {
             $indent = isset($format_options['indent']) ? $format_options['indent'] : 2;
             $extra_spaces = str_repeat(' ', $indent);
-            if ($this->parentType) {
-                // LF + Indentation before Element tag:
-                $indent_str1 = "\n$xml";
-            } else {
-                // LF + Indentation before 'type end tag':
-                $indent_str0 = "\n$xml";
-                // LF + Indentation before Element tag:
-                $indent_str1 = $indent_str0 . $extra_spaces;
-            }
+            // LF + Indentation before Element tag:
+            $indent_str1 = "\n$format_options[line_prefix]";
             // LF + Indentation before Fields/Objects tag:
             $indent_str2 = $indent_str1 . $extra_spaces;
             // LF + Indentation before individual field values:
             $indent_str3 = $indent_str2 . $extra_spaces;
-        }
-        // Only include the start tag with object type if we're not recursing.
-        if (!$this->parentType) {
-            $xml .= "<{$this->getType()} xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">";
-            $skip_start = false;
         }
 
         // Fully validate the element(s) in this object, even though we won't
@@ -1827,7 +1826,7 @@ class UpdateObject
         // which depend on values in embedded objects (and stick to the 'design
         // decision' to validate embedded objects before object fields). Never
         // flatten the return value, otherwise we can't foreach().
-        foreach ($this->getElements($change_behavior, $validation_behavior) as $element_index => $element) {
+        foreach ($elements as $element_index => $element) {
             $action_attribute = '';
             $action = $this->getAction($element_index);
             if ($action) {
@@ -1849,12 +1848,7 @@ class UpdateObject
             // argument which has an array of elements in one 'Element' key,
             // because multiple 'Element' keys cannot exist in one object or
             // JSON string).
-            if ($skip_start) {
-                $skip_start = false;
-            } else {
-                $xml .= $indent_str1;
-            }
-            $xml .= "<Element$id_attribute>";
+            $xml .= "$indent_str1<Element$id_attribute>";
 
             // Always add Fields tag, also if it's empty. (No idea if that's
             // necessary, but that's apparently how I tested it 5 years ago.)
@@ -1878,27 +1872,25 @@ class UpdateObject
                 $xml .= "$indent_str2<Objects>";
                 if ($pretty) {
                     // $indent is defined above.
-                    $format_options['indent_start'] = (empty($format_options['indent_start']) ? '' : $format_options['indent_start'])
-                        . str_repeat(' ', $indent * ($this->parentType ? 3 : 4));
+                    $format_options['line_prefix'] = (empty($format_options['line_prefix']) ? '' : $format_options['line_prefix'])
+                        . str_repeat(' ', $indent * 3) ;
                 }
                 // Iterating over the keys in 'Objects' is fine; it contains
                 // all object values we need including defaults. (No need to
                 // recheck the property definitions here.) We also know
                 // getObject() should never return null for these.
                 foreach ($element['Objects'] as $ref_name => $value) {
-                    $xml .= "$indent_str3<$ref_name>" . ($pretty ? "\n" : '')
-                        . $this->getObject($ref_name, $element_index, true)
-                            ->output('xml', $format_options, $change_behavior, $validation_behavior)
+                    // Embedded objects have been 'flattened' according to
+                    // their definition, so unflatten them.
+                    $object = empty($definitions['objects'][$ref_name]['multiple']) ? [$value['Element']] : $value['Element'];
+                    $xml .= "$indent_str3<$ref_name>"
+                        . $this->getObject($ref_name, $element_index, true)->outputXml($object, $format_options)
                         . "$indent_str3</$ref_name>";
                 }
                 $xml .= "$indent_str2</Objects>";
             }
 
             $xml .= "$indent_str1</Element>";
-        }
-        if (!$this->parentType) {
-            // Add closing XML tag. Do not end with newline even if 'pretty'.
-            $xml .= "$indent_str0</{$this->getType()}>";
         }
 
         return $xml;

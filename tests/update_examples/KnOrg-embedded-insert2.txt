@@ -1,26 +1,39 @@
-; We need to specify DEFAULT_CHANGE | ALLOW_CHANGES | ALLOW_REFORMAT_PHONE_NR
-; to get In & SeNm populated, split the house number off the street field and
-; reformat the Dutch phone number.
-KnOrganisation:insert:1079
+; An extra insert:
+; - In the other object we can test that KnOrg.PbAd (postal_address_is_address)
+;   = 1 and 'street' is split.
+; - Here we test KnOrg.PbAd staying empty, plus adding BeginDate &
+;   KnBasicAddress.PbAd (is_po_box) = 1; we do not split street name & person
+;   last name, because we don't supply the ALLOW_CHANGE bit to output().
+KnOrganisation:insert
 [
   'name' => 'Wyz',
   'address' => [
     'street' => 'Govert Flinckstraat 168A',
-; My old notes imply that AFAS itself normalizes zipcode to insert a space
-; between numbers and letters, and convert letters to uppercase. So this library
-; does not (need to) do that. If this is not true, someone please tell me.
     'zip_code' => '1072EP',
     'town' => 'Amsterdam',
-; This is an ISO country code, not an AFAS code (though in the case of 'NL'
-; these are the same). The ObjectWithCountry class converts it to an AFAS code.
     'country_iso' => 'NL',
+; This should never be necessary; AFAS says the field is ignored on inserts.
+; However, we still want to pass it to AFAS if code explicitly specifies it;
+; basically we leave it up to AFAS whether or not to ignore the value.
+    'BeginDate' => '2018-01-01',
+  ],
+  'postal_address' => [
+; is_po_box is required, so it has a default of FALSE in our property
+; definitions. Therefore we need to explicitly set it in case of a Postbus
+; (or we need to pass ALLOW_CHANGE as a behavior flag).
+    'is_po_box' => true,
+    'street' => 'Postbus 10881',
+    'zip_code' => '1001 EW',
+    'town' => 'Amsterdam',
+; PT is not an AFAS code; resolves to P.
+  'country_iso' => 'PT',
   ],
   'contact' => [
     'email' => 'rm@wyz.biz',
-    'phone' => '+31622517218',
+    'phone' => '06-22517218',
     'person' => [
       'first_name' => 'Roderik',
-      'last_name' => 'Muit',
+      'last_name' => 'v. Muit',
     ],
   ],
 ]
@@ -31,21 +44,30 @@ KnOrganisation:insert:1079
             "Fields": {
                 "Nm": "Wyz",
                 "AutoNum": true,
-; MatchOga has a default of 6 (for inserts).
-                "MatchOga": "6",
-                "PbAd": true
+                "MatchOga": "6"
             },
             "Objects": {
                 "KnBasicAddressAdr": {
                     "Element": {
                         "Fields": {
-                            "Ad": "Govert Flinckstraat",
+                            "Ad": "Govert Flinckstraat 168A",
                             "ZpCd": "1072EP",
                             "Rs": "Amsterdam",
-                            "HmNr": "168",
-                            "HmAd": "A",
+                            "BeginDate": "2018-01-01",
                             "CoId": "NL",
                             "PbAd": false,
+                            "ResZip": false
+                        }
+                    }
+                },
+                "KnBasicAddressPad": {
+                    "Element": {
+                        "Fields": {
+                            "PbAd": true,
+                            "Ad": "Postbus 10881",
+                            "ZpCd": "1001 EW",
+                            "Rs": "Amsterdam",
+                            "CoId": "P",
                             "ResZip": false
                         }
                     }
@@ -62,11 +84,8 @@ KnOrganisation:insert:1079
                                 "Element": {
                                     "Fields": {
                                         "FiNm": "Roderik",
-                                        "LaNm": "Muit",
-                                        "In": "R.",
-                                        "SeNm": "MUIT",
+                                        "LaNm": "v. Muit",
                                         "AutoNum": true,
-; MatchPer has a default of 7 (for inserts).
                                         "MatchPer": "7",
                                         "SpNm": false,
                                         "ViGe": "O",
@@ -88,23 +107,33 @@ KnOrganisation:insert:1079
       <Nm>Wyz</Nm>
       <AutoNum>1</AutoNum>
       <MatchOga>6</MatchOga>
-      <PbAd>1</PbAd>
     </Fields>
     <Objects>
       <KnBasicAddressAdr>
         <Element>
           <Fields Action="insert">
-            <Ad>Govert Flinckstraat</Ad>
+            <Ad>Govert Flinckstraat 168A</Ad>
             <ZpCd>1072EP</ZpCd>
             <Rs>Amsterdam</Rs>
-            <HmNr>168</HmNr>
-            <HmAd>A</HmAd>
+            <BeginDate>2018-01-01</BeginDate>
             <CoId>NL</CoId>
             <PbAd>0</PbAd>
             <ResZip>0</ResZip>
           </Fields>
         </Element>
       </KnBasicAddressAdr>
+      <KnBasicAddressPad>
+        <Element>
+          <Fields Action="insert">
+            <PbAd>1</PbAd>
+            <Ad>Postbus 10881</Ad>
+            <ZpCd>1001 EW</ZpCd>
+            <Rs>Amsterdam</Rs>
+            <CoId>P</CoId>
+            <ResZip>0</ResZip>
+          </Fields>
+        </Element>
+      </KnBasicAddressPad>
       <KnContact>
         <Element>
           <Fields Action="insert">
@@ -117,9 +146,7 @@ KnOrganisation:insert:1079
               <Element>
                 <Fields Action="insert">
                   <FiNm>Roderik</FiNm>
-                  <LaNm>Muit</LaNm>
-                  <In>R.</In>
-                  <SeNm>MUIT</SeNm>
+                  <LaNm>v. Muit</LaNm>
                   <AutoNum>1</AutoNum>
                   <MatchPer>7</MatchPer>
                   <SpNm>0</SpNm>

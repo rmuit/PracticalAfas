@@ -9,48 +9,29 @@ KnOrganisation:update:55
 [
   'code' => '1100000',
   'name' => 'Wyz',
-  'address' => [
-    'street' => 'Govert Flinckstraat 168A',
-    'zip_code' => '1072EP',
-    'town' => 'Amsterdam',
-    'country_iso' => 'NL',
-  ],
   'contact' => [
     'email' => 'rm@wyz.biz',
     'phone' => '06-22517218',
     'person' => [
       'first_name' => 'Roderik',
-      'last_name' => 'Muit',
+      'last_name' => 'v. Muit',
     ],
   ],
 ]
 ; After creating the object with above data and "update" action, we need to set
 ; the embedded contact/organisation data to be an "insert" instead:
-eval: $obj->getElements()[0]['Objects']['KnContact']->setAction('insert');
+eval: $object->getObject('KnContact')->setAction('insert');
 --
 {
     "KnOrganisation": {
         "Element": {
             "Fields": {
-; MatchOga is set to 0 by default, because BcCo is specified.
+; MatchOga is set to 0 by default, for most updates.
                 "BcCo": "1100000",
                 "Nm": "Wyz",
                 "MatchOga": "0"
             },
             "Objects": {
-                "KnBasicAddressAdr": {
-                    "Element": {
-                        "Fields": {
-                            "Ad": "Govert Flinckstraat",
-                            "ZpCd": "1072EP",
-                            "Rs": "Amsterdam",
-                            "HmNr": "168",
-                            "HmAd": "A",
-                            "CoId": "NL",
-                            "BeginDate": {TODAY}
-                        }
-                    }
-                },
                 "KnContact": {
                     "Element": {
                         "Fields": {
@@ -64,10 +45,11 @@ eval: $obj->getElements()[0]['Objects']['KnContact']->setAction('insert');
                                     "Fields": {
                                         "FiNm": "Roderik",
                                         "LaNm": "Muit",
+                                        "Is": "v.",
                                         "In": "R.",
                                         "SeNm": "MUIT",
                                         "AutoNum": true,
-; MatchPer is set to 7 by default, because BcCo is not specified.
+; MatchPer has a default of 7 (for inserts).
                                         "MatchPer": "7",
                                         "SpNm": false,
                                         "ViGe": "O",
@@ -91,19 +73,6 @@ eval: $obj->getElements()[0]['Objects']['KnContact']->setAction('insert');
       <MatchOga>0</MatchOga>
     </Fields>
     <Objects>
-      <KnBasicAddressAdr>
-        <Element>
-          <Fields Action="update">
-            <Ad>Govert Flinckstraat</Ad>
-            <ZpCd>1072EP</ZpCd>
-            <Rs>Amsterdam</Rs>
-            <HmNr>168</HmNr>
-            <HmAd>A</HmAd>
-            <CoId>NL</CoId>
-            <BeginDate>{TODAY}</BeginDate>
-          </Fields>
-        </Element>
-      </KnBasicAddressAdr>
       <KnContact>
         <Element>
           <Fields Action="insert">
@@ -117,6 +86,7 @@ eval: $obj->getElements()[0]['Objects']['KnContact']->setAction('insert');
                 <Fields Action="insert">
                   <FiNm>Roderik</FiNm>
                   <LaNm>Muit</LaNm>
+                  <Is>v.</Is>
                   <In>R.</In>
                   <SeNm>MUIT</SeNm>
                   <AutoNum>1</AutoNum>

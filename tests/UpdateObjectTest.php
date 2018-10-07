@@ -10,6 +10,7 @@
 
 use PHPUnit\Framework\TestCase;
 use PracticalAfas\UpdateConnector\UpdateObject;
+use PracticalAfas\UpdateConnector\OrgPersonContact;
 
 class UpdateObjectTest extends TestCase
 {
@@ -26,12 +27,45 @@ class UpdateObjectTest extends TestCase
     }
 
     /**
+     * Runs through example payloads; verifies UpdateObject output matches them.
+     *
+     * @expectedExcep tion InvalidArgumentException
+     * @expectedExcep tionMessage 'Hoi hoop'
+     */
+    public function testValidateDutchPhoneNr()
+    {
+        /** @var \PracticalAfas\UpdateConnector\UpdateObject $object */
+        list($object) = $this->readUpdateExample(__DIR__ . '/update_examples/KnOrg-embedded-insert.txt');
+        $object->getObject('KnContact')->setField('phone', '+3162251721', 0, OrgPersonContact::VALIDATE_FORMAT);
+        //@todo continue here: this does not generate an error.
+    }
+
+
+    /**
      * Processes an example file; verifies UpdateObject output matches contents.
      *
      * @param string $filename
      *   The absolute filename.
      */
     private function processUpdateExample($filename) {
+        /** @var \PracticalAfas\UpdateConnector\UpdateObject $object */
+        list($object, $change_behavior, $expected_json, $expected_xml) = $this->readUpdateExample($filename);
+        $test = $object->output('json', ['pretty' => true], $change_behavior);
+        $this->assertSame($expected_json, $test, "JSON output does not match the contents of $filename.");
+        $test = $object->output('xml', ['pretty' => true], $change_behavior);
+        $this->assertSame($expected_xml, $test, "XML output does not match the contents of $filename.");
+    }
+
+    /**
+     * Reads an example file; returns separate parts of the contents.
+     *
+     * @param string $filename
+     *   The absolute filename.
+     *
+     * @return array
+     *   $object, $change_behavior, $expected_json, $expected_xml
+     */
+    private function readUpdateExample($filename) {
         // We've dumped classname, input and output together into one file for
         // easier comparison by humans (so they can see if the test examples
         // make sense). Pull these apart.
@@ -58,7 +92,7 @@ class UpdateObjectTest extends TestCase
                     throw new \UnexpectedValueException("$filename contains extra content after output XML.");
                 }
                 $buffer = '';
-            } elseif (substr($line, 0, 1) === ';') {
+            } elseif ($line[0] === ';') {
                 // Skip comments. (They can be placed anywhere.)
                 continue;
             } elseif (strpos($line, 'eval: ') === 0) {
@@ -101,14 +135,12 @@ class UpdateObjectTest extends TestCase
             throw new \UnexpectedValueException("$filename does not seem to contain output XML.");
         }
 
-        $obj = UpdateObject::create($object_type, $input_array, $action);
+        $object = UpdateObject::create($object_type, $input_array, $action);
         if ($eval) {
             // We again assume the input files are safe.
             eval($eval);
         }
-        $test = $obj->output('json', ['pretty' => true], $change_behavior);
-        $this->assertSame($expected_json, $test, "JSON output does not match the contents of $filename.");
-        $test = $obj->output('xml', ['pretty' => true], $change_behavior);
-        $this->assertSame($expected_xml, $test, "XML output does not match the contents of $filename.");
+
+        return [$object, $change_behavior, $expected_json, $expected_xml];
     }
 }

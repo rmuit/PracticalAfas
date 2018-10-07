@@ -7,11 +7,16 @@
 ; My takeaway: always specify the $action parameter for SOAP/XML, so the
 ; "Action" XML attributes are always present.
 ; We need to specify DEFAULT_CHANGE | ALLOW_CHANGES to get In & SeNm populated
-; and to split the house number off the street field.
+; and to split the house number off the street field (and populate PbAd).
 KnOrganisation:update:55
 [
   'code' => '1100000',
   'name' => 'Wyz',
+; One thing to keep in mind when updating address: the postal_address_is_address
+; field (KnOrganisation.PbAd or KnContact/KnPerson.PadAdr) is not set
+; automatically for updates, because we have no good way of deriving whether
+; we need to update just this one address or also the postal address. The caller
+; should take this into account.
   'address' => [
     'street' => 'Govert Flinckstraat 168A',
     'zip_code' => '1072EP',
@@ -35,7 +40,8 @@ KnOrganisation:update:55
             "Fields": {
                 "BcCo": "1100000",
                 "Nm": "Wyz",
-; MatchOga is set to 0 by default, because BcCo is specified.
+; MatchOga is set to 0 by default, for most updates. If BcCo is not set, that
+; would generate an AFAS error, which is on purpose. (See code comments.)
                 "MatchOga": "0"
             },
             "Objects": {
@@ -47,6 +53,9 @@ KnOrganisation:update:55
                             "Rs": "Amsterdam",
                             "HmNr": "168",
                             "HmAd": "A",
+; PbAd = false is added automatically - not because it's the default value but
+; because when ALLOW_CHANGES is specified, PbAd is derived from "Ad" on updates.
+                            "PbAd": false,
                             "CoId": "NL",
                             "BeginDate": {TODAY}
                         }
@@ -65,9 +74,12 @@ KnOrganisation:update:55
                                         "BcCo": "100000",
                                         "FiNm": "Roderik",
                                         "LaNm": "Muit",
+; Also "Is" is explicitly set to empty, on updates with ALLOW_CHANGES specified.
+                                        "Is": "",
                                         "In": "R.",
                                         "SeNm": "MUIT",
-; MatchPer is set to 0 by default, because BcCo is specified.
+; MatchPer is set to 0 by default, for most updates. If BcCo is not set, that
+; would generate an AFAS error, which is on purpose. (See code comments.)
                                         "MatchPer": "0"
                                     }
                                 }
@@ -96,6 +108,7 @@ KnOrganisation:update:55
             <Rs>Amsterdam</Rs>
             <HmNr>168</HmNr>
             <HmAd>A</HmAd>
+            <PbAd>0</PbAd>
             <CoId>NL</CoId>
             <BeginDate>{TODAY}</BeginDate>
           </Fields>
@@ -114,6 +127,7 @@ KnOrganisation:update:55
                   <BcCo>100000</BcCo>
                   <FiNm>Roderik</FiNm>
                   <LaNm>Muit</LaNm>
+                  <Is></Is>
                   <In>R.</In>
                   <SeNm>MUIT</SeNm>
                   <MatchPer>0</MatchPer>
