@@ -657,7 +657,7 @@ class UpdateObject
 
         // validateFieldValue() gets definitions too but caching it here would
         // add too much fussy code.
-        $this->elements[$element_index]['Fields'][$field_name] = $this->validateFieldValue($value, $field_name, self::ALLOW_NO_CHANGES, $validation_behavior, $element, $element_index);
+        $this->elements[$element_index]['Fields'][$field_name] = $this->validateFieldValue($value, $field_name, self::ALLOW_NO_CHANGES, $validation_behavior, $element_index, $element);
     }
 
     /**
@@ -1077,7 +1077,7 @@ class UpdateObject
                     }
 
                     if ($value_present) {
-                        $normalized_element['Fields'][$name] = $this->validateFieldValue($value, $name, self::ALLOW_NO_CHANGES, $validation_behavior, $normalized_element, $next_index);
+                        $normalized_element['Fields'][$name] = $this->validateFieldValue($value, $name, self::ALLOW_NO_CHANGES, $validation_behavior, $next_index, $normalized_element);
                     }
                 }
 
@@ -1160,10 +1160,6 @@ class UpdateObject
     /**
      * Validates one element against a list of property definitions.
      *
-     * Code hint: if you want to loop through all elements contained in this
-     * object and then call validateElement() on them, you probably want to
-     * call getElements() instead.
-     *
      * This method is not expected to be overridden and has some boilerplate /
      * checks integrated into it which are also necessary for the methods it
      * calls. It should not touch $this->elements.
@@ -1204,19 +1200,16 @@ class UpdateObject
             throw new UnexpectedValueException("$element_descr has empty 'Fields' and 'Objects'; at least one of these must contain a value.");
         }
 
-        $definitions = $this->cachedPropertyDefinitions = $this->getPropertyDefinitions($element, $element_index);
+        $definitions = $this->getPropertyDefinitions($element, $element_index);
         // Doublechecks; unlikely to fail because also in addElements(). (We
         // won't repeat them in each individual validate method.)
         if (empty($definitions)) {
-            $this->cachedPropertyDefinitions = [];
             throw new UnexpectedValueException("'{$this->getType()}' object has no property definitions.");
         }
         if (!isset($definitions['fields']) || !is_array($definitions['fields'])) {
-            $this->cachedPropertyDefinitions = [];
             throw new UnexpectedValueException("'{$this->getType()}' object has no / a non-array 'fields' property definition.");
         }
         if (isset($definitions['objects']) && !is_array($definitions['objects'])) {
-            $this->cachedPropertyDefinitions = [];
             throw new UnexpectedValueException("'{$this->getType()}' object has a non-array 'objects' property definition.");
         }
 
@@ -1224,8 +1217,9 @@ class UpdateObject
         // then validate the rest of this element while knowing that the
         // 'children' are OK, and with their properties accessible (dependent
         // on some $change_behavior values).
+        $this->cachedPropertyDefinitions = $definitions;
         try {
-            $element = $this->validateEmbeddedObjects($element, $element_index, $change_behavior, $validation_behavior);
+            $element = $this->validateReferenceFields($element, $element_index, $change_behavior, $validation_behavior);
             $element = $this->validateFields($element, $element_index, $change_behavior, $validation_behavior);;
         } finally {
             $this->cachedPropertyDefinitions = [];
@@ -1279,11 +1273,93 @@ class UpdateObject
     }
 
     /**
-     * Validates an element's embedded objects and replaces them by arrays.
+     * Validates the value for an element's embedded object.
      *
      * This only validates the 'status of embedded objects in relation to our
      * own object', not the contents of the embedded objects; the objects' own
      * getElements() / validateElement() / ... calls are responsible for that.
+     *
+     * This is mainly split out from validateElement() to be easier to override
+     * by child classes. It should generally not touch $this->elements.
+     *
+     * @param mixed $value
+     *   The value, which is supposed to be an UpdateObject.
+     * @param string $reference_field_name
+     *   The name of the reference field for the object.
+     * @param int $change_behavior
+     *   (Optional) see output(). Note that this is the behavior for our
+     *   element and may still need to be amended to apply to embedded objects.
+     * @param int $validation_behavior
+     *   (Optional) see output().
+     * @param int $element_index
+     *   (Optional) The index of the element in our object data. Often only
+     *   used for logging.
+     *
+     * @return array
+     *   A representation of the object's contents: either a single element, or
+     *   an array of one or more elements, depending on the 'multiple' property
+     *   definition for the corresponding reference field.
+     *
+     * @throws \UnexpectedValueException
+     *   If the element data does not pass validation. (This likely indicates
+     *   the data is invalid, although in theory it can also indicate that the
+     *   validation is based on improper logic/definitions.)
+     */
+    protected function validateObjectValue($value, $reference_field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, $element_index = null)
+    {
+        $definitions = $this->cachedPropertyDefinitions ?: $this->getPropertyDefinitions();
+
+        if (!$value instanceof UpdateObject) {
+            $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+            $name_and_alias = "'$reference_field_name'" . (isset($definitions['objects'][$reference_field_name]['alias']) ? " ({$definitions['objects'][$reference_field_name]['alias']})" : '');
+            throw new UnexpectedValueException("$name_and_alias object embedded in $element_descr must be an object of type UpdateObject.");
+        }
+
+        // Validation of a full object is done by getElements().
+        $embedded_change_behavior = $change_behavior & self::ALLOW_EMBEDDED_CHANGES
+            ? $change_behavior : self::ALLOW_NO_CHANGES;
+        $elements = $value->getElements($embedded_change_behavior, $validation_behavior);
+        // Validate whether this reference field is allowed to have multiple
+        // elements. Also, decide the exact structure of "Elements" in the
+        // embedded objects. I'm making assumptions here because I don't have
+        // real specifications from AFAS, or a means to test this:
+        // - Their own knowledge base examples (for UpdateConnector which use
+        //   KnSubject) specify a single element inside the "Element" key, e.g.
+        //   "@SbId" and "Fields" are directly inside "Element".
+        // - That clearly doesn't work when multiple elements need to be
+        //   embedded as part of the same reference field, e.g. a FbSales
+        //   entity can have multiple elements inside the FbSalesLines object.
+        //   In this case its "Element" key contains an array of elements.
+        // This class has the FLATTEN_SINGLE_ELEMENT bit for output() so the
+        // caller can decide what to do with 'main' objects. (By default, one
+        // element is 'flattened' because see first point above, but multiple
+        // elements are supported.) For embedded objects, I officially do not
+        // know if AFAS accepts an array inside "Elements" for _any_ field. So
+        // we ignore the FLATTEN_SINGLE_ELEMENT bit here and let the 'multiple'
+        // property of the reference field drive what happens:
+        // - For reference fields that can embed multiple elements, we keep the
+        //   array, regardless whether we have one or more elements at the
+        //   moment. (This to keep the structure of a particular reference
+        //   field consistent; I do not imagine AFAS will deny an array of 1
+        //   elements.)
+        // - For reference fields that can only embed one element, we unwrap
+        //   this array and place the element directly inside "Element"
+        //   (because I do not know if AFAS accepts an array).
+        if (empty($definitions['objects'][$reference_field_name]['multiple'])) {
+            if (count($elements) > 1) {
+                $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+                $name_and_alias = "'$reference_field_name'" . (isset($definitions['objects'][$reference_field_name]['alias']) ? " ({$definitions['objects'][$reference_field_name]['alias']})" : '');
+                throw new UnexpectedValueException("$name_and_alias object embedded in $element_descr contains " . count($elements) . ' elements but can only contain a single element.');
+            } else {
+                $elements = reset($elements);
+            }
+        }
+
+        return $elements;
+    }
+
+    /**
+     * Validates an element's object reference fields; replaces them by arrays.
      *
      * This is mainly split out from validateElement() to be easier to override
      * by child classes. It should generally not touch $this->elements.
@@ -1301,114 +1377,11 @@ class UpdateObject
      *   (Optional) see output().
      *
      * @return array
-     *   The element with its embedded fields plus the objects contained within
-     *   them validated, and changed if appropriate. All UpdateObjects (values
-     *   inside the 'Objects' array) are replaced by their validated array
-     *   representation, wrapped inside a one-element array keyed by 'Element'
-     *   (as is necessary for the JSON representation of data sent to an
-     *   Update Connector). The array value represents either a single element,
-     *   or an array of one or more elements, depending on the 'multiple'
-     *   property definition for the corresponding object reference field.
-     *
-     * @throws \UnexpectedValueException
-     *   If the element data does not pass validation. (This likely indicates
-     *   the data is invalid, although in theory it can also indicate that the
-     *   validation is based on improper logic/definitions.)
-     */
-    protected function validateEmbeddedObjects(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
-    {
-        $element = $this->validateReferenceFields($element, $element_index, $change_behavior, $validation_behavior);
-
-        if (isset($element['Objects'])) {
-            $definitions = $this->cachedPropertyDefinitions ?: $this->getPropertyDefinitions($element, $element_index);
-            $embedded_change_behavior = $change_behavior & self::ALLOW_EMBEDDED_CHANGES
-                ? $change_behavior : self::ALLOW_NO_CHANGES;
-
-            foreach ($element['Objects'] as $ref_name => $object) {
-                // Doublecheck; unlikely to fail because it's also in
-                // addElements().
-                if (!$object instanceof UpdateObject) {
-                    $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
-                    $name_and_alias = "'$ref_name'" . (isset($definitions['objects'][$ref_name]['alias']) ? " ({$definitions['objects'][$ref_name]['alias']})" : '');
-                    throw new UnexpectedValueException("$name_and_alias object embedded in $element_descr must be an object of type UpdateObject.");
-                }
-
-                // Validation of a full object is done by getElements().
-                $elements = $object->getElements($embedded_change_behavior, $validation_behavior);
-                // Validate whether this reference field is allowed to have
-                // multiple elements. Also, decide the exact structure of
-                // "Elements" in the embedded objects. I'm making assumptions
-                // here because I don't have real specifications from AFAS, or
-                // a means to test this:
-                // - Their own knowledge base examples (for UpdateConnector
-                //   which use KnSubject) specify a single element inside
-                //   the "Element" key, e.g. "@SbId" and "Fields" are
-                //   directly inside "Element".
-                // - That clearly doesn't work when multiple elements need to
-                //   be embedded as part of the same reference field, e.g. a
-                //   FbSales entity can have multiple elements inside the
-                //   FbSalesLines object. In this case its "Element" key
-                //   contains an array of elements.
-                // This class has the FLATTEN_SINGLE_ELEMENT bit for output()
-                // so the caller can decide what to do with 'main' objects. (By
-                // default, one element is 'flattened' because see first point
-                // above, but multiple elements are supported.) For embedded
-                // objects, I officially do not know if AFAS accepts an array
-                // inside "Elements" for _any_ field. So we ignore the
-                // FLATTEN_SINGLE_ELEMENT bit here and let the 'multiple'
-                // property of the reference field drive what happens:
-                // - For reference fields that can embed multiple elements,
-                //   we keep the array, regardless whether we have one or
-                //   more elements at the moment. (This to keep the
-                //   structure of a particular reference field consistent; I do
-                //   not imagine AFAS will deny an array of 1 elements.)
-                // - For reference fields that can only embed one element,
-                //   we unwrap this array and place the element directly
-                //   inside "Element" (because I do not know if AFAS
-                //   accepts an array).
-                if (empty($definitions['objects'][$ref_name]['multiple'])) {
-                    if (count($elements) > 1) {
-                        $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
-                        $name_and_alias = "'$ref_name'" . (isset($definitions['objects'][$ref_name]['alias']) ? " ({$definitions['objects'][$ref_name]['alias']})" : '');
-                        throw new UnexpectedValueException("$name_and_alias object embedded in $element_descr contains " . count($elements) . ' elements but can only contain a single element.');
-                    } else {
-                        $elements = reset($elements);
-                    }
-                }
-                // Replace UpdateObject with its validated array representation.
-                $element['Objects'][$ref_name] = ['Element' => $elements];
-            }
-        }
-
-        return $element;
-    }
-
-    /**
-     * Validates an element's object reference fields.
-     *
-     * This only validates the 'status of embedded objects in relation to our
-     * element', not the contents of the embedded objects; the objects' own
-     * getElements() / validateElement() / ... calls are responsible for that.
-     *
-     * This is mainly split out from validateEmbeddedObjects() to be easier to
-     * override by child classes. It should generally not touch $this->elements.
-     *
-     * @param array $element
-     *   The element (usually the single one contained in $this->elements)
-     *   whose embedded objects should be validated.
-     * @param int $element_index
-     *   The index of the element in our object data; usually there is one
-     *   element and the index is 0.
-     * @param int $change_behavior
-     *   (Optional) see output(). Note that this is the behavior for our
-     *   element and may still need to be amended to apply to embedded objects.
-     * @param int $validation_behavior
-     *   (Optional) see output().
-     *
-     * @return array
      *   The element with its embedded fields validated, and possibly default
      *   objects added if appropriate. All values in the 'Objects' sub array
-     *   are guaranteed to be UpdateObjects.
+     *   are replaced by their validated array representation, wrapped inside a
+     *   one-element array keyed by 'Element' (as is necessary for the JSON
+     *   representation of data sent to an Update Connector).
      *
      * @throws \UnexpectedValueException
      *   If the element data does not pass validation. (This likely indicates
@@ -1460,6 +1433,11 @@ class UpdateObject
                 && (!array_key_exists($ref_name, $element['Objects'])
                     || !empty($object_properties['required']) && $element['Objects'][$ref_name] === null)) {
                 $element['Objects'][$ref_name] = $this->getObject($ref_name, $element_index, true);
+            }
+
+            if (isset($element['Objects'][$ref_name])) {
+                // Replace UpdateObject with its validated array representation.
+                $element['Objects'][$ref_name] = ['Element' => $this->validateObjectValue($element['Objects'][$ref_name], $ref_name, $change_behavior, $validation_behavior, $element_index)];
             }
         }
 
@@ -1548,7 +1526,7 @@ class UpdateObject
                 // Validate, and 'unify' any InvalidArgumentException to be an
                 // UnexpectedValueException.
                 try {
-                    $element['Fields'][$name] = $this->validateFieldValue($element['Fields'][$name], $name, $change_behavior, $validation_behavior, $element, $element_index);
+                    $element['Fields'][$name] = $this->validateFieldValue($element['Fields'][$name], $name, $change_behavior, $validation_behavior, $element_index, $element);
                 } catch (InvalidArgumentException $e) {
                     throw new UnexpectedValueException($e->getMessage(), $e->getCode());
                 }
@@ -1577,6 +1555,9 @@ class UpdateObject
      *   (Optional) see output().
      * @param int $validation_behavior
      *   (Optional) see output().
+     * @param int $element_index
+     *   (Optional) The index of the element in our object data. Often only
+     *   used for logging.
      * @param array $element
      *   (Optional) The full element being validated, for the benefit of
      *   validation checks which depend on other values. (If the full element
@@ -1589,22 +1570,18 @@ class UpdateObject
      *   this method should be aware of its limitations which we'll illustrate
      *   by the standard callers in this class:
      *   - When called while an element is being populated, we cannot assume
-     *     all other fields are populated yet. (addElements() does this in the
-     *     order in which fields occur in the return value of
-     *     getPropertyDefinitions().) We also cannot assume any fields are
-     *     validated. (That depends on 'validation behavior' when those fields
-     *     were populated.)
-     *   - When called by setField(), we cannot assume other fields are
+     *     all other fields have been populated yet. (addElements() does this
+     *     in the order in which fields occur in the return value of
+     *     getPropertyDefinitions().) We also cannot assume any fields have
+     *     been validated. (That depends on 'validation behavior' when those
+     *     fields were populated.)
+     *   - When called by setField(), we cannot assume other fields have been
      *     validated; see previous point.
      *   - When called while an element is being validated through
      *     getElements() -> validateElement(): we cannot assume all other
-     *     fields are validated (see first point about field order); individual
-     *     objects in the 'objects' array are replaced by one-element arrays
-     *     as returned by validateEmbeddedObjects().
-     * @param int $element_index
-     *   (Optional) The index of the element in our object data. Often only
-     *   used for logging; may also have a minor effect on the property
-     *   definitions used to validate against.
+     *     fields have been validated (see first point about field order);
+     *     individual objects in the 'objects' array are replaced by arrays:
+     *     the return value of validateObjectValue() keyed by 'Element'.
      *
      * @return mixed
      *   The validated, and possibly changed if appropriate, value.
@@ -1612,7 +1589,7 @@ class UpdateObject
      * @throws \InvalidArgumentException
      *   If the value does not pass validation.
      */
-    protected function validateFieldValue($value, $field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, array $element = null, $element_index = null)
+    protected function validateFieldValue($value, $field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, $element_index = null, array $element = null)
     {
         // No validation for null values. (Requiredness is validated elsewhere.)
         if (isset($value)) {
@@ -1709,8 +1686,8 @@ class UpdateObject
      *     effect for every call that has a $change_behavior argument. It only
      *     applies to JSON output and is not expected to make a difference to
      *     AFAS though we're not 100% sure. It is not passed into embedded
-     *     objects; those have hardcoded logic around this, in
-     *     validateEmbeddedObjects().)
+     *     objects; those have hardcoded logic around 'flattening', in
+     *     validateObjectValue().)
      *   Child classes might define additional values.
      * @param int $validation_behavior
      *   (Optional) By default, this method performs validation checks. This
@@ -1762,7 +1739,7 @@ class UpdateObject
 
         // The 'flatten' bit only makes sense for JSON output, and only inside
         // this method. (For embedded elements, 'flattening' is governed by a
-        // reference field property instead; see validateEmbeddedObjects().)
+        // reference field property instead; see validateObjectValue().)
         $flatten = $change_behavior & self::FLATTEN_SINGLE_ELEMENT;
         $change_behavior = $change_behavior & ~self::FLATTEN_SINGLE_ELEMENT;
 
@@ -1775,7 +1752,7 @@ class UpdateObject
                 // The JSON structure should have two one-element wrappers
                 // around the element data, with keys being the object type
                 // and 'Element'. (Embedded objects have the 'Element' wrapper
-                // added by validateEmbeddedObjects().)
+                // added by validateReferenceFields().)
                 $data = [$this->getType() => ['Element' => $elements]];
                 return empty($format_options['pretty']) ? json_encode($data) : json_encode($data, JSON_PRETTY_PRINT);
 
