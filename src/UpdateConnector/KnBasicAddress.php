@@ -33,11 +33,13 @@ class KnBasicAddress extends ObjectWithCountry
     /**
      * {@inheritdoc}
      */
-    public function getPropertyDefinitions(array $element = null, $element_index = null)
-    {
-        // There are lots of Dutch comment lines in this function; these were
-        // gathered from an online knowledge base page around 2012 when that
-        // was the only form/language of documentation.
+    protected $propertyDefinitions = [
+        // Below definition is based on what AFAS calls the 'XSD Schema'  for
+        // SOAP, retrieved though a Data Connector in november 2014, amended
+        // with extra info like aliases and defaults. There are  Dutch comment
+        // lines in this function; these were gathered from an online
+        // knowledge base page around 2012 when that was the only form /
+        // language of documentation.
 
         /* Ad, HmNr, ZpCd are required.
          * A few lines below, the docs say that RS is also
@@ -72,65 +74,63 @@ class KnBasicAddress extends ObjectWithCountry
          * we won't do this for inserts, to not give people who look at API
          * payloads wrong information.
          */
-        return [
-            // See ObjectWithCountry class.
-            'iso_country_fields' => [
-                'country_iso' => 'CoId',
+        // See ObjectWithCountry class.
+        'iso_country_fields' => [
+            'country_iso' => 'CoId',
+        ],
+        'fields' => [
+            // Land (verwijzing naar: Land => AfasKnCountry)
+            'CoId' => [
             ],
-            'fields' => [
-                // Land (verwijzing naar: Land => AfasKnCountry)
-                'CoId' => [
-                ],
-                // Fake ISO field for CoId:
-                'country_iso' => [],
-                // "is postbusadres" (If true: HmNr has number of P.O. box.)
-                'PbAd' => [
-                    'alias' => 'is_po_box',
-                    'type' => 'boolean',
-                    'required' => true,
-                    'default' => false,
-                ],
-                // Toev. voor straat
-                'StAd' => [],
-                // Straat
-                'Ad' => [
-                    'alias' => 'street',
-                    'required' => true,
-                ],
-                // Huisnummer
-                'HmNr' => [
-                    'alias' => 'house_number',
-                    'type' => 'integer',
-                ],
-                // Toev. aan huisnr.
-                'HmAd' => [
-                    'alias' => 'house_number_ext',
-                ],
-                // Postcode
-                'ZpCd' => [
-                    'alias' => 'zip_code',
-                    'required' => true,
-                ],
-                // Woonplaats (verwijzing naar: Woonplaats => AfasKnResidence)
-                // (I think the "AfasKnResidence" reference was outdated docs?)
-                'Rs' => [
-                    'alias' => 'town',
-                    'required' => true,
-                ],
-                // Adres toevoeging
-                'AdAd' => [],
-                // Ingangsdatum adreswijziging (wordt genegeerd bij eerste datum)
-                'BeginDate' => [
-                    'type' => 'date',
-                ],
-                'ResZip' => [
-                    'alias' => 'resolve_zip',
-                    'type' => 'boolean',
-                    'default' => false,
-                ],
+            // Fake ISO field for CoId:
+            'country_iso' => [],
+            // "is postbusadres" (If true: HmNr has number of P.O. box.)
+            'PbAd' => [
+                'alias' => 'is_po_box',
+                'type' => 'boolean',
+                'required' => true,
+                'default' => false,
             ],
-        ];
-    }
+            // Toev. voor straat
+            'StAd' => [],
+            // Straat
+            'Ad' => [
+                'alias' => 'street',
+                'required' => true,
+            ],
+            // Huisnummer
+            'HmNr' => [
+                'alias' => 'house_number',
+                'type' => 'integer',
+            ],
+            // Toev. aan huisnr.
+            'HmAd' => [
+                'alias' => 'house_number_ext',
+            ],
+            // Postcode
+            'ZpCd' => [
+                'alias' => 'zip_code',
+                'required' => true,
+            ],
+            // Woonplaats (verwijzing naar: Woonplaats => AfasKnResidence)
+            // (I think the "AfasKnResidence" reference was outdated docs?)
+            'Rs' => [
+                'alias' => 'town',
+                'required' => true,
+            ],
+            // Adres toevoeging
+            'AdAd' => [],
+            // Ingangsdatum adreswijziging (wordt genegeerd bij eerste datum)
+            'BeginDate' => [
+                'type' => 'date',
+            ],
+            'ResZip' => [
+                'alias' => 'resolve_zip',
+                'type' => 'boolean',
+                'default' => false,
+            ],
+        ],
+    ];
 
     /**
      * {@inheritdoc}
@@ -144,10 +144,10 @@ class KnBasicAddress extends ObjectWithCountry
 
         $element = parent::validateFields($element, $element_index, $change_behavior, $validation_behavior);
 
-        // See comments on top of getPropertyDefinitions(): always insert a
-        // value for non-inserts (irrespective of ALLOW_DEFAULTS_ON_UPDATE). We
-        // can't do this by setting 'default' because defaults are not usually
-        // applied on non-inserts.
+        // See comments in $propertyDefinitions: always insert a value for
+        // non-inserts (irrespective of ALLOW_DEFAULTS_ON_UPDATE). We can't do
+        // this by setting 'default' because defaults are not usually applied
+        // on non-inserts.
         if ($this->getAction($element_index) !== 'insert') {
             $element['Fields']['BeginDate'] = date('Y-m-d');
         }

@@ -85,11 +85,11 @@ KnOrganisation:insert
                                     "Fields": {
                                         "FiNm": "Roderik",
                                         "LaNm": "v. Muit",
-                                        "AutoNum": true,
-                                        "MatchPer": "7",
                                         "SpNm": false,
                                         "ViGe": "O",
-                                        "Corr": false
+                                        "Corr": false,
+                                        "AutoNum": true,
+                                        "MatchPer": "7"
                                     }
                                 }
                             }
@@ -147,11 +147,11 @@ KnOrganisation:insert
                 <Fields Action="insert">
                   <FiNm>Roderik</FiNm>
                   <LaNm>v. Muit</LaNm>
-                  <AutoNum>1</AutoNum>
-                  <MatchPer>7</MatchPer>
                   <SpNm>0</SpNm>
                   <ViGe>O</ViGe>
                   <Corr>0</Corr>
+                  <AutoNum>1</AutoNum>
+                  <MatchPer>7</MatchPer>
                 </Fields>
               </Element>
             </KnPerson>

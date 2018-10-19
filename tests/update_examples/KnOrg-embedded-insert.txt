@@ -30,10 +30,10 @@ KnOrganisation:insert:1079
         "Element": {
             "Fields": {
                 "Nm": "Wyz",
+                "PbAd": true,
                 "AutoNum": true,
 ; MatchOga has a default of 6 (for inserts).
-                "MatchOga": "6",
-                "PbAd": true
+                "MatchOga": "6"
             },
             "Objects": {
                 "KnBasicAddressAdr": {
@@ -65,12 +65,12 @@ KnOrganisation:insert:1079
                                         "LaNm": "Muit",
                                         "In": "R.",
                                         "SeNm": "MUIT",
-                                        "AutoNum": true,
-; MatchPer has a default of 7 (for inserts).
-                                        "MatchPer": "7",
                                         "SpNm": false,
                                         "ViGe": "O",
-                                        "Corr": false
+                                        "Corr": false,
+                                        "AutoNum": true,
+; MatchPer has a default of 7 (for inserts).
+                                        "MatchPer": "7"
                                     }
                                 }
                             }
@@ -86,9 +86,9 @@ KnOrganisation:insert:1079
   <Element>
     <Fields Action="insert">
       <Nm>Wyz</Nm>
+      <PbAd>1</PbAd>
       <AutoNum>1</AutoNum>
       <MatchOga>6</MatchOga>
-      <PbAd>1</PbAd>
     </Fields>
     <Objects>
       <KnBasicAddressAdr>
@@ -120,11 +120,11 @@ KnOrganisation:insert:1079
                   <LaNm>Muit</LaNm>
                   <In>R.</In>
                   <SeNm>MUIT</SeNm>
-                  <AutoNum>1</AutoNum>
-                  <MatchPer>7</MatchPer>
                   <SpNm>0</SpNm>
                   <ViGe>O</ViGe>
                   <Corr>0</Corr>
+                  <AutoNum>1</AutoNum>
+                  <MatchPer>7</MatchPer>
                 </Fields>
               </Element>
             </KnPerson>
