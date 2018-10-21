@@ -833,8 +833,11 @@ class OrgPersonContact extends ObjectWithCountry
         // validate if the address is in a parent object; that is done in
         // validateReferenceFields(). This code isn't guaranteed to absolutely
         // always behave correctly... but the relevant bits are 'off' by
-        // default, and the code is a good start.
-        if (isset($value) && in_array($field_name, ['TeNr', 'MbNr', 'FaNr', 'TeN2', 'MbN2'], true)
+        // default, and the code is a good start. Skip all this if any errors
+        // were encountered earlier because we only want to search address
+        // fields in embedded elements that could be validated.
+        if ($element && empty($element['*errors'])
+            && isset($value) && in_array($field_name, ['TeNr', 'MbNr', 'FaNr', 'TeN2', 'MbN2'], true)
             && ($change_behavior & self::ALLOW_REFORMAT_PHONE_NR || $validation_behavior & self::VALIDATE_FORMAT)) {
             // First, establish whether we even know the country code, since
             // that is inside an address object. This means this validation /
@@ -870,7 +873,7 @@ class OrgPersonContact extends ObjectWithCountry
             if ($address && (!isset($address['CoId']) || strtoupper($address['CoId']) === 'NL')) {
                 $parts = static::validateDutchPhoneNr($value);
                 if (!$parts && $validation_behavior & self::VALIDATE_FORMAT && !in_array($field_name, ['TeN2', 'MbN2'], true)) {
-                    throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
+                    throw new InvalidArgumentException("Phone number '$field_name' has invalid format.");
                 }
                 if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
                     // Only replace area code and local part into here;
@@ -894,44 +897,46 @@ class OrgPersonContact extends ObjectWithCountry
         // check if there's a phone field inside those objects that we should
         // retroactively validate / reformat. We need to do that once both
         // objects are already validated, so this seems a good place.
-        $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad']);
-        if ($address && (!isset($address['CoId']) || strtoupper($address['CoId']) === 'NL')) {
-            // This is the reverse of validateFieldValue():
-            // - If this is a KnContact, then validate the embedded knPerson's
-            //   phone, but do not throw validation errors for TeN2 & MbN2
-            //   which are private. (We assume the address to be a company
-            //   address. Only allow reformatting of those numbers.) Don't
-            //   validate KnOrganisation phone against this KnContact address.
-            // - If KnPerson, validate KnContact phone; not KnOrganisation.
-            // - If KnOrganisation, validate embedded KnContact and KnPerson's
-            //   phone, but do not throw validation errors for TeN2 & MbN2.
-            foreach (['KnContact', 'KnPerson'] as $type) {
-                // Each embedded type has only one element, keyed by 'Element'.
-                if (!empty($element['Objects'][$type]['Element']['Fields'])) {
-                    foreach (['TeNr', 'MbNr', 'FaNr', 'TeN2', 'MbN2'] as $field_name) {
-                        if (!empty($element['Objects'][$type]['Element']['Fields'][$field_name])) {
-                            $parts = static::validateDutchPhoneNr($element['Objects'][$type]['Element']['Fields'][$field_name]);
-                            if (!$parts && $validation_behavior & self::VALIDATE_FORMAT && !in_array($field_name, ['TeN2', 'MbN2'], true)) {
-                                throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
-                            }
-                            if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
-                                // Only replace area code and local part into here;
-                                // country code is lost.
-                                $element['Objects'][$type]['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
-                            }
-                        }
-                    }
-                    if ($type === 'KnContact' && !empty($element['Objects'][$type]['Element']['Fields'])) {
+        if (empty($element['*errors'])) {
+            $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad']);
+            if ($address && (!isset($address['CoId']) || strtoupper($address['CoId']) === 'NL')) {
+                // This is the reverse of validateFieldValue():
+                // - If this is a KnContact, then validate the embedded knPerson's
+                //   phone, but do not throw validation errors for TeN2 & MbN2
+                //   which are private. (We assume the address to be a company
+                //   address. Only allow reformatting of those numbers.) Don't
+                //   validate KnOrganisation phone against this KnContact address.
+                // - If KnPerson, validate KnContact phone; not KnOrganisation.
+                // - If KnOrganisation, validate embedded KnContact and KnPerson's
+                //   phone, but do not throw validation errors for TeN2 & MbN2.
+                foreach (['KnContact', 'KnPerson'] as $type) {
+                    // Each embedded type has only one element, keyed by 'Element'.
+                    if (!empty($element['Objects'][$type]['Element']['Fields'])) {
                         foreach (['TeNr', 'MbNr', 'FaNr', 'TeN2', 'MbN2'] as $field_name) {
-                            if (!empty($element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name])) {
-                                $parts = static::validateDutchPhoneNr($element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name]);
+                            if (!empty($element['Objects'][$type]['Element']['Fields'][$field_name])) {
+                                $parts = static::validateDutchPhoneNr($element['Objects'][$type]['Element']['Fields'][$field_name]);
                                 if (!$parts && $validation_behavior & self::VALIDATE_FORMAT && !in_array($field_name, ['TeN2', 'MbN2'], true)) {
                                     throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
                                 }
                                 if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
-                                    // Only replace area code and local part into here;
-                                    // country code is lost.
-                                    $element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
+                                    // Only replace area code and local part
+                                    // into here; country code is lost.
+                                    $element['Objects'][$type]['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
+                                }
+                            }
+                        }
+                        if ($type === 'KnContact' && !empty($element['Objects'][$type]['Element']['Fields'])) {
+                            foreach (['TeNr', 'MbNr', 'FaNr', 'TeN2', 'MbN2'] as $field_name) {
+                                if (!empty($element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name])) {
+                                    $parts = static::validateDutchPhoneNr($element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name]);
+                                    if (!$parts && $validation_behavior & self::VALIDATE_FORMAT && !in_array($field_name, ['TeN2', 'MbN2'], true)) {
+                                        throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
+                                    }
+                                    if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
+                                        // Only replace area code and local part into here;
+                                        // country code is lost.
+                                        $element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
+                                    }
                                 }
                             }
                         }

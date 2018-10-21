@@ -183,6 +183,16 @@ class KnBasicAddress extends ObjectWithCountry
         // currently in AFAS can be overwritten. If the action is "insert",
         // most fields which are not set to a derived value, are not set at all.
 
+        // If any of the relevant fields are non-strings, skip silently.
+        if (isset($fields['Ad']) && !is_string($fields['Ad'])
+            || isset($fields['HmNr']) && !is_string($fields['HmNr'])
+            || isset($fields['HmAd']) && !is_string($fields['HmAd'])
+            || isset($fields['CoId']) && !is_string($fields['CoId'])
+            || isset($fields['Ad']) && !is_string($fields['Ad'])
+        ) {
+            return $fields;
+        }
+
         $matches = [];
         if (!empty($fields['Ad']) && (!isset($fields['HmNr']) || $fields['HmNr'] === '') && (!isset($fields['HmAd']) || $fields['HmAd'] === '')
             // Split off house number and possible extension from street,

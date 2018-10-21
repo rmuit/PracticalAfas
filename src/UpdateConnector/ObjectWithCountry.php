@@ -10,6 +10,7 @@
 
 namespace PracticalAfas\UpdateConnector;
 
+use InvalidArgumentException;
 use UnexpectedValueException;
 
 /**
@@ -324,13 +325,19 @@ class ObjectWithCountry extends UpdateObject
         // fields. The 'iso_country_fields' definition must be present; if not,
         // this object type should not have / extend class ObjectWithCountry.
         if (!isset($this->propertyDefinitions['iso_country_fields']) || !is_array($this->propertyDefinitions['iso_country_fields'])) {
+            // If a definition is wrong, we throw an exception rather than
+            // adding to $element['*errors'].
             throw new UnexpectedValueException("'{$this->getType()}' object has no / a non-array 'iso_country_fields' property definition.");
         }
         foreach ($this->propertyDefinitions['iso_country_fields'] as $iso_field_name => $afas_field_name) {
             if (!is_string($afas_field_name)) {
                 throw new UnexpectedValueException("'iso_country_fields' property definition for '{$this->getType()}' object contains a non-string value.");
             }
-            $element = $this->convertIsoCountryCodeField($element, $element_index, $iso_field_name, $afas_field_name);
+            try {
+                $element = $this->convertIsoCountryCodeField($element, $element_index, $iso_field_name, $afas_field_name);
+            } catch (InvalidArgumentException $e) {
+                $element['*errors']["Fields:$afas_field_name"] = $e->getMessage();
+            }
         }
 
         $element = parent::validateFields($element, $element_index, $change_behavior, $validation_behavior);
@@ -366,6 +373,9 @@ class ObjectWithCountry extends UpdateObject
      *
      * @return array
      *   The element with its fields changed if appropriate.
+     *
+     * @throws \InvalidArgumentException
+     *   If ISO or AFAS country code is unknown or invalid.
      */
     protected function convertIsoCountryCodeField(array $element, $element_index, $iso_field_name, $afas_field_name, $change_behavior = self::DEFAULT_CHANGE)
     {
@@ -375,27 +385,27 @@ class ObjectWithCountry extends UpdateObject
             // because this is called early during validateFields(). A quick
             // way of doing this is to call validateFieldValue() (which will be
             // repeated later during validateFields().)
-            $this->validateFieldValue($element['Fields'][$iso_field_name], $iso_field_name, $change_behavior);
+            $this->validateFieldValue($element['Fields'][$iso_field_name], $iso_field_name, $change_behavior, $element_index, $element);
 
             $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
 
             $afas_code = static::convertIsoCountryCode($element['Fields'][$iso_field_name]);
             if (!$afas_code) {
-                throw new UnexpectedValueException("Unknown ISO country code '{$element['Fields'][$iso_field_name]}' in $element_descr.");
+                throw new InvalidArgumentException("Unknown ISO country code '{$element['Fields'][$iso_field_name]}' in $element_descr.");
             }
             // The CoId field should not be filled, but if it's the same as
             // the converted ISO code, we allow that.
             if (!empty($element['Fields'][$afas_field_name])) {
-                $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, $change_behavior);
+                $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, $change_behavior, $element_index, $element);
                 if (strtoupper($element['Fields'][$afas_field_name]) !== $afas_code) {
-                    throw new UnexpectedValueException("Inconsistent ISO country code '{$element['Fields'][$iso_field_name]}' and AFAS code '{$element['Fields'][$afas_field_name]}'' found in $element_descr.");
+                    throw new InvalidArgumentException("Inconsistent ISO country code '{$element['Fields'][$iso_field_name]}' and AFAS code '{$element['Fields'][$afas_field_name]}'' found in $element_descr.");
                 }
             } else {
                 $element['Fields'][$afas_field_name] = $afas_code;
             }
             unset($element['Fields'][$iso_field_name]);
         } elseif (!empty($element['Fields'][$afas_field_name])) {
-            $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, $change_behavior);
+            $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, $change_behavior, $element_index, $element);
             $element['Fields'][$afas_field_name] = strtoupper($element['Fields'][$afas_field_name]);
         }
 

@@ -1766,6 +1766,8 @@ class UpdateObject
      *   specified, this changes the return value according to the modifiers
      *   passed.
      *
+     * @throws \InvalidArgumentException
+     *   If any of the arguments have an unrecognized value.
      * @throws \UnexpectedValueException
      *   If this object's data does not pass validation. (This likely indicates
      *   the data is invalid, although in theory it can also indicate that the
@@ -1789,11 +1791,35 @@ class UpdateObject
                 throw new InvalidArgumentException('$validation_behavior argument is not an integer.');
             }
 
-            $elements = [];
+            $return = [];
+            $errors = [];
             foreach ($this->elements as $element_index => $element) {
-                $elements[] = $this->validateElement($element, $element_index, $change_behavior, $validation_behavior);
+                $element = $this->validateElement($element, $element_index, $change_behavior, $validation_behavior);
+
+                if (isset($element['*errors'])) {
+                    if (!is_array($element['*errors'])) {
+                        throw new UnexpectedValueException('Something unexpected during validation. We got a single value where we expected an array:' . print_r($element['*errors'], TRUE));
+                    }
+                    if ($element['*errors']) {
+                        if ($errors) {
+                            // Merge errors from two elements.
+                            foreach ($element['*errors'] as $key => $value) {
+                                $errors["$element_index:$key"] = $value;
+                            }
+                        } else {
+                            // We don't care enough about the keys to renumber
+                            // them if this is not the first element.
+                            $errors = $element['*errors'];
+                        }
+                    } else {
+                        unset($element['*errors']);
+                    }
+                }
+                $return[] = $element;
             }
-            $return = $elements;
+            if ($errors) {
+                throw new UnexpectedValueException(implode("\n", $errors));
+            }
         }
 
         return $return;
@@ -1802,9 +1828,9 @@ class UpdateObject
     /**
      * Validates one element against a list of property definitions.
      *
-     * This method is not expected to be overridden and has some boilerplate /
-     * checks integrated into it which are also necessary for the methods it
-     * calls. It should not touch $this->elements.
+     * This method has some boilerplate / checks integrated into it which are
+     * also necessary for some protected methods it calls and don't need to be
+     * repeated there. It should not touch $this->elements.
      *
      * @param array $element
      *   The element (usually the single one contained in $this->elements) that
@@ -1819,11 +1845,12 @@ class UpdateObject
      *
      * @return array
      *   The validated element, with changes applied if appropriate.
+     *   Validation errors are stored as an array under the '*errors' key,
+     *   further keyed by 'Objects:<name>'; anything present under this key
+     *   is overwritten.
      *
      * @throws \UnexpectedValueException
-     *   If the element data does not pass validation. (This likely indicates
-     *   the data is invalid, although in theory it can also indicate that the
-     *   validation is based on improper logic/definitions.)
+     *   If property definitions are invalid and validation could not be done.
      */
     protected function validateElement($element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
     {
@@ -1854,17 +1881,7 @@ class UpdateObject
             throw new UnexpectedValueException("'{$this->getType()}' object has a non-array 'objects' property definition.");
         }
 
-        // Design decision: validate embedded objects first ('depth first'),
-        // then validate the rest of this element while knowing that the
-        // 'children' are OK, and with their properties accessible (dependent
-        // on some $change_behavior values).
-        $element = $this->validateReferenceFields($element, $element_index, $change_behavior, $validation_behavior);
-        $element = $this->validateFields($element, $element_index, $change_behavior, $validation_behavior);;
-
-
-
-        // Do checks on 'id field' after validate*() methods, so they can still
-        // change it even though that's not officially their purpose.
+        $element['*errors'] = [];
         if (!empty($this->propertyDefinitions['id_property'])) {
             if (!is_string($this->propertyDefinitions['id_property'])) {
                 throw new UnexpectedValueException("'id_property' definition in '{$this->getType()}' object is not a string value.");
@@ -1873,7 +1890,7 @@ class UpdateObject
 
             if (isset($element[$id_property])) {
                 if (!is_int($element[$id_property]) && !is_string($element[$id_property])) {
-                    throw new UnexpectedValueException("'$id_property' property in $element_descr must hold integer/string value.");
+                    $element['*errors'][$id_property] = "'$id_property' property in $element_descr must hold integer/string value.";
                 }
             } else {
                 // If action is "insert", we are guessing that there usually
@@ -1884,10 +1901,17 @@ class UpdateObject
                 // different than "insert".
                 $action = $this->getAction($element_index);
                 if ($action !== 'insert') {
-                    throw new UnexpectedValueException("'$id_property' property in $element_descr must have a value, or Action '$action' must be set to 'insert'.");
+                    $element['*errors'][$id_property] = "'$id_property' property in $element_descr must have a value, or Action '$action' must be set to 'insert'.";
                 }
             }
         }
+
+        // Design decision: validate embedded objects first ('depth first'),
+        // then validate the rest of this element while knowing that the
+        // 'children' are OK, and with their properties accessible (dependent
+        // on some $change_behavior values).
+        $element = $this->validateReferenceFields($element, $element_index, $change_behavior, $validation_behavior);
+        $element = $this->validateFields($element, $element_index, $change_behavior, $validation_behavior);;
 
         if ($validation_behavior & self::VALIDATE_NO_UNKNOWN) {
             // Validate that all Fields/Objects/other properties are known.
@@ -1896,17 +1920,197 @@ class UpdateObject
             // input is not divided over 'Objects' and 'Fields' so
             // addElements() has to decide how/where to set each property).
             if (!empty($element['Fields']) && $unknown = array_diff_key($element['Fields'], $this->propertyDefinitions['fields'])) {
-                throw new UnexpectedValueException("Unknown field(s) encountered in $element_descr: " , implode(', ', array_keys($unknown)));
+                $element['*errors']['Fields'] = "Unknown field(s) encountered in $element_descr: " . implode(', ', array_keys($unknown));
             }
             if (!empty($element['Objects']) && !empty($this->propertyDefinitions['objects']) && $unknown = array_diff_key($element['Objects'], $this->propertyDefinitions['objects'])) {
-                throw new UnexpectedValueException("Unknown object(s) encountered in $element_descr: " , implode(', ', array_keys($unknown)));
+                $element['*errors']['Objects'] = "Unknown object(s) encountered in $element_descr: " . implode(', ', array_keys($unknown));
             }
-            $known_properties = ['Fields' => true, 'Objects' => true];
+            $known_properties = ['Fields' => true, 'Objects' => true, '*errors' => true];
             if (!empty($this->propertyDefinitions['id_property'])) {
                 $known_properties['@' . $this->propertyDefinitions['id_property']] = true;
             }
             if ($unknown = array_diff_key($element, $known_properties)) {
-                throw new UnexpectedValueException("Unknown properties encountered in $element_descr: " . implode(', ', array_keys($unknown)));
+                $element['*errors']['*'] = "Unknown properties encountered in $element_descr: " . implode(', ', array_keys($unknown));
+            }
+        }
+
+        return $element;
+    }
+
+    /**
+     * Validates an element's object reference fields; replaces them by arrays.
+     *
+     * This is mainly split out from validateElement() to be easier to override
+     * by child classes. It should generally not touch $this->elements. We
+     * can assume '*errors' has been initialized.
+     *
+     * @param array $element
+     *   The element (usually the single one contained in $this->elements)
+     *   whose embedded objects should be validated.
+     * @param int $element_index
+     *   The index of the element in our object data; usually there is one
+     *   element and the index is 0.
+     * @param int $change_behavior
+     *   (Optional) see output(). Note that this is the behavior for our
+     *   element and may still need to be amended to apply to embedded objects.
+     * @param int $validation_behavior
+     *   (Optional) see output().
+     *
+     * @return array
+     *   The element with its embedded fields validated, and possibly default
+     *   objects added if appropriate. All values in the 'Objects' sub array
+     *   are replaced by their validated array representation, wrapped inside a
+     *   one-element array keyed by 'Element' (as is necessary for the JSON
+     *   representation of data sent to an Update Connector). Validation errors
+     *   are stored as an array under the '*errors' key, further keyed by
+     *   'Objects:<name>'.
+     */
+    protected function validateReferenceFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
+    {
+        if (!isset($this->propertyDefinitions['objects'])) {
+            return $element;
+        }
+        $action = $this->getAction($element_index);
+        $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
+            || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
+        $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+
+        // Check requiredness for reference field, and create a default object
+        // if it's missing (where defined. Defaults are unlikely to ever be
+        // needed but still... they're possible.)
+        foreach ($this->propertyDefinitions['objects'] as $ref_name => $object_properties) {
+            // The structure of this code is equivalent to validateFields() but
+            // a null default value means 'no default available' (instead of
+            // 'a default of null', which it does in validateFields().)
+            $default_available = $defaults_allowed && isset($object_properties['default']);
+            // Requiredness is only checked for action "insert"; the
+            // VALIDATE_ESSENTIAL bit does not change that. (So far, we've only
+            // seen 'required on update' situations only for fields which are
+            // not proper fields, and those situations are solved in custom
+            // code in child classes.)
+            $validate_required_value = !empty($object_properties['required'])
+                && ($validation_behavior & self::VALIDATE_REQUIRED
+                    || ($object_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
+            // Throw an exception if we have no-or-null ref-field value and no
+            // default, OR if we have null ref-field value and non-null default.
+            // (See validateFields() for details on this reasoning. Note the
+            // array_key_exists() means "is null",)
+            if ($validate_required_value && !isset($element['Objects'][$ref_name])
+                && (!$default_available || array_key_exists($ref_name, $element['Objects']))
+            ) {
+                $name_and_alias = "'$ref_name'" . (isset($object_properties['alias']) ? " ({$object_properties['alias']})" : '');
+                $element['*errors']["Objects:$ref_name"] = "No value provided for required $name_and_alias object embedded in $element_descr.";
+            } else {
+                // Set default if value is missing, or if value is null and
+                // field is required (and if we are allowed to set it, but
+                // that's always the case if $default_available).
+                if ($default_available
+                    && (!array_key_exists($ref_name, $element['Objects'])
+                        || !empty($object_properties['required']) && $element['Objects'][$ref_name] === null)) {
+                    $element['Objects'][$ref_name] = $this->getObject($ref_name, $element_index, true);
+                }
+
+                if (isset($element['Objects'][$ref_name])) {
+                    // Replace UpdateObject with validated array representation.
+                    try {
+                        $element['Objects'][$ref_name] = ['Element' => $this->validateObjectValue($element['Objects'][$ref_name], $ref_name, $change_behavior, $validation_behavior, $element_index)];
+                    } catch (UnexpectedValueException $e) {
+                        $element['*errors']["Objects:$ref_name"] = $e->getMessage();
+                    }
+
+                }
+            }
+        }
+
+        return $element;
+    }
+
+    /**
+     * Validates an element's fields against a list of property definitions.
+     *
+     * This calls validateFieldValue() which is meant to validate 'standalone'
+     * field values; the code in this method is meant to validate things that
+     * make sense in the context of the full element, like default / required
+     * values for fields that don't have a value.
+     *
+     * This is mainly split out from validateElement() to be easier to override
+     * by child classes. It should generally not touch $this->elements. We
+     * can assume '*errors' has been initialized and all embedded objects
+     * (except those with validation errors) have been validated and replaced
+     * by array structures (so this method should  not be called in cases where
+     * this is not true).
+     *
+     * @param array $element
+     *   The element (usually the single one contained in $this->elements)
+     *   whose fields should be validated.
+     * @param int $element_index
+     *   The index of the element in our object data; usually there is one
+     *   element and the index is 0.
+     * @param int $change_behavior
+     *   (Optional) see output().
+     * @param int $validation_behavior
+     *   (Optional) see output().
+     *
+     * @return array
+     *   The element with its fields validated, and changed if appropriate.
+     *   Validation errors are stored as an array under the '*errors' key,
+     *   further keyed by 'Fields:<name>'.
+     */
+    protected function validateFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
+    {
+        $action = $this->getAction($element_index);
+        $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
+            || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
+        $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+
+        // Check required fields and add default values for fields (where
+        // defined). About definitions:
+        // - if required = true, then
+        //   - if no data value present and default is provided, it's set.
+        //   - if no data value present and no default is provided, an
+        //     exception is thrown.
+        //   - if a null value is present, an exception is thrown, unless null
+        //     is provided as a default value. (We don't silently overwrite
+        //     null values which were explicitly set with other default values.)
+        // - if the default is null (or value provided is null & not 'required')
+        //   then null is passed.
+        foreach ($this->propertyDefinitions['fields'] as $name => $field_properties) {
+            $default_available = $defaults_allowed && array_key_exists('default', $field_properties);
+            // Requiredness is only checked for action "insert"; the
+            // VALIDATE_ESSENTIAL bit does not change that. (So far, we've only
+            // seen 'required on update' situations only for fields which are
+            // not proper fields, and those situations are solved in custom
+            // code in child classes.)
+            $validate_required_value = !empty($field_properties['required'])
+                && $action === 'insert'
+                && ($validation_behavior & self::VALIDATE_REQUIRED
+                    || ($field_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
+            // See above: throw an exception if we have no-or-null field
+            // value and no default, OR if we have null field value and
+            // non-null default. (Note the array_key_exists() means "is null",)
+            if ($validate_required_value && !isset($element['Fields'][$name])
+                && (!$default_available
+                    || (array_key_exists($name, $element['Fields']) && $field_properties['default'] !== null))
+            ) {
+                $name_and_alias = "'$name'" . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
+                $element['*errors']["Fields:$name"] = "No value provided for required $name_and_alias field of $element_descr.";
+            } else {
+                // Set default if value is missing, or if value is null and
+                // field is required (and if we are allowed to set it, but
+                // that's always the case if $default_available).
+                if ($default_available
+                    && (!array_key_exists($name, $element['Fields'])
+                        || !empty($field_properties['required']) && $element['Fields'][$name] === null)) {
+                    $element['Fields'][$name] = $field_properties['default'];
+                }
+
+                if (isset($element['Fields'][$name])) {
+                    try {
+                        $element['Fields'][$name] = $this->validateFieldValue($element['Fields'][$name], $name, $change_behavior, $validation_behavior, $element_index, $element);
+                    } catch (InvalidArgumentException $e) {
+                        $element['*errors']["Fields:$name"] = $e->getMessage();
+                    }
+                }
             }
         }
 
@@ -1915,13 +2119,6 @@ class UpdateObject
 
     /**
      * Validates the value for an element's embedded object.
-     *
-     * This only validates the 'status of embedded objects in relation to our
-     * own object', not the contents of the embedded objects; the objects' own
-     * getElements() / validateElement() / ... calls are responsible for that.
-     *
-     * This is mainly split out from validateElement() to be easier to override
-     * by child classes. It should generally not touch $this->elements.
      *
      * @param mixed $value
      *   The value, which is supposed to be an UpdateObject.
@@ -1942,9 +2139,7 @@ class UpdateObject
      *   definition for the corresponding reference field.
      *
      * @throws \UnexpectedValueException
-     *   If the element data does not pass validation. (This likely indicates
-     *   the data is invalid, although in theory it can also indicate that the
-     *   validation is based on improper logic/definitions.)
+     *   If the element data does not pass validation.
      */
     protected function validateObjectValue($value, $reference_field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, $element_index = null)
     {
@@ -1995,187 +2190,6 @@ class UpdateObject
         }
 
         return $elements;
-    }
-
-    /**
-     * Validates an element's object reference fields; replaces them by arrays.
-     *
-     * This is mainly split out from validateElement() to be easier to override
-     * by child classes. It should generally not touch $this->elements.
-     *
-     * @param array $element
-     *   The element (usually the single one contained in $this->elements)
-     *   whose embedded objects should be validated.
-     * @param int $element_index
-     *   The index of the element in our object data; usually there is one
-     *   element and the index is 0.
-     * @param int $change_behavior
-     *   (Optional) see output(). Note that this is the behavior for our
-     *   element and may still need to be amended to apply to embedded objects.
-     * @param int $validation_behavior
-     *   (Optional) see output().
-     *
-     * @return array
-     *   The element with its embedded fields validated, and possibly default
-     *   objects added if appropriate. All values in the 'Objects' sub array
-     *   are replaced by their validated array representation, wrapped inside a
-     *   one-element array keyed by 'Element' (as is necessary for the JSON
-     *   representation of data sent to an Update Connector).
-     *
-     * @throws \UnexpectedValueException
-     *   If the element data does not pass validation. (This likely indicates
-     *   the data is invalid, although in theory it can also indicate that the
-     *   validation is based on improper logic/definitions.)
-     */
-    protected function validateReferenceFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
-    {
-        if (!isset($this->propertyDefinitions['objects'])) {
-            return $element;
-        }
-        $action = $this->getAction($element_index);
-        $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
-            || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
-        $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
-
-        // Check requiredness for reference field, and create a default object
-        // if it's missing (where defined. Defaults are unlikely to ever be
-        // needed but still... they're possible.)
-        foreach ($this->propertyDefinitions['objects'] as $ref_name => $object_properties) {
-            // The structure of this code is equivalent to validateFields() but
-            // a null default value means 'no default available' (instead of
-            // 'a default of null', which it does in validateFields().)
-            $default_available = $defaults_allowed && isset($object_properties['default']);
-            // Requiredness is only checked for action "insert"; the
-            // VALIDATE_ESSENTIAL bit does not change that. (So far, we've only
-            // seen 'required on update' situations only for fields which are
-            // not proper fields, and those situations are solved in custom
-            // code in child classes.)
-            $validate_required_value = !empty($object_properties['required'])
-                && ($validation_behavior & self::VALIDATE_REQUIRED
-                    || ($object_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
-            // Throw an exception if we have no-or-null ref-field value and no
-            // default, OR if we have null ref-field value and non-null default.
-            // (See validateFields() for details on this reasoning. Note the
-            // array_key_exists() means "is null",)
-            if ($validate_required_value && !isset($element['Objects'][$ref_name])
-                && (!$default_available || array_key_exists($ref_name, $element['Objects']))
-            ) {
-                $name_and_alias = "'$ref_name'" . (isset($object_properties['alias']) ? " ({$object_properties['alias']})" : '');
-                throw new UnexpectedValueException("No value given for required $name_and_alias object embedded in $element_descr.");
-            }
-
-            // Set default if value is missing, or if value is null and field
-            // is required (and if we are allowed to set it, but that's always
-            // the case if $default_available).
-            if ($default_available
-                && (!array_key_exists($ref_name, $element['Objects'])
-                    || !empty($object_properties['required']) && $element['Objects'][$ref_name] === null)) {
-                $element['Objects'][$ref_name] = $this->getObject($ref_name, $element_index, true);
-            }
-
-            if (isset($element['Objects'][$ref_name])) {
-                // Replace UpdateObject with its validated array representation.
-                $element['Objects'][$ref_name] = ['Element' => $this->validateObjectValue($element['Objects'][$ref_name], $ref_name, $change_behavior, $validation_behavior, $element_index)];
-            }
-        }
-
-        return $element;
-    }
-
-    /**
-     * Validates an element's fields against a list of property definitions.
-     *
-     * This calls validateFieldValue() which is meant to validate 'standalone'
-     * field values; the code in this method is meant to validate things that
-     * make sense in the context of the full element, like default / required
-     * values for fields that don't have a value.
-     *
-     * This is mainly split out from validateElement() to be easier to override
-     * by child classes. It should generally not touch $this->elements. We
-     * can assume all embedded objects have already been validated and replaced
-     * by array structures (so this method should not be called in cases where
-     * this is not true).
-     *
-     * @param array $element
-     *   The element (usually the single one contained in $this->elements)
-     *   whose fields should be validated.
-     * @param int $element_index
-     *   The index of the element in our object data; usually there is one
-     *   element and the index is 0.
-     * @param int $change_behavior
-     *   (Optional) see output().
-     * @param int $validation_behavior
-     *   (Optional) see output().
-     *
-     * @return array
-     *   The element with its fields validated, and changed if appropriate.
-     *
-     * @throws \UnexpectedValueException
-     *   If the element data does not pass validation. (This likely indicates
-     *   the data is invalid, although in theory it can also indicate that the
-     *   validation is based on improper logic/definitions.)
-     */
-    protected function validateFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
-    {
-        $action = $this->getAction($element_index);
-        $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
-            || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
-        $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
-
-        // Check required fields and add default values for fields (where
-        // defined). About definitions:
-        // - if required = true, then
-        //   - if no data value present and default is provided, it's set.
-        //   - if no data value present and no default is provided, an
-        //     exception is thrown.
-        //   - if a null value is present, an exception is thrown, unless null
-        //     is provided as a default value. (We don't silently overwrite
-        //     null values which were explicitly set with other default values.)
-        // - if the default is null (or value given is null & not 'required'),
-        //   then null is passed.
-        foreach ($this->propertyDefinitions['fields'] as $name => $field_properties) {
-            $default_available = $defaults_allowed && array_key_exists('default', $field_properties);
-            // Requiredness is only checked for action "insert"; the
-            // VALIDATE_ESSENTIAL bit does not change that. (So far, we've only
-            // seen 'required on update' situations only for fields which are
-            // not proper fields, and those situations are solved in custom
-            // code in child classes.)
-            $validate_required_value = !empty($field_properties['required'])
-                && $action === 'insert'
-                && ($validation_behavior & self::VALIDATE_REQUIRED
-                    || ($field_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
-            // See above: throw an exception if we have no-or-null field
-            // value and no default, OR if we have null field value and
-            // non-null default. (Note the array_key_exists() means "is null",)
-            if ($validate_required_value && !isset($element['Fields'][$name])
-                && (!$default_available
-                    || (array_key_exists($name, $element['Fields']) && $field_properties['default'] !== null))
-            ) {
-                $name_and_alias = "'$name'" . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
-                throw new UnexpectedValueException("No value given for required $name_and_alias field of $element_descr.");
-            }
-
-            // Set default if value is missing, or if value is null and field
-            // is required (and if we are allowed to set it, but that's always
-            // the case if $default_available).
-            if ($default_available
-                && (!array_key_exists($name, $element['Fields'])
-                    || !empty($field_properties['required']) && $element['Fields'][$name] === null)) {
-                $element['Fields'][$name] = $field_properties['default'];
-            }
-
-            if (isset($element['Fields'][$name])) {
-                // Validate, and 'unify' any InvalidArgumentException to be an
-                // UnexpectedValueException.
-                try {
-                    $element['Fields'][$name] = $this->validateFieldValue($element['Fields'][$name], $name, $change_behavior, $validation_behavior, $element_index, $element);
-                } catch (InvalidArgumentException $e) {
-                    throw new UnexpectedValueException($e->getMessage(), $e->getCode());
-                }
-            }
-        }
-
-        return $element;
     }
 
     /**
