@@ -147,8 +147,15 @@ class KnBasicAddress extends ObjectWithCountry
         // See comments in $propertyDefinitions: always insert a value for
         // non-inserts (irrespective of ALLOW_DEFAULTS_ON_UPDATE). We can't do
         // this by setting 'default' because defaults are not usually applied
-        // on non-inserts.
-        if ($this->getAction($element_index) !== 'insert') {
+        // on non-inserts. This presents a bit of a conundrum: If we're called
+        // through getElements() with default arguments, the caller really
+        // wants to have the elements returned unchanged, for whatever purpose
+        // (e.g. unit tests) so we should set it 'very often but not always and
+        // there's no real bitmask governing this'. We'll be slightly hand-wavy
+        // here and say: never change in case of those default arguments;
+        // otherwise it's allowed.
+        $dont_change_anything = $change_behavior == self::ALLOW_NO_CHANGES && $validation_behavior == self::VALIDATE_NOTHING;
+        if (!$dont_change_anything && $this->getAction($element_index) !== 'insert') {
             $element['Fields']['BeginDate'] = date('Y-m-d');
         }
 

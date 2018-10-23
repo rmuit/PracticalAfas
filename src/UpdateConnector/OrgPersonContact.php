@@ -101,7 +101,7 @@ class OrgPersonContact extends ObjectWithCountry
                     // This has no ID property. Updating standalone knContact
                     // objects can be done by passing BcCoOga + BcCoPer values.
                     $this->propertyDefinitions = [
-                        // Since we are extending ObjectWithCountry (for KnPerson),
+                        // As we are extending ObjectWithCountry (for KnPerson),
                         // we have to define this even though we don't use it.
                         'iso_country_fields' => [],
                         'objects' => [
@@ -116,13 +116,18 @@ class OrgPersonContact extends ObjectWithCountry
                             ],
                         ],
                         'fields' => [
-                            // Code organisatie
+                            // The 2 code fields are only defined if KnContact
+                            // isn't embedded in another object; see below.
+                            // They're also required in that case, both on
+                            // insert and update; see validateFields().
                             'BcCoOga' => [
                                 'alias' => 'organisation_code',
+                                'required' => true,
                             ],
                             // Code persoon
                             'BcCoPer' => [
                                 'alias' => 'person_code',
+                                'required' => true,
                             ],
                             // Postadres is adres
                             'PadAdr' => [
@@ -194,6 +199,12 @@ class OrgPersonContact extends ObjectWithCountry
                             'Twtr' => [
                                 'alias' => 'twitter',
                             ],
+                            // I never used below 2 fields but it feels like
+                            // AFAS is using KnContact for both 'contact
+                            // database' and 'AFAS user accounts' and these are
+                            // applicable to the latter. Which would be why
+                            // they're only defined if KnContact is not
+                            // embedded (as per below).
                             // Persoon toegang geven tot afgeschermde deel van de portal(s)
                             'AddToPortal' => [
                                 'type' => 'boolean',
@@ -205,7 +216,19 @@ class OrgPersonContact extends ObjectWithCountry
 
                     // There's an extra field and some are invalid, if this
                     // element is embedded in an organisation/person element.
+                    // (Which likely means: if it's embedded in any element.)
                     if ($parent_type === 'KnOrganisation' || $parent_type === 'KnPerson') {
+                        // According to the XSD, a knContact can contain a
+                        // knPerson if it's inside a knOrganisation, but not if
+                        // it's standalone.
+                        if ($parent_type === 'KnOrganisation') {
+                            $this->propertyDefinitions['objects']['KnPerson'] = ['alias' => 'person'];
+                        }
+                        // (It doesn't make immediate sense to me that e.g.
+                        // BcCoOga would not be available if the parent is a
+                        // person; especially because of above. I assume this
+                        // came from the same XSD though, so let's stick with
+                        // it.)
                         unset($this->propertyDefinitions['fields']['BcCoOga']);
                         unset($this->propertyDefinitions['fields']['BcCoPer']);
                         unset($this->propertyDefinitions['fields']['AddToPortal']);
@@ -221,6 +244,9 @@ class OrgPersonContact extends ObjectWithCountry
                                 'alias' => 'contact_type',
                                 // Dynamic default depending on parent; see
                                 // validateFields().
+                                // @todo should this be required? I've been
+                                //   inadvertently inserting contacts without
+                                //   types for ages, myself.
                             ],
                             // A note: we could be validating ViKc values in
                             // validateFields() but so far have decided to let
@@ -229,14 +255,7 @@ class OrgPersonContact extends ObjectWithCountry
                             // does not give clear error messages, we should
                             // start doing the validation ourselves.
                         ];
-
-                        // According to the XSD, a knContact can contain a
-                        // knPerson if it's inside a knOrganisation, but not if
-                        // it's standalone.
-                        if ($parent_type === 'KnOrganisation') {
-                            $this->propertyDefinitions['objects']['KnPerson'] = ['alias' => 'person'];
-                        }
-                  }
+                    }
                     break;
 
                 case 'KnPerson':
@@ -506,7 +525,7 @@ class OrgPersonContact extends ObjectWithCountry
 
                 case 'KnOrganisation':
                     $this->propertyDefinitions = [
-                        // Since we are extending ObjectWithCountry (for KnPerson),
+                        // As we are extending ObjectWithCountry (for KnPerson),
                         // we have to define this even though we don't use it.
                         'iso_country_fields' => [],
                         'objects' => [
@@ -692,6 +711,24 @@ class OrgPersonContact extends ObjectWithCountry
         // 'dynamic' definitions that depend on the value of another field. Set
         // or reset them here - and do some other checks.
         switch ($this->getType()) {
+            case 'KnContact':
+                // Check requiredness of BcCoXXX fields on updates, since these
+                // are necessary 'id fields'. (On insert, this extra code isn't
+                // necessary because the 'required' property governs that.) For
+                // better understanding: as per __construct(), let's assume
+                // both fields are only defined when not embedded, and in those
+                // cases it's also impossible to embed a KnPerson into this
+                // object. (Or a KnOrganisation; that's never possible.)
+                if (isset($this->propertyDefinitions['fields']['BcCoOga']) && empty($element['Fields']['BcCoOga'])) {
+                    $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+                    $element['*errors']["Fields:BcCoOga"] = "No value provided for required 'BcCoOga' (organisation_code) field of $element_descr.";
+                }
+                if (isset($this->propertyDefinitions['fields']['BcCoPer']) && empty($element['Fields']['BcCoPer'])) {
+                    $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+                    $element['*errors']["Fields:BcCoPer"] = "No value provided for required 'BcCoPer' (person_code) field of $element_descr.";
+                }
+                break;
+
             case 'KnPerson':
                 // First name is required only if initials are not present.
                 $this->propertyDefinitions['fields']['FiNm']['required'] = empty($element['Fields']['In']);
@@ -707,9 +744,9 @@ class OrgPersonContact extends ObjectWithCountry
 
         // Set dynamic defaults for several objects. We could have set/reset
         // the 'default' properties but that's more involved, without benefit.
-        // (If child classes want to unset these values, their validateFields()
-        // can do that.) Defaults are filled on 'insert' only.
-        $inserting = $this->getAction($element_index) === 'insert';
+        $action = $this->getAction($element_index);
+        $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
+            || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
 
         // If the definition contains reference fields for both address and
         // postal address, and the data has an address but no postal address
@@ -721,7 +758,7 @@ class OrgPersonContact extends ObjectWithCountry
         // is a mistake so we'll just do the two names, always. (Note that PbAd
         // means something different in KnBasicAddress, but that is not defined
         // by this class.)
-        if ($inserting && isset($this->propertyDefinitions['objects']['KnBasicAddressAdr'])
+        if ($defaults_allowed && isset($this->propertyDefinitions['objects']['KnBasicAddressAdr'])
             && isset($this->propertyDefinitions['objects']['KnBasicAddressPad'])
             && !empty($element['Objects']['KnBasicAddressAdr'])
             && empty($element['Objects']['KnBasicAddressPad'])
@@ -734,15 +771,27 @@ class OrgPersonContact extends ObjectWithCountry
             }
         }
 
-        // If no ID is specified, default AutoNum to True for inserts.
-        if ($inserting && !isset($element['Fields']['BcCo'])
+        // If no ID is specified, default AutoNum to True for inserts. This is
+        // an 'operation modifier' rather than a real field, only to be set
+        // on insert. This presents a bit of a conundrum:
+        // - We don't want to have 'setting AutoNum' be dependent on the
+        //   ALLOW_DEFAULTS_ON_INSERT bit. (If someone wants to try and insert
+        //   an organisation/person without defaults, it should still be
+        //   auto-numbered.
+        // - On the other hand, if we're called through getElements() with
+        //   default arguments, the caller really wants to have the elements
+        //   returned unchanged, for whatever purpose (e.g. unit tests).
+        // So we'll be slightly hand-wavy here and say: never change in case
+        // of those default arguments; otherwise it's allowed.
+        $dont_change_anything = $change_behavior == self::ALLOW_NO_CHANGES && $validation_behavior == self::VALIDATE_NOTHING;
+        if (!isset($element['Fields']['BcCo']) && $action === 'insert' && !$dont_change_anything
             && isset($this->propertyDefinitions['fields']['AutoNum']) && !isset($element['Fields']['AutoNum'])) {
             $element['Fields']['AutoNum'] = true;
         }
 
         switch ($this->getType()) {
             case 'KnContact':
-                if ($inserting && $this->parentType === 'KnOrganisation') {
+                if ($defaults_allowed && $this->parentType === 'KnOrganisation') {
                     // If the element being validated contains person data,
                     // 'Persoon' is default contact type.
                     if (!empty($element['Objects']['KnPerson']) && !isset($element['Fields']['ViKc'])) {
@@ -753,15 +802,16 @@ class OrgPersonContact extends ObjectWithCountry
 
             case 'KnPerson':
                 // Organization/Person objects have MatchXXX fields which we
-                // always want to fill with values. We always want to do this,
-                // on update as well as insert (because these aren't real
-                // fields, rather 'operation modifiers').
-                if (!isset($element['Fields']['MatchPer'])) {
+                // always want to fill with values on update as well as insert
+                // (because these are 'operation modifiers' rather than real
+                // fields). We're presented with the same $dont_change_anything
+                // conundrum as above.
+                if (!isset($element['Fields']['MatchPer']) && !$dont_change_anything) {
                     // The MatchPer default is first of all influenced by
                     // whether we're inserting a record. For non-inserts, our
                     // principle is we would rather insert duplicate data than
                     // silently overwrite data by accident...
-                    if ($inserting) {
+                    if ($action === 'insert') {
                         $element['Fields']['MatchPer'] = '7';
                     } elseif (!empty($element['Fields']['BcCo'])) {
                         // ...but it seems very unlikely that someone would
@@ -798,9 +848,9 @@ class OrgPersonContact extends ObjectWithCountry
                 break;
 
             case 'KnOrganisation':
-                if (!isset($element['Fields']['MatchOga'])) {
+                if (!isset($element['Fields']['MatchOga']) && !$dont_change_anything) {
                     // See comments at MatchPer just above.
-                    if ($inserting) {
+                    if ($action === 'insert') {
                         $element['Fields']['MatchOga'] = '6';
                     } elseif (!empty($element['Fields']['BcCo'])) {
                         $element['Fields']['MatchOga'] = '0';
@@ -827,10 +877,10 @@ class OrgPersonContact extends ObjectWithCountry
     {
         $value = parent::validateFieldValue($value, $field_name, $change_behavior, $validation_behavior, $element_index, $element);
 
-        // Validate and/or change the format of a Dutch phone number, for an
-        // element which has an address present in this element (which may also
-        // be inside an embedded object in most cases. Note it does not
-        // validate if the address is in a parent object; that is done in
+        // Validate and/or change the format of a Dutch phone number, using
+        // a country code in an address object - which may be embedded either
+        // in this element or in an embedded element. Note we cannot get to
+        // addresses embedded in a parent object; those are checked later, in
         // validateReferenceFields(). This code isn't guaranteed to absolutely
         // always behave correctly... but the relevant bits are 'off' by
         // default, and the code is a good start. Skip all this if any errors
@@ -847,32 +897,34 @@ class OrgPersonContact extends ObjectWithCountry
             // available; otherwise in postal address if available. (It's a
             // little doubtful whether we want to take the postal address as
             // the base, but it probably works out for updates that happen to
-            // update only the postal address at the same time...) If still not
-            // found then:
-            // - If this is a KnContact, then check the embedded knPerson or
-            //   KnOrganisation's address. (We assume a business phone number.)
-            // - If KnPerson, then check knContact or KnOrganisation, but do
-            //   not throw validation errors for TeN2 & MbN2 which are private.
-            //   (Only allow reformatting.)
-            // - If KnOrganisation, then don't use individual people's address
-            //   to validate the company's phone number.
+            // update only the postal address at the same time...)
             // Again: this is all a bit wishy-washy, but a good start...
-            switch ($this->getType()) {
-                case 'KnContact':
-                    $search_embedded_types = ['KnOrganisation', 'KnPerson'];
-                    break;
-
-                case 'KnPerson':
-                    $search_embedded_types = ['KnContact', 'KnOrganisation'];
-                    break;
-
-                default:
-                    $search_embedded_types = [];
+            if ($this->getType() === 'KnPerson') {
+                // An address in a KnPerson is considered a personal address,
+                // so validate personal numbers against that. Validate business
+                // numbers against KnContact only. (KnOrganisation cannot
+                // be embedded here so don't look for it.)
+                $personal_nr = in_array($field_name, ['TeN2', 'MbN2'], true);
+                $search_current = $personal_nr;
+                $search_embedded_types = $personal_nr ? : ['KnContact'];
+            } else {
+                // If KnOrganisation: don't validate the company's numbers
+                // against an address in an embedded object. If KnContact:
+                // 'TeNr' is called "Telefoonnr. werk" so let's assume that 1)
+                // we only need to verify against work addresses and 2) if this
+                // object has an address, it's also a work address. This means
+                // we only need to look into our own object, because KnPerson
+                // has a personal address and KnOrganisation cannot be embedded.
+                $search_current = true;
+                $search_embedded_types = [];
             }
-            $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad'], $search_embedded_types);
+            $address = $search_current ? static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad']) : [];
+            if (!$address && $search_embedded_types) {
+                $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad'], false, $search_embedded_types);
+            }
             if ($address && (!isset($address['CoId']) || strtoupper($address['CoId']) === 'NL')) {
                 $parts = static::validateDutchPhoneNr($value);
-                if (!$parts && $validation_behavior & self::VALIDATE_FORMAT && !in_array($field_name, ['TeN2', 'MbN2'], true)) {
+                if (!$parts && $validation_behavior & self::VALIDATE_FORMAT) {
                     throw new InvalidArgumentException("Phone number '$field_name' has invalid format.");
                 }
                 if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
@@ -895,48 +947,72 @@ class OrgPersonContact extends ObjectWithCountry
 
         // If we have an address object and another OrgPersonContact embedded,
         // check if there's a phone field inside those objects that we should
-        // retroactively validate / reformat. We need to do that once both
-        // objects are already validated, so this seems a good place.
+        // retroactively validate / reformat. This is the counterpart to
+        // validateFieldValue(). We need to do this once both objects are
+        // validated, so this seems a good place. Note we don't need to
+        // validate numbers in the current object; we've done that already.
         if (empty($element['*errors'])) {
             $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad']);
             if ($address && (!isset($address['CoId']) || strtoupper($address['CoId']) === 'NL')) {
-                // This is the reverse of validateFieldValue():
-                // - If this is a KnContact, then validate the embedded knPerson's
-                //   phone, but do not throw validation errors for TeN2 & MbN2
-                //   which are private. (We assume the address to be a company
-                //   address. Only allow reformatting of those numbers.) Don't
-                //   validate KnOrganisation phone against this KnContact address.
-                // - If KnPerson, validate KnContact phone; not KnOrganisation.
-                // - If KnOrganisation, validate embedded KnContact and KnPerson's
-                //   phone, but do not throw validation errors for TeN2 & MbN2.
-                foreach (['KnContact', 'KnPerson'] as $type) {
-                    // Each embedded type has only one element, keyed by 'Element'.
-                    if (!empty($element['Objects'][$type]['Element']['Fields'])) {
-                        foreach (['TeNr', 'MbNr', 'FaNr', 'TeN2', 'MbN2'] as $field_name) {
-                            if (!empty($element['Objects'][$type]['Element']['Fields'][$field_name])) {
-                                $parts = static::validateDutchPhoneNr($element['Objects'][$type]['Element']['Fields'][$field_name]);
-                                if (!$parts && $validation_behavior & self::VALIDATE_FORMAT && !in_array($field_name, ['TeN2', 'MbN2'], true)) {
+                // This uses an extension of validateFieldValue() logic:
+                $type2 = '';
+                switch ($this->getType()) {
+                    case 'KnOrganisation':
+                        // Validate business numbers in embedded
+                        // KnContact/KnPerson except if there's an address in
+                        // the KnContact (because then that address has already
+                        // been used for validating all numbers in both itself
+                        // and its embedded KnPerson, as per below.)
+                        $type = 'KnContact';
+                        $type2 = 'KnPerson';
+                        $number_fields = ['TeNr', 'MbNr', 'FaNr'];
+                        break;
+
+                    case 'KnPerson':
+                        // Validate personal numbers in our own object only.
+                        $type = '';
+                        $number_fields = ['TeN2', 'MbN2'];
+                        break;
+
+                    default:
+                        // KnContact: as per earlier, we assume all numbers are
+                        // business numbers. Validate business numbers in our
+                        // own object, and in KnPerson except if there's an
+                        // address in there.
+                        $type = 'KnPerson';
+                        $number_fields = ['TeNr', 'MbNr', 'FaNr'];
+                        break;
+                }
+                // Each embedded type has only one element, keyed by 'Element'.
+                // (It's all arrays, not objects, because the structure was
+                // validated already.)
+                if (!empty($element['Objects'][$type]['Element']['Fields'])
+                    && !static::getAddressFields($element['Objects'][$type]['Element'], ['KnBasicAddressAdr', 'KnBasicAddressPad'])) {
+                    foreach ($number_fields as $field_name) {
+                        if (!empty($element['Objects'][$type]['Element']['Fields'][$field_name])) {
+                            $parts = static::validateDutchPhoneNr($element['Objects'][$type]['Element']['Fields'][$field_name]);
+                            if (!$parts && $validation_behavior & self::VALIDATE_FORMAT) {
+                                throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
+                            }
+                            if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
+                                // Only replace area code and local part
+                                // into here; country code is lost.
+                                $element['Objects'][$type]['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
+                            }
+                        }
+                    }
+                    if ($type2 && !empty($element['Objects'][$type]['Element']['Objects'][$type2]['Element']['Fields'])
+                        && !static::getAddressFields($element['Objects'][$type]['Element']['Objects'][$type2]['Element'], ['KnBasicAddressAdr', 'KnBasicAddressPad'])) {
+                        foreach ($number_fields as $field_name) {
+                            if (!empty($element['Objects'][$type]['Element']['Objects'][$type2]['Element']['Fields'][$field_name])) {
+                                $parts = static::validateDutchPhoneNr($element['Objects'][$type]['Element']['Objects'][$type2]['Element']['Fields'][$field_name]);
+                                if (!$parts && $validation_behavior & self::VALIDATE_FORMAT) {
                                     throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
                                 }
                                 if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
                                     // Only replace area code and local part
-                                    // into here; country code is lost.
-                                    $element['Objects'][$type]['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
-                                }
-                            }
-                        }
-                        if ($type === 'KnContact' && !empty($element['Objects'][$type]['Element']['Fields'])) {
-                            foreach (['TeNr', 'MbNr', 'FaNr', 'TeN2', 'MbN2'] as $field_name) {
-                                if (!empty($element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name])) {
-                                    $parts = static::validateDutchPhoneNr($element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name]);
-                                    if (!$parts && $validation_behavior & self::VALIDATE_FORMAT && !in_array($field_name, ['TeN2', 'MbN2'], true)) {
-                                        throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
-                                    }
-                                    if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
-                                        // Only replace area code and local part into here;
-                                        // country code is lost.
-                                        $element['Objects']['KnContact']['Element']['Objects']['KnPerson']['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
-                                    }
+                                    //  into here; country code is lost.
+                                    $element['Objects'][$type]['Element']['Objects'][$type2]['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
                                 }
                             }
                         }
@@ -959,42 +1035,51 @@ class OrgPersonContact extends ObjectWithCountry
      *   The address types to check. By default only the regular address, but
      *   this can be appended or replaced with ['KnBasicAddressAdr'] to (also)
      *   check the postal address.
+     * @param bool $search_current
+     *   (Optional) If true, check the element itself for embedded addresses.
      * @param array $search_embedded_types
-     *   If no embedded address object is found in directly in the element
-     *   itself, then check these embedded object types for addresses,
-     *   recursively. (E.g. if $element is a KnOrganisation, then specify
-     *   ['KnContact', 'KnPerson'] to check for an address in an embedded
-     *   contact object, and then if not present, check in a person object
-     *   embedded in the contact.)
+     *   (Optional) If no embedded address is found in the element itself
+     *   (or $search_current is false) then check these embedded object types
+     *   for addresses, recursively. (E.g. if $element is a KnOrganisation,
+     *   then specify ['KnContact', 'KnPerson'] to check for an address in an
+     *   embedded contact object, and then if not present, check in a person
+     *   object embedded in the contact. All types are checked on all layers.)
      *
      * @return array|mixed
      */
-    protected static function getAddressFields(array $element, array $search_address_types = ['KnBasicAddressAdr'], array $search_embedded_types = []) {
+    protected static function getAddressFields(array $element, array $search_address_types = ['KnBasicAddressAdr'], bool $search_current = true, array $search_embedded_types = []) {
         $address = [];
-        // First, see if there's an address directly inside this element.
-        foreach ($search_address_types as $name) {
-            if (!empty($element['Objects'][$name])) {
-                $address = $element['Objects'][$name];
-                break;
+        if ($search_current) {
+            // First, see if there's an address directly inside this element.
+            foreach ($search_address_types as $name) {
+                if (!empty($element['Objects'][$name])) {
+                    $address = $element['Objects'][$name];
+                    break;
+                }
+            }
+            if ($address) {
+                // $address is an object or a one-element array, depending on
+                // the caller. Get the Fields part. (Note in case of an array
+                // validateObjectValue() has made sure there's only one element
+                // inside "Element", because all addresses are non-multiple.)
+                $address = $address instanceof UpdateObject ? $address->getElements(self::DEFAULT_CHANGE)[0]['Fields'] : $address['Element']['Fields'];
             }
         }
-        if ($address) {
-            // $address is an object or a one-element array, depending on the
-            // caller. Convert to an array without 'Element' wrapper.
-            $address = $address instanceof UpdateObject ? $address->getElements(self::DEFAULT_CHANGE, self::VALIDATE_NOTHING)[0] : $address['Element'];
-        } elseif ($search_embedded_types) {
+        if (!$address && $search_embedded_types) {
             // Check for address in embedded elements, in the argument's order.
             foreach ($search_embedded_types as $reference_field_name) {
                 if (!empty($element['Objects'][$reference_field_name])) {
                     $embedded_element = $element['Objects'][$reference_field_name];
-                    $embedded_element = $embedded_element instanceof UpdateObject ? $embedded_element->getElements(self::DEFAULT_CHANGE, self::VALIDATE_NOTHING)[0] : $embedded_element['Element'];
-                    $address = static::getAddressFields($embedded_element, $search_embedded_types);
-                    break;
+                    $embedded_element = $embedded_element instanceof UpdateObject ? $embedded_element->getElements(self::DEFAULT_CHANGE)[0] : $embedded_element['Element'];
+                    $address = static::getAddressFields($embedded_element, $search_address_types, true, $search_embedded_types);
+                    if ($address) {
+                        break;
+                    }
                 }
             }
         }
 
-        return $address ? $address['Fields'] : [];
+        return $address ?: [];
     }
 
     /**

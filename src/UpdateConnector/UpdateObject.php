@@ -145,16 +145,7 @@ class UpdateObject
      *
      * Please note that names of object types (the keys in this variable) are
      * not necessarily equal to the names of 'object reference fields' in
-     * property definitions. As an example: a KnPerson object has two address
-     * fields for home address and postal address. Both addresses are objects
-     * of type KnBasicAddress, however the "Objects" section of a KnPerson
-     * needs to reference them differently and uses the names
-     * "KnBasicAddressAdr" and "KnBasicAddressPad" for this. (AFAS
-     * documentation likely does not explain this, so) we call the keys in the
-     * "Objects" part of an element 'object reference fields'. While the
-     * property definitions of an object type contain object reference fields,
-     * this $classMap variable contains object types. In most cases, these
-     * names are equal, though.
+     * property definitions. See $propertyDefinitions docs for the difference.
      *
      * A project which wants to implement custom behavior for specific object
      * types, or define new object types, can do several things. As an example,
@@ -240,6 +231,8 @@ class UpdateObject
      *   - 'type':     Data type of the field, used for validation ond output
      *                 formatting. Values: boolean, date, int, decimal.
      *                 Optional; unspecified types are treated as strings.
+     *   - 'default':  Default value for the field, if the field is not present.
+     *                 (If set to null, this is not replaced by a default.)
      *   - 'required': If true, this field is required and our output()
      *                 method will throw an exception if the field is not
      *                 populated when action is "insert". If (int)1, this is
@@ -253,16 +246,27 @@ class UpdateObject
      *               object to be recognized. Properties known to this class:
      *   - 'type':     The name of the AFAS object type which this reference
      *                 points to. If not provided, the type is assumed to be
-     *                 equal to the name of the reference field. (This is most
-     *                 often the case. For an explanation about the difference,
-     *                 see the comments at static $classMap.)
+     *                 equal to the name of the reference field. See below.
      *   - 'alias':    A name for this field that can be used instead of the
      *                 AFAS name and that can be used in input data structures.
      *   - 'multiple': If true, the embedded object can hold more than one
      *                 element.
+     *   - 'default':  Default value for the field, if the field is not present.
+     *                 (If set to null, this is not replaced by a default.) The
+     *                 value must be an array of element(s) values.
      *   - 'required': See 'fields' above.
      *
      * Child classes may define extra properties and handle those at will.
+     *
+     * About 'object reference fields': these are the names as found in e.g.
+     * XSD schemas for a certain Update Connector. These are not necessarily
+     * equal to the actual object type names, though they often are. As an
+     * example: a KnPerson object has two address fields for home address and
+     * postal address. Both addresses are objects of type KnBasicAddress,
+     * however the "Objects" section of a KnPerson needs to reference them
+     * separately and uses the names "KnBasicAddressAdr" & "KnBasicAddressPad"
+     * for this. (AFAS documentation likely does not explain this, so) we call
+     * the keys in the "Objects" part of an element 'object reference fields'.
      *
      * @var array[]
      */
@@ -347,7 +351,10 @@ class UpdateObject
      * @throws \InvalidArgumentException
      *   If a type/action is not known, the data contains unknown field/object
      *   names, or the values have an unrecognized / invalid format.
+     * @throws \UnexpectedValueException
+     *   If this object's defined properties are invalid.
      *
+     * @see $propertyDefinitions
      * @see __construct()
      * @see output()
      */
@@ -377,6 +384,12 @@ class UpdateObject
      * to be thrown. But many child classes will likely ignore the 3rd/4th
      * argument. So if they're lazy, they can get away with not reimplementing
      * a constructor.)
+     *
+     * @param array $elements
+     * @param string $action
+     * @param string $type
+     * @param int $validation_behavior
+     * @param string $parent_type
      *
      * @see create()
      */
@@ -1016,6 +1029,26 @@ class UpdateObject
     }
 
     /**
+     * Magic method called on a newly cloned object.
+     */
+    public function __clone()
+    {
+        // Lots of doublechecks on data types; silently skip if these fail.
+        if (!empty($this->elements) && is_array($this->elements)) {
+            foreach ($this->elements as $element_index => $element) {
+                if (!empty($element['Objects']) && is_array($element['Objects'])) {
+                    // Clone each embedded object, so that changing properties
+                    // in objects inside our UpdateObject won't affect the
+                    // cloned UpdateObject.
+                    foreach ($element['Objects'] as $ref_field => $object) {
+                        $this->elements[$element_index]['Objects'][$ref_field] = clone $object;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Returns the object type.
      *
      * @return string
@@ -1322,8 +1355,8 @@ class UpdateObject
      *
      * @param string $reference_field_name
      *   The name of the reference field for the object, or its alias. (This is
-     *   often but not always equal to the object type; see the comments at
-     *   static $classMap.)
+     *   often but not always equal to the object type; see the docs at
+     *   $propertyDefinitions.)
      * @param int $element_index
      *   (Optional) The 0-based index of the element whose embedded object
      *   value is requested. The element must exist, except if no elements
@@ -1331,11 +1364,12 @@ class UpdateObject
      * @param bool $return_default
      *   (Optional) If true, return an object with a default value, if no
      *   embedded object is set. In this case, changes made to the returned
-     *   object do not affect the parent element (stored in this object).
+     *   default object do not affect the parent element stored in this object.
      *
      * @return \PracticalAfas\UpdateConnector\UpdateObject
      *   The requested object. Note this has an immutable 'parentType' property
-     *   which might make it unsuitable to be used in isolation.
+     *   which might change its behavior, thereby making it unsuitable to be
+     *   used in isolation.
      *
      * @throws \OutOfBoundsException
      *   If the reference field name/alias does not exist in this object type's
@@ -1380,10 +1414,16 @@ class UpdateObject
     /**
      * Creates an embedded object in one of this object's elements.
      *
+     * Note this is not an exact counterpart to getObject(); that returns an
+     * object (for further manipulation) while this accepts parts to create an
+     * object out of. If O is an object retrieved by getObject(), setting O's
+     * value back would be achieved by passing O->getElements() and
+     * O->getAction() as second and third argument.
+     *
      * @param string $reference_field_name
      *   The name of the reference field for the object, or its alias. (This is
-     *   often but not always equal to the object type; see the comments at
-     *   static $classMap.)
+     *   often but not always equal to the object type; see the docs at
+     *   $propertyDefinitions.)
      * @param array $embedded_elements
      *   Data to set in the embedded object, representing one or more elements.
      *   @see create().
@@ -1394,6 +1434,9 @@ class UpdateObject
      *   (Optional) The 0-based index of the element. It is allowed to set an
      *   object for a new element, but only one with the 'next' index (i.e. the
      *   index equal to the current number of elements).
+     * @param int $validation_behavior
+     *   (Optional) Specifies whether/how the elements should be validated; see
+     *   create() for a more elaborate description.
      *
      * @throws \InvalidArgumentException
      *   If the action value cannot be null.
@@ -1529,6 +1572,9 @@ class UpdateObject
      * Unlike addElements(), this overwrites any existing element data which
      * may have been present previously but not e.g. the action value(s).)
      *
+     * @param array $elements
+     * @param int $validation_behavior
+     *
      * @see addElements()
      */
     public function setElements(array $elements, $validation_behavior = self::VALIDATE_ESSENTIAL)
@@ -1549,14 +1595,13 @@ class UpdateObject
      *   create() for a description.
      * @param int $validation_behavior
      *   (Optional) Specifies whether/how the elements should be validated; see
-     *   create() for a more elaborate description of this argument.
+     *   create() for a more elaborate description.
      *
      * @throws \InvalidArgumentException
      *   If the data contains unknown field/object names or the values have an
      *   unrecognized / invalid format.
      * @throws \UnexpectedValueException
-     *   If something is wrong with this object's type value or its defined
-     *   properties.
+     *   If this object's defined properties are invalid.
      *
      * @see __construct()
      * @see create()
@@ -2049,7 +2094,6 @@ class UpdateObject
                     } catch (UnexpectedValueException $e) {
                         $element['*errors']["Objects:$ref_name"] = $e->getMessage();
                     }
-
                 }
             }
         }
@@ -2559,7 +2603,7 @@ class UpdateObject
             if (!empty($element['Objects'])) {
                 $xml .= "$indent_str2<Objects>";
                 if ($pretty) {
-                    // $indent is defined above.
+                    /** @noinspection PhpUndefinedVariableInspection */
                     $format_options['line_prefix'] = (empty($format_options['line_prefix']) ? '' : $format_options['line_prefix'])
                         . str_repeat(' ', $indent * 3) ;
                 }

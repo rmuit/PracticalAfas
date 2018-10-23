@@ -20,7 +20,7 @@ KnOrganisation:insert
   'postal_address' => [
 ; is_po_box is required, so it has a default of FALSE in our property
 ; definitions. Therefore we need to explicitly set it in case of a Postbus
-; (or we need to pass ALLOW_CHANGE as a behavior flag).
+; (or we need to pass ALLOW_CHANGE as a behavior bitmask value).
     'is_po_box' => true,
     'street' => 'Postbus 10881',
     'zip_code' => '1001 EW',

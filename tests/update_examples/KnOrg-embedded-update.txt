@@ -7,8 +7,11 @@
 ; My takeaway: always specify the $action parameter for SOAP/XML, so the
 ; "Action" XML attributes are always present.
 ; We need to specify DEFAULT_CHANGE | ALLOW_CHANGES to get In & SeNm populated
-; and to split the house number off the street field (and populate PbAd).
-KnOrganisation:update:55
+; and to split the house number off the street field
+; We need to specify DEFAULT_CHANGE | ALLOW_CHANGES | ALLOW_REFORMAT_PHONE_NR
+; to get In & SeNm populated, split the house number off the street field (and
+; populate PbAd; and reformat the Dutch phone number.
+KnOrganisation:update:1079
 [
   'code' => '1100000',
   'name' => 'Wyz',
@@ -25,11 +28,14 @@ KnOrganisation:update:55
   ],
   'contact' => [
     'email' => 'rm@wyz.biz',
-    'phone' => '06-22517218',
     'person' => [
       'code' => '100000',
       'first_name' => 'Roderik',
       'last_name' => 'Muit',
+; A note: I have never actually tried sending a phone number into here because
+; I've always put it inside the contact (see insert.txt). But the code at least
+; supports it.
+      'phone' => '0622517218',
     ],
   ],
 ]
@@ -64,7 +70,6 @@ KnOrganisation:update:55
                 "KnContact": {
                     "Element": {
                         "Fields": {
-                            "TeNr": "06-22517218",
                             "EmAd": "rm@wyz.biz"
                         },
                         "Objects": {
@@ -74,6 +79,7 @@ KnOrganisation:update:55
                                         "BcCo": "100000",
                                         "FiNm": "Roderik",
                                         "LaNm": "Muit",
+                                        "TeNr": "06-22517218",
 ; Also "Is" is explicitly set to empty, on updates with ALLOW_CHANGES specified.
                                         "Is": "",
                                         "In": "R.",
@@ -117,7 +123,6 @@ KnOrganisation:update:55
       <KnContact>
         <Element>
           <Fields Action="update">
-            <TeNr>06-22517218</TeNr>
             <EmAd>rm@wyz.biz</EmAd>
           </Fields>
           <Objects>
@@ -127,6 +132,7 @@ KnOrganisation:update:55
                   <BcCo>100000</BcCo>
                   <FiNm>Roderik</FiNm>
                   <LaNm>Muit</LaNm>
+                  <TeNr>06-22517218</TeNr>
                   <Is></Is>
                   <In>R.</In>
                   <SeNm>MUIT</SeNm>

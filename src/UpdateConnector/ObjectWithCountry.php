@@ -324,19 +324,24 @@ class ObjectWithCountry extends UpdateObject
         // this before the parent method fills defaults / checks unknown
         // fields. The 'iso_country_fields' definition must be present; if not,
         // this object type should not have / extend class ObjectWithCountry.
-        if (!isset($this->propertyDefinitions['iso_country_fields']) || !is_array($this->propertyDefinitions['iso_country_fields'])) {
-            // If a definition is wrong, we throw an exception rather than
-            // adding to $element['*errors'].
-            throw new UnexpectedValueException("'{$this->getType()}' object has no / a non-array 'iso_country_fields' property definition.");
-        }
-        foreach ($this->propertyDefinitions['iso_country_fields'] as $iso_field_name => $afas_field_name) {
-            if (!is_string($afas_field_name)) {
-                throw new UnexpectedValueException("'iso_country_fields' property definition for '{$this->getType()}' object contains a non-string value.");
+        // We react to behavior ALLOW_REFORMAT (rather than ALLOW_CHANGES)
+        // because 1) we want to do this by default and 2) we regard the
+        // combination of iso+afas code to represent one field only.
+        if ($change_behavior & self::ALLOW_REFORMAT) {
+            if (!isset($this->propertyDefinitions['iso_country_fields']) || !is_array($this->propertyDefinitions['iso_country_fields'])) {
+                // If a definition is wrong, we throw an exception rather than
+                // adding to $element['*errors'].
+                throw new UnexpectedValueException("'{$this->getType()}' object has no / a non-array 'iso_country_fields' property definition.");
             }
-            try {
-                $element = $this->convertIsoCountryCodeField($element, $element_index, $iso_field_name, $afas_field_name);
-            } catch (InvalidArgumentException $e) {
-                $element['*errors']["Fields:$afas_field_name"] = $e->getMessage();
+            foreach ($this->propertyDefinitions['iso_country_fields'] as $iso_field_name => $afas_field_name) {
+                if (!is_string($afas_field_name)) {
+                    throw new UnexpectedValueException("'iso_country_fields' property definition for '{$this->getType()}' object contains a non-string value.");
+                }
+                try {
+                    $element = $this->convertIsoCountryCodeField($element, $element_index, $iso_field_name, $afas_field_name);
+                } catch (InvalidArgumentException $e) {
+                    $element['*errors']["Fields:$afas_field_name"] = $e->getMessage();
+                }
             }
         }
 
