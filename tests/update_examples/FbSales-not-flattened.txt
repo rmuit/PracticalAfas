@@ -1,0 +1,90 @@
+; As a comparison to FbSales.txt (and a test for the argument), we specify
+; DEFAULT_CHANGE & ^FLATTEN_SINGLE_ELEMENT which has effect on JSON output.
+; The non-flattened version (with "Element" being an array) is also how output
+; always looks if there is more than a single element; see e.g. FbSales.txt.
+FbSales::22
+[
+  'sales_relation' => 'xxxxxxxxxxx',
+  'Unit' => '1',
+  'warehouse' => '*****',
+  'line_items' => [
+    [
+      'item_type' => 'Art',
+      'item_code' => 'xxxxx',
+      'unit_type' => 'stk',
+      'quantity' => '5'
+    ],
+    [
+      'item_type' => 'Art',
+      'item_code' => 'xxxxx-xxx',
+      'unit_type' => 'stk',
+      'quantity' => '1'
+    ]
+  ]
+]
+--
+{
+    "FbSales": {
+        "Element": [
+            {
+                "Fields": {
+                    "DbId": "xxxxxxxxxxx",
+                    "Unit": 1,
+                    "War": "*****"
+                },
+                "Objects": {
+                    "FbSalesLines": {
+                        "Element": [
+                            {
+                                "Fields": {
+                                    "VaIt": "Art",
+                                    "ItCd": "xxxxx",
+                                    "BiUn": "stk",
+                                    "QuUn": 5
+                                }
+                            },
+                            {
+                                "Fields": {
+                                    "VaIt": "Art",
+                                    "ItCd": "xxxxx-xxx",
+                                    "BiUn": "stk",
+                                    "QuUn": 1
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        ]
+    }
+}
+--
+<FbSales xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Element>
+    <Fields>
+      <DbId>xxxxxxxxxxx</DbId>
+      <Unit>1</Unit>
+      <War>*****</War>
+    </Fields>
+    <Objects>
+      <FbSalesLines>
+        <Element>
+          <Fields>
+            <VaIt>Art</VaIt>
+            <ItCd>xxxxx</ItCd>
+            <BiUn>stk</BiUn>
+            <QuUn>5</QuUn>
+          </Fields>
+        </Element>
+        <Element>
+          <Fields>
+            <VaIt>Art</VaIt>
+            <ItCd>xxxxx-xxx</ItCd>
+            <BiUn>stk</BiUn>
+            <QuUn>1</QuUn>
+          </Fields>
+        </Element>
+      </FbSalesLines>
+    </Objects>
+  </Element>
+</FbSales>

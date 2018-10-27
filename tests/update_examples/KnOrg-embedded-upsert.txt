@@ -29,7 +29,7 @@ eval: $object->getObject('KnContact')->setAction('insert');
 ; MatchOga is set to 0 by default, for most updates.
                 "BcCo": "1100000",
                 "Nm": "Wyz",
-                "MatchOga": "0"
+                "MatchOga": 0
             },
             "Objects": {
                 "KnContact": {
@@ -53,7 +53,7 @@ eval: $object->getObject('KnContact')->setAction('insert');
                                         "Corr": false,
                                         "AutoNum": true,
 ; MatchPer has a default of 7 (for inserts).
-                                        "MatchPer": "7"
+                                        "MatchPer": 7
                                     }
                                 }
                             }

@@ -1,3 +1,7 @@
+; Integer fields (Unit & quantity) will be converted to integer in the JSON
+; but are accepted as both integer and (numeric) string. 'Unit' starts with
+; uppercase here because it's the actual AFAS field name; the others are
+; aliases. (We use aliases because most AFAS names are harder to read.)
 FbSales
 [
   'sales_relation' => 'xxxxxxxxxxx',
@@ -8,7 +12,7 @@ FbSales
       'item_type' => 'Art',
       'item_code' => 'xxxxx',
       'unit_type' => 'stk',
-      'quantity' => '5'
+      'quantity' => 5
     ],
     [
       'item_type' => 'Art',
@@ -27,7 +31,7 @@ FbSales
         "Element": {
             "Fields": {
                 "DbId": "xxxxxxxxxxx",
-                "Unit": "1",
+                "Unit": 1,
                 "War": "*****"
             },
             "Objects": {
@@ -42,7 +46,7 @@ FbSales
                                 "VaIt": "Art",
                                 "ItCd": "xxxxx",
                                 "BiUn": "stk",
-                                "QuUn": "5"
+                                "QuUn": 5
                             }
                         },
                         {
@@ -50,7 +54,7 @@ FbSales
                                 "VaIt": "Art",
                                 "ItCd": "xxxxx-xxx",
                                 "BiUn": "stk",
-                                "QuUn": "1"
+                                "QuUn": 1
                             }
                         }
                     ]

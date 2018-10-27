@@ -5,9 +5,12 @@ KnSubject
   [ '@SbId' => 1958, 'type' => 2, 'description' => 'öndèrwérp twee', ],
 ]
 --
-; "Element" is an array of 2 elements here. If only one element is given, it
-; will not be wrapped in an array (but be directly inside "Element", unless
-; FLATTEN_SINGLE_ELEMENT is removed from the output($change_behavior) parameter.
+; "Element" is an array of 2 elements here. If only one element were provided,
+; it would be on the first level inside "Element", instead of being wrapped in
+; an array. (This is because FLATTEN_SINGLE_ELEMENT is part of the default
+; bitmask value of the output($change_behavior) parameter. If
+; FLATTEN_SINGLE_ELEMENT is turned off, the wrapper array will be kept also for
+; a single element.)
 {
     "KnSubject": {
         "Element": [

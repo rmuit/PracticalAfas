@@ -133,6 +133,11 @@ class ObjectWithCountry extends UpdateObject
                     ],
                     // Administratie (verwijzing naar: Administratieparameters Algemeen => AfasKnUnitPar)
                     'Unit' => [
+                        // We alias 'unit' to 'Unit' because names/aliases are
+                        // case sensitive, and people used to using aliases
+                        // will get confused if 'Unit' is the only field they
+                        // need to use an uppercase letter for.
+                        'alias' => 'unit',
                         'type' => 'integer',
                     ],
                     // Incasseren
@@ -384,34 +389,31 @@ class ObjectWithCountry extends UpdateObject
      */
     protected function convertIsoCountryCodeField(array $element, $element_index, $iso_field_name, $afas_field_name, $change_behavior = self::DEFAULT_CHANGE)
     {
-
         if (!empty($element['Fields'][$iso_field_name])) {
-            // Make sure the fields are both strings; that hasn't been done yet
-            // because this is called early during validateFields(). A quick
-            // way of doing this is to call validateFieldValue() (which will be
-            // repeated later during validateFields().)
-            $this->validateFieldValue($element['Fields'][$iso_field_name], $iso_field_name, $change_behavior, $element_index, $element);
+            // Make sure the fields are both strings. A quick way of doing this
+            // is to call validateFieldValue() (which may be repeated later).
+            $iso_value = $this->validateFieldValue($element['Fields'][$iso_field_name], $iso_field_name, $change_behavior, self::DEFAULT_VALIDATION, $element_index, $element);
 
             $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
 
-            $afas_code = static::convertIsoCountryCode($element['Fields'][$iso_field_name]);
+            $afas_code = static::convertIsoCountryCode($iso_value);
             if (!$afas_code) {
                 throw new InvalidArgumentException("Unknown ISO country code '{$element['Fields'][$iso_field_name]}' in $element_descr.");
             }
-            // The CoId field should not be filled, but if it's the same as
-            // the converted ISO code, we allow that.
+            // We expect the CoId field to not be populated, but if it's the
+            // same as the converted ISO code, we allow that. (But uppercase it
+            // just like if the ISO code is not filled.)
             if (!empty($element['Fields'][$afas_field_name])) {
-                $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, $change_behavior, $element_index, $element);
-                if (strtoupper($element['Fields'][$afas_field_name]) !== $afas_code) {
-                    throw new InvalidArgumentException("Inconsistent ISO country code '{$element['Fields'][$iso_field_name]}' and AFAS code '{$element['Fields'][$afas_field_name]}'' found in $element_descr.");
+                $afas_value = $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, $change_behavior, self::DEFAULT_VALIDATION, $element_index, $element);
+                if (strtoupper($afas_value) !== $afas_code) {
+                    throw new InvalidArgumentException("Inconsistent ISO country code '$iso_value' and AFAS code '$afas_value'' found in $element_descr.");
                 }
-            } else {
-                $element['Fields'][$afas_field_name] = $afas_code;
             }
+            $element['Fields'][$afas_field_name] = $afas_code;
             unset($element['Fields'][$iso_field_name]);
         } elseif (!empty($element['Fields'][$afas_field_name])) {
-            $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, $change_behavior, $element_index, $element);
-            $element['Fields'][$afas_field_name] = strtoupper($element['Fields'][$afas_field_name]);
+            $afas_value = $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, $change_behavior, self::DEFAULT_VALIDATION, $element_index, $element);
+            $element['Fields'][$afas_field_name] = strtoupper($afas_value);
         }
 
         return $element;
@@ -428,10 +430,14 @@ class ObjectWithCountry extends UpdateObject
      *   of those being wrongly converted into a different AFAS code.)
      *
      * @return string
-     *   The corresponding AFAS country code.
+     *   The corresponding AFAS country code, or '' if not found.
      */
     public static function convertIsoCountryCode($iso_code)
     {
+        if (!is_string($iso_code)) {
+            return '';
+        }
+
         // This list is incomplete, but contains all:
         // - European codes we know to NOT match the 2-letter ISO codes
         //   (so we know Europe is correctly converted);
@@ -512,7 +518,7 @@ class ObjectWithCountry extends UpdateObject
         // Return the input string (uppercased) if it's equal to an AFAS
         // country code (i.e. if two-letter ISO and AFAS codes are equal);
         // empty string if the code is unknown. (This is the only method that
-        // is allowed to call convertCountryName() with an ISO code, because
+        // is allowed to call convertCountryName() with an AFAS code, because
         // the ones that would be mis-assigned have already been filtered out.
         //
         // So... here we are being inconsistent:
@@ -556,6 +562,10 @@ class ObjectWithCountry extends UpdateObject
      */
     public static function convertCountryName($name, $default_behavior = 0)
     {
+        if (!is_string($name)) {
+            return '';
+        }
+
         // We define a flipped array here because it looks nicer. In the future
         // we could have this array map multiple names to the same country
         // code, in which case we need to flip the keys/values.

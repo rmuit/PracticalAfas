@@ -1,0 +1,37 @@
+; This example doesn't make sense; it just documents how this library handles
+; NULL values in its output. It's possible that this is counter productive in
+; some ways / should change... but that is not known at this moment.
+KnSubject:insert
+[
+    'type' => '1',
+    'description' => null,
+    'date' => null,
+    'SbHi' => null,
+    'done' => null,
+]
+--
+{
+    "KnSubject": {
+        "Element": {
+            "Fields": {
+                "StId": 1,
+                "Ds": null,
+                "Da": null,
+                "SbHi": null,
+                "St": null
+            }
+        }
+    }
+}
+--
+<KnSubject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Element>
+    <Fields Action="insert">
+      <StId>1</StId>
+      <Ds xsi:nil="true"/>
+      <Da xsi:nil="true"/>
+      <SbHi xsi:nil="true"/>
+      <St xsi:nil="true"/>
+    </Fields>
+  </Element>
+</KnSubject>

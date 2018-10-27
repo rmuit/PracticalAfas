@@ -22,11 +22,15 @@ use UnexpectedValueException;
  * - An UpdateObject can be create()'d from array of data having a format that
  *   is a little easier to grasp than the JSON structure (and a lot easier than
  *   XML);
- * - output() can immediately be called to produce JSON/XML data suitable for
- *   sending through an Update Connector. Validation will be done automatically.
- * - Custom validation be done (at output or independently). Default values
- *   are populated and/or other non-invasive changes can be made to the output,
- *   or this behavior can be suppressed, as needed.
+ * - output() can immediately be called on the result to produce JSON/XML data
+ *   suitable for sending through an Update Connector. No other calls are
+ *   needed; validation will be done automatically.
+ * - Custom validation can be done (at output or independently). Default values
+ *   are populated and/or other non-invasive changes can be made to the output
+ *   during validation, or this behavior can be suppressed, as needed.
+ * - There are setters and getters for individual parts of the data (individual
+ *   fields and embedded objects, additional full elements, action values) so
+ *   an object can be constructed gradually / manipulated.
  *
  * See create() for more information; see the tests/update_examples directory
  * for example array inputs.
@@ -34,10 +38,6 @@ use UnexpectedValueException;
  * An UpdateObject can hold data for several elements to send through an
  * Update Connector at once; create() can be called with either the input data
  * structure for one element, or an array of those structures for more elements.
- *
- * This class currently only accepts element data as a whole; it has no methods
- * for e.g. changing/adding individual field data. It is expected that methods
- * for this could be added fairly easily without having to rewrite code.
  *
  * About wording: the terms 'object' and 'element' are used in a way that may
  * not be apparent at first. The difference may be more apparent when looking
@@ -311,9 +311,9 @@ class UpdateObject
      *   (Optional) Data to set in the UpdateObject, representing one or more
      *   elements of this type; see the definitions in __construct() or child
      *   classes for possible values. The data is assumed to represent multiple
-     *   elements if all keys are numeric and all values are arrays; it's
-     *   processed as a single element otherwise. The keys inside a single
-     *   element can be:
+     *   elements if all keys are numeric and all values are arrays (or if the
+     *   value is a single empty array, meaning zero elements); it's processed
+     *    as a single element otherwise. Keys inside a single element can be:
      *   - field names or aliases (as defined in __construct() / child classes);
      *   - names or aliases of the 'object reference fields' (see
      *     $propertyDefinitions)  which can be embedded into this object
@@ -349,8 +349,9 @@ class UpdateObject
      * @return static
      *
      * @throws \InvalidArgumentException
-     *   If a type/action is not known, the data contains unknown field/object
-     *   names, or the values have an unrecognized / invalid format.
+     *   If any argument is invalid or he element data contains invalid values.
+     * @throws \OutOfBoundsException
+     *   If the element data contains unknown field/object names.
      * @throws \UnexpectedValueException
      *   If this object's defined properties are invalid.
      *
@@ -1030,6 +1031,9 @@ class UpdateObject
 
     /**
      * Magic method called on a newly cloned object.
+     *
+     * Clones each embedded object, so that changing properties in objects
+     * inside an UpdateObject won't affect the cloned UpdateObject.
      */
     public function __clone()
     {
@@ -1037,9 +1041,6 @@ class UpdateObject
         if (!empty($this->elements) && is_array($this->elements)) {
             foreach ($this->elements as $element_index => $element) {
                 if (!empty($element['Objects']) && is_array($element['Objects'])) {
-                    // Clone each embedded object, so that changing properties
-                    // in objects inside our UpdateObject won't affect the
-                    // cloned UpdateObject.
                     foreach ($element['Objects'] as $ref_field => $object) {
                         $this->elements[$element_index]['Objects'][$ref_field] = clone $object;
                     }
@@ -1156,6 +1157,9 @@ class UpdateObject
      *   outputting multiple objects with different "action" values as XML.
      *   JSON output is likely bogus when different action values are set for
      *   different elements).
+     *
+     * @throws \InvalidArgumentException
+     *   If the action value is unknown.
      */
     public function setAction($action, $set_embedded = true, $element_index = -1)
     {
@@ -1222,7 +1226,7 @@ class UpdateObject
     public function getId($element_index = 0)
     {
         $element = $this->checkElement($element_index);
-        if (!isset($this->propertyDefinitions['id_property'])) {
+        if (empty($this->propertyDefinitions['id_property'])) {
             throw new OutOfBoundsException("'{$this->getType()}' object has no 'id_property' definition.");
         }
         if (!is_string($this->propertyDefinitions['id_property'])) {
@@ -1237,7 +1241,7 @@ class UpdateObject
      * Sets the ID value in one of this object's elements.
      *
      * @param int|string $value
-     *   The ID value to set.
+     *   The ID value to set. Empty string means no value.
      * @param int $element_index
      *   (Optional) The 0-based index of the element whose ID is set. It is
      *   allowed to set an ID for a new element, but only one with the 'next'
@@ -1256,7 +1260,7 @@ class UpdateObject
         if (!is_int($value) && !is_string($value)) {
             throw new InvalidArgumentException("Value must be integer or string.");
         }
-        if (!isset($this->propertyDefinitions['id_property'])) {
+        if (empty($this->propertyDefinitions['id_property'])) {
             throw new UnexpectedValueException("'{$this->getType()}' object has no 'id_property' definition.");
         }
         if (!is_string($this->propertyDefinitions['id_property'])) {
@@ -1292,7 +1296,7 @@ class UpdateObject
      */
     public function getField($field_name, $element_index = 0, $return_default = false, $wrap_array = false)
     {
-        // Get element, or empty array if we want to return default .
+        // Get element, or empty array if we want to return default.
         $element = $this->checkElement($element_index, $return_default);
         $field_name = $this->checkFieldName($field_name);
 
@@ -1351,6 +1355,41 @@ class UpdateObject
     }
 
     /**
+     * Removes a field value from one of this object's elements.
+     *
+     * @param string $field_name
+     *   The name of the field, or its alias.
+     * @param int $element_index
+     *   (Optional) The 0-based index of the element.
+     *
+     * @return bool
+     *   True if the field is set before calling this function (also if its
+     *   value is null); false otherwise.
+     *
+     * @throws \OutOfBoundsException
+     *   If the field name/alias does not exist in this object type's "fields"
+     *   definition, or if no element corresponding to the index exists.
+     */
+    public function unsetField($field_name, $element_index = 0)
+    {
+        $this->checkElement($element_index);
+        $field_name = $this->checkFieldName($field_name);
+
+        $return = false;
+        if (!empty($this->elements[$element_index]['Fields']) && array_key_exists($field_name, $this->elements[$element_index]['Fields'])) {
+            $return = true;
+            unset($this->elements[$element_index]['Fields'][$field_name]);
+            // Remove an empty internal 'Fields' array, so output does not
+            // include it.
+            if (empty($this->elements[$element_index]['Fields'])) {
+                unset($this->elements[$element_index]['Fields']);
+            }
+        }
+
+        return $return;
+    }
+
+    /**
      * Returns an object embedded in one of this object's elements.
      *
      * @param string $reference_field_name
@@ -1401,7 +1440,7 @@ class UpdateObject
                     throw new UnexpectedValueException($e->getMessage(), $e->getCode());
                 }
             } else {
-                $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+                $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
                 throw new UnexpectedValueException("Default value for '$reference_field_name' object embedded in $element_descr must be array.");
             }
         } else {
@@ -1426,7 +1465,7 @@ class UpdateObject
      *   $propertyDefinitions.)
      * @param array $embedded_elements
      *   Data to set in the embedded object, representing one or more elements.
-     *   @see create().
+     *   See create().
      * @param string $action
      *   (Optional) The action to perform on the data. By default, the action
      *   set in the parent element (stored in this object) is taken.
@@ -1439,21 +1478,101 @@ class UpdateObject
      *   create() for a more elaborate description.
      *
      * @throws \InvalidArgumentException
-     *   If the action value cannot be null.
+     *   If the element structure is invalid or the action value cannot be null.
      * @throws \OutOfBoundsException
      *   If the field name/alias does not exist in this object type's "fields"
      *   definition, or if no element corresponding to the index exists and the
-     *   index is  higher than the number of existing elements.
+     *   index is higher than the number of existing elements.
      *
      * @see create()
      * @see setAction()
      */
     public function setObject($reference_field_name, array $embedded_elements, $action = null, $element_index = 0, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
+        $this->checkElement($element_index, true, true);
         $reference_field_name = $this->checkObjectReferenceFieldName($reference_field_name);
 
-        $type = !empty($this->propertyDefinitions['objects'][$reference_field_name]['type'])
-            ? $this->propertyDefinitions['objects'][$reference_field_name]['type'] : $reference_field_name;
+        $this->elements[$element_index]['Objects'][$reference_field_name] = $this->createEmbeddedObject($reference_field_name, $embedded_elements, $action, $element_index, $validation_behavior);
+    }
+
+    /**
+     * Removes an embedded object from one of this object's elements.
+     *
+     * @param string $reference_field_name
+     *   The name of the reference field for the object, or its alias. (This is
+     *   often but not always equal to the object type; see the docs at
+     *   $propertyDefinitions.)
+     * @param int $element_index
+     *   (Optional) The 0-based index of the element.
+     *
+     * @return bool
+     *   True if on object is set before calling this function; false otherwise.
+     *
+     * @throws \OutOfBoundsException
+     *   If the field name/alias does not exist in this object type's "fields"
+     *   definition, or if no element corresponding to the index exists.
+     */
+    public function unsetObject($reference_field_name, $element_index = 0)
+    {
+        $this->checkElement($element_index);
+        $reference_field_name = $this->checkObjectReferenceFieldName($reference_field_name);
+
+        $return = false;
+        if (!empty($this->elements[$element_index]['Objects']) && array_key_exists($reference_field_name, $this->elements[$element_index]['Objects'])) {
+            $return = true;
+            unset($this->elements[$element_index]['Objects'][$reference_field_name]);
+            // Remove an empty internal 'Objects' array, so output does not
+            // include it.
+            if (empty($this->elements[$element_index]['Objects'])) {
+                unset($this->elements[$element_index]['Objects']);
+            }
+        }
+
+        return $return;
+    }
+
+    /**
+     * Creates an object ready for embedding in one of this object's elements.
+     *
+     * This does some sanity checks first.
+     *
+     * @param string $reference_field_name
+     *   Reference field name (not alias).
+     * @param array $embedded_elements
+     * @param string $action
+     * @param int $element_index
+     *   Note that when called from addElements(), the element with the
+     *   specified index does not exist yet.
+     * @param int $validation_behavior
+     *
+     * @throws \InvalidArgumentException
+     *   If the elements cannot be embedded or the action value cannot be null.
+     * @throws \OutOfBoundsException
+     *   If the field name/alias does not exist in this object type's "fields"
+     *   definition, or if no element corresponding to the index exists and the
+     *   index is higher than the number of existing elements.
+     *
+     * @return static
+     *
+     * @see setObject()
+     */
+    protected function createEmbeddedObject($reference_field_name, array $embedded_elements, $action = null, $element_index = 0, $validation_behavior = self::VALIDATE_ESSENTIAL)
+    {
+        // Strip "Element" wrapper if it's there, and also convert to array
+        // of N elements. (The latter is not necessary for calling create() but
+        // it is necessary for the 'multiple' check.)
+        $embedded_elements = $this->normalizeElements($embedded_elements);
+
+        // Check if we are allowed to add multiple embedded objects into this
+        // reference field, and if not, whether we are doing that. On 'output'
+        // this is a mandatory check, but on 'input' it can be suppressed.
+        if ($validation_behavior & self::VALIDATE_ESSENTIAL && count($embedded_elements) > 1
+            && empty($this->propertyDefinitions['objects'][$reference_field_name]['multiple'])) {
+            $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
+            $name_and_alias = "'$reference_field_name'" . (isset($this->propertyDefinitions['objects'][$reference_field_name]['alias']) ? " ({$this->propertyDefinitions['objects'][$reference_field_name]['alias']})" : '');
+            throw new InvalidArgumentException("$name_and_alias object embedded in $element_descr contains " . count($embedded_elements) . ' elements but can only contain a single element.');
+        }
+
         if (!isset($action)) {
             // Take the action associated with the parent element, if that is
             // set. If neither the parent element nor its action exists yet,
@@ -1470,7 +1589,48 @@ class UpdateObject
                 $action = $this->getAction();
             }
         }
-        $this->elements[$element_index]['Objects'][$reference_field_name] = static::create($type, $embedded_elements, $action, $validation_behavior, $this->getType());
+        // The object type is often equal to the name of the 'reference field'
+        // but not always; there's a property to specify it.
+        $type = !empty($this->propertyDefinitions['objects'][$reference_field_name]['type'])
+            ? $this->propertyDefinitions['objects'][$reference_field_name]['type'] : $reference_field_name;
+        return static::create($type, $embedded_elements, $action, $validation_behavior, $this->getType());
+    }
+
+    /**
+     * Returns a uniformly structured representation of one or more elements.
+     *
+     * @param array $elements
+     *   The input data; see create() for details.
+     *
+     * @return array
+     *   The data formatted as an array of elements.
+     *
+     * @throws \InvalidArgumentException
+     *   If the data has an invalid structure.
+     */
+    protected function normalizeElements(array $elements)
+    {
+        // If the caller passed the element(s) inside an 'Element' wrapper
+        // array (because they are handling e.g. some external json-decoded
+        // string from another source, or embedded objects inside the
+        // getElements() return value), accept that. Strip the wrapper off.
+        if (count($elements) == 1 && key($elements) === 'Element') {
+            $elements = reset($elements);
+            if (!is_array($elements)) {
+                throw new InvalidArgumentException("Element data inside 'Element' wrapper is not an array.");
+            }
+        }
+        // Determine if we have a single element or an array of elements.
+        foreach ($elements as $key => $element) {
+            if (is_scalar($element) || !is_numeric($key)) {
+                // This is assumed to be a single element. Normalize to an
+                // array of elements..
+                $elements = [$elements];
+                break;
+            }
+        }
+
+        return $elements;
     }
 
     /**
@@ -1531,7 +1691,7 @@ class UpdateObject
                 }
             }
             if (!isset($this->propertyDefinitions['fields'][$field_name])) {
-                throw new OutOfBoundsException("'{$this->getType()}' object has no '$field_name' field definition.");
+                throw new OutOfBoundsException("'{$this->getType()}' object has no definition for field '$field_name'.");
             }
         }
 
@@ -1559,7 +1719,7 @@ class UpdateObject
                 }
             }
             if (!isset($this->propertyDefinitions['objects'][$reference_field_name])) {
-                throw new OutOfBoundsException("'{$this->getType()}' object has no '$reference_field_name' (embedded-)object definition.");
+                throw new OutOfBoundsException("'{$this->getType()}' object has no definition for object '$reference_field_name'.");
             }
         }
 
@@ -1598,8 +1758,9 @@ class UpdateObject
      *   create() for a more elaborate description.
      *
      * @throws \InvalidArgumentException
-     *   If the data contains unknown field/object names or the values have an
-     *   unrecognized / invalid format.
+     *   If the element data contains invalid values
+     * @throws \OutOfBoundsException
+     *   If the element data contains unknown field/object names.
      * @throws \UnexpectedValueException
      *   If this object's defined properties are invalid.
      *
@@ -1609,25 +1770,7 @@ class UpdateObject
      */
     public function addElements(array $elements, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
-        // If the caller passed the element(s) inside an 'Element' wrapper
-        // array (because they are handling e.g. some external json-decoded
-        // string from another source, or embedded objects inside the
-        // getElements() return value), accept that.
-        if (count($elements) == 1 && key($elements) === 'Element') {
-            $elements = reset($elements);
-            if (!is_array($elements)) {
-                throw new UnexpectedValueException("Element data inside 'Element' wrapper is not an array.");
-            }
-        }
-        // Determine if we have a single element or an array of elements.
-        foreach ($elements as $key => $element) {
-            if (is_scalar($element) || !is_numeric($key)) {
-                // This is assumed to be a single element. Normalize to an
-                // array of elements..
-                $elements = [$elements];
-                break;
-            }
-        }
+        $elements = $this->normalizeElements($elements);
 
         if (empty($this->propertyDefinitions)) {
             throw new UnexpectedValueException("'{$this->getType()}' object has no property definitions.");
@@ -1640,10 +1783,7 @@ class UpdateObject
         }
 
         foreach ($elements as $key => $element) {
-            $element_descr = "'{$this->getType()}' element" . ($key ? " with key $key " : '');
-            if (empty($element)) {
-                throw new InvalidArgumentException("$element_descr has no field or object values.");
-            }
+            $element_descr = "'{$this->getType()}' element" . ($key ? " with key $key" : '');
             // Construct new element with an optional id + fields + objects
             // for this type.
             $next_index = count($this->elements);
@@ -1667,7 +1807,7 @@ class UpdateObject
                     $normalized_element[$id_property] = $element['#id'];
                     unset($element['#id']);
                 }
-                if (!is_int($normalized_element[$id_property]) && !is_string($normalized_element[$id_property])) {
+                if (isset($normalized_element[$id_property]) && !is_int($normalized_element[$id_property]) && !is_string($normalized_element[$id_property])) {
                     throw new InvalidArgumentException("'$id_property' property in $element_descr must hold integer/string value.");
                 }
             }
@@ -1723,38 +1863,13 @@ class UpdateObject
                     }
 
                     if ($value_present) {
-                        // This code block is equivalent to setObject, except
-                        // we don't set $this->elements yet.
                         /** @noinspection PhpUndefinedVariableInspection */
                         if (!is_array($value)) {
                             $property = $name . (isset($alias) ? " ($alias)" : '');
                             throw new InvalidArgumentException("Value for '$property' object embedded in $element_descr must be array.");
                         }
-                        // A 'well formed' element is often wrapped inside a
-                        // one-member "Element" array. We will accept this for
-                        // any value.
-                        if (count($value) == 1 && key($value) === 'Element') {
-                            $value = reset($value);
-                        }
-                        // Determine action to pass into the embedded object.
-                        // We encourage callers call setAction() before us, so
-                        // we check for our element's specific action even
-                        // though the element is not set yet, which will throw
-                        // an exception if this action is not explicitly set.
-                        try {
-                            // count is 'current maximum index + 1'
-                            $action = $this->getAction($next_index);
-                        } catch (OutOfBoundsException $e) {
-                            // Get default action. This can throw an
-                            // UnexpectedValueException in edge cases; see
-                            // comments in setObject().
-                            $action = $this->getAction();
-                        }
-                        // The object type is often equal to the name of the
-                        // 'reference field' in the parent element, but not
-                        // always; there's a property to specify it.
-                        $type = !empty($object_properties['type']) ? $object_properties['type'] : $name;
-                        $normalized_element['Objects'][$name] = static::create($type, $value, $action, $validation_behavior, $this->getType());
+
+                        $normalized_element['Objects'][$name] = $this->createEmbeddedObject($name, $value, null, $next_index, $validation_behavior);
                     }
                 }
 
@@ -1763,7 +1878,7 @@ class UpdateObject
                 if ($well_formed) {
                     if ($element) {
                         $keys = "'" . implode(', ', array_keys($element)) . "'";
-                        throw new InvalidArgumentException("Unknown 'Objects' properties provided for $element_descr: names are $keys.");
+                        throw new OutOfBoundsException("Unknown 'Objects' properties provided for $element_descr: names are $keys.");
                     }
                     /** @noinspection PhpUndefinedVariableInspection */
                     $element = $real_element;
@@ -1816,7 +1931,7 @@ class UpdateObject
             if ($element) {
                 $keys = "'" . implode(', ', array_keys($element)) . "'";
                 $description = $well_formed ? "'Fields'" : 'element';
-                throw new InvalidArgumentException("Unknown $description properties provided for $element_descr: names are $keys.");
+                throw new OutOfBoundsException("Unknown $description properties provided for $element_descr: names are $keys.");
             }
 
             // If we didn't populate any fields, then unset our 'cheat' value.
@@ -1870,6 +1985,14 @@ class UpdateObject
         $return = [];
         $errors = [];
         foreach ($this->elements as $element_index => $element) {
+            // Standard code can never have non-numeric indices and non-array
+            // elements, but check everything, in case a child class messes up.
+            if (!is_array($element)) {
+                // We never expose the index value but let's keep it as-is in
+                // error messages - except suppress it when we have 1 element.
+                $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
+                throw new UnexpectedValueException("$element_descr is not an array.");
+            }
             $element = $this->validateElement($element, $element_index, $change_behavior, $validation_behavior);
 
             if (isset($element['*errors'])) {
@@ -1891,7 +2014,9 @@ class UpdateObject
                     unset($element['*errors']);
                 }
             }
-            $return[] = $element;
+            if ($element) {
+                $return[] = $element;
+            }
         }
         if ($errors) {
             throw new UnexpectedValueException(implode("\n", $errors));
@@ -1927,25 +2052,22 @@ class UpdateObject
      * @throws \UnexpectedValueException
      *   If property definitions are invalid and validation could not be done.
      */
-    protected function validateElement($element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
+    protected function validateElement(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
     {
         // Do most low level structure checks here so that the other validate*()
         // methods are easier to override.
-        $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+        $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
         if (isset($element['Fields']) && !is_array($element['Fields'])) {
             throw new UnexpectedValueException("$element_descr has a non-array 'Fields' property value.");
         }
         if (isset($element['Objects']) && !is_array($element['Objects'])) {
             throw new UnexpectedValueException("$element_descr has a non-array 'Objects' property value.");
         }
-        // At least one field-or-object value must be present. (This would not
-        // be the case if e.g. only setId() was called.)
-        if (empty($element['Fields']) && empty($element['Objects'])) {
-            throw new UnexpectedValueException("$element_descr has empty 'Fields' and 'Objects'; at least one of these must contain a value.");
-        }
 
         // Doublechecks; unlikely to fail because also in addElements(). (We
-        // won't repeat them in each individual validate method.)
+        // won't repeat them in each individual validate method; we do them
+        // beforehand so child classes overriding validate[Reference]Fields
+        // don't have to worry about them.
         if (empty($this->propertyDefinitions)) {
             throw new UnexpectedValueException("'{$this->getType()}' object has no property definitions.");
         }
@@ -1961,9 +2083,13 @@ class UpdateObject
             if (!is_string($this->propertyDefinitions['id_property'])) {
                 throw new UnexpectedValueException("'id_property' definition in '{$this->getType()}' object is not a string value.");
             }
-            if ($validation_behavior & self::VALIDATE_ESSENTIAL) {
-                $id_property = '@' . $this->propertyDefinitions['id_property'];
-
+            // Empty string means the same as unset. (This way we do not need
+            // to implement an unsetId method. We assume '' can never be a
+            // valid ID value, even though who knows 0 or "0" could be.)
+            $id_property = '@' . $this->propertyDefinitions['id_property'];
+            if (isset($element[$id_property]) && $element[$id_property] === '') {
+                unset($element[$id_property]);
+            } elseif ($validation_behavior & self::VALIDATE_ESSENTIAL) {
                 if (isset($element[$id_property])) {
                     if (!is_int($element[$id_property]) && !is_string($element[$id_property])) {
                         $element['*errors'][$id_property] = "'$id_property' property in $element_descr must hold integer/string value.";
@@ -2050,12 +2176,16 @@ class UpdateObject
         $action = $this->getAction($element_index);
         $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
             || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
-        $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+        $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
 
         // Check requiredness for reference field, and create a default object
         // if it's missing (where defined. Defaults are unlikely to ever be
         // needed but still... they're possible.)
         foreach ($this->propertyDefinitions['objects'] as $ref_name => $object_properties) {
+            if (!is_array($object_properties)) {
+                throw new UnexpectedValueException("'{$this->getType()}' object has a non-array definition for object '$ref_name'.");
+            }
+
             // The structure of this code is equivalent to validateFields() but
             // a null default value means 'no default available' (instead of
             // 'a default of null', which it does in validateFields().)
@@ -2090,12 +2220,23 @@ class UpdateObject
                 if (isset($element['Objects'][$ref_name])) {
                     // Replace UpdateObject with validated array representation.
                     try {
-                        $element['Objects'][$ref_name] = ['Element' => $this->validateObjectValue($element['Objects'][$ref_name], $ref_name, $change_behavior, $validation_behavior, $element_index)];
+                        $object_value = $this->validateObjectValue($element['Objects'][$ref_name], $ref_name, $change_behavior, $validation_behavior, $element_index);
+                        if ($object_value) {
+                            $element['Objects'][$ref_name] = ['Element' => $object_value];
+                        } else {
+                            unset($element['Objects'][$ref_name]);
+                        }
                     } catch (UnexpectedValueException $e) {
                         $element['*errors']["Objects:$ref_name"] = $e->getMessage();
                     }
                 }
             }
+        }
+
+        // It's possible that $element contained objects but they were all
+        // 'empty'; in that case, unset 'Objects'.
+        if (isset($element['Objects']) && empty($element['Objects'])) {
+            unset($element['Objects']);
         }
 
         return $element;
@@ -2131,13 +2272,16 @@ class UpdateObject
      *   The element with its fields validated, and changed if appropriate.
      *   Validation errors are stored as an array under the '*errors' key,
      *   further keyed by 'Fields:<name>'.
+     *
+     * @throws \UnexpectedValueException
+     *   If property definitions are invalid and validation could not be done.
      */
     protected function validateFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
     {
         $action = $this->getAction($element_index);
         $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
             || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
-        $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+        $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
 
         // Check required fields and add default values for fields (where
         // defined). About definitions:
@@ -2151,6 +2295,10 @@ class UpdateObject
         // - if the default is null (or value provided is null & not 'required')
         //   then null is passed.
         foreach ($this->propertyDefinitions['fields'] as $name => $field_properties) {
+            if (!is_array($field_properties)) {
+                throw new UnexpectedValueException("'{$this->getType()}' object has a non-array definition for field '$name'.");
+            }
+
             $default_available = $defaults_allowed && array_key_exists('default', $field_properties);
             // Requiredness is only checked for action "insert"; the
             // VALIDATE_ESSENTIAL bit does not change that. (So far, we've only
@@ -2220,7 +2368,7 @@ class UpdateObject
     protected function validateObjectValue($value, $reference_field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, $element_index = null)
     {
         if (!$value instanceof UpdateObject) {
-            $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+            $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
             $name_and_alias = "'$reference_field_name'" . (isset($this->propertyDefinitions['objects'][$reference_field_name]['alias']) ? " ({$this->propertyDefinitions['objects'][$reference_field_name]['alias']})" : '');
             throw new UnexpectedValueException("$name_and_alias object embedded in $element_descr must be an object of type UpdateObject.");
         }
@@ -2259,7 +2407,7 @@ class UpdateObject
             if (count($elements) == 1) {
                 $elements = reset($elements);
             } elseif ($elements && $validation_behavior & self::VALIDATE_ESSENTIAL) {
-                $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+                $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
                 $name_and_alias = "'$reference_field_name'" . (isset($this->propertyDefinitions['objects'][$reference_field_name]['alias']) ? " ({$this->propertyDefinitions['objects'][$reference_field_name]['alias']})" : '');
                 throw new UnexpectedValueException("$name_and_alias object embedded in $element_descr contains " . count($elements) . ' elements but can only contain a single element.');
             }
@@ -2330,39 +2478,62 @@ class UpdateObject
                         throw new InvalidArgumentException("%NAME field value of %ELEMENT must be scalar.");
                     }
 
-                    if (!empty($field_properties['type'])) {
-                        switch ($field_properties['type']) {
-                            case 'boolean':
-                                $value = (bool) $value;
-                                break;
+                    if (!empty($this->propertyDefinitions['fields'][$field_name]['type'])) {
+                        switch ($this->propertyDefinitions['fields'][$field_name]['type']) {
                             case 'integer':
                             case 'decimal':
                                 if (!is_numeric($value)) {
                                     throw new InvalidArgumentException("%NAME field value of %ELEMENT must be numeric.");
                                 }
-                                if ($field_properties['type'] === 'integer' && strpos((string)$value, '.') !== false) {
+                                if ($this->propertyDefinitions['fields'][$field_name]['type'] === 'integer' && strpos((string)$value, '.') !== false) {
                                     throw new InvalidArgumentException("%NAME field value of %ELEMENT must be an integer value.");
                                 }
-                                // For decimal, we could also check digits, but
-                                // we're not going that far yet.
-                                break;
-                            case 'date':
-                                // @todo format in standard way, once we know that's necessary.
+                                // @todo check digits for decimal, if/when we know that's necessary.
                                 break;
                         }
                     }
                 } catch (InvalidArgumentException $e) {
                     // Catch and rethrow because we don't feel like repeatedly
                     // defining the element & field name constructions above.
-                    $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+                    $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
                     $name_and_alias = "'$field_name'" . (isset($this->propertyDefinitions['fields'][$field_name]['alias']) ? " ({$this->propertyDefinitions['fields'][$field_name]['alias']})" : '');
                     throw new InvalidArgumentException(str_replace('%NAME', $name_and_alias, str_replace('%ELEMENT', $element_descr, $e->getMessage())));
                 }
             }
 
-            // Trim value if allowed.
-            if (is_string($value) && $change_behavior & self::ALLOW_REFORMAT) {
-                $value = trim($value);
+            // Trim value, or change its type, if allowed. Notes:
+            // - This isn't done on 'input' (from setField() / addElements());
+            //   values are only guaranteed to be converted cast to their
+            //   correct type during 'output' validation (e.g. output() /
+            //   getElements() if this flag is set.
+            // - If VALIDATE_ESSENTIAL was not set on 'input' and not on
+            //   'output' either, that can mean data loss when invalid values
+            //   are converted. We won't guard against that; changing fields
+            //   without validating them first (which is only possible by
+            //   passing non-default arguments on both 'input' and 'output') is
+            //   asking for trouble.
+            if (is_scalar($value) && $change_behavior & self::ALLOW_REFORMAT) {
+                if (!empty($this->propertyDefinitions['fields'][$field_name]['type'])) {
+                    switch ($this->propertyDefinitions['fields'][$field_name]['type']) {
+                        case 'boolean':
+                            $value = (bool) $value;
+                            break;
+
+                        case 'decimal':
+                            $value = (float) $value;
+                            break;
+
+                        case 'integer':
+                            $value = (int) $value;
+                            break;
+
+                        case 'string':
+                            $value = trim($value);
+                    }
+                    // @todo format dates in standard way, if/when we know that's necessary.
+                } elseif (is_string($value)) {
+                    $value = trim($value);
+                }
             }
         }
 
@@ -2471,6 +2642,13 @@ class UpdateObject
         $flatten = $change_behavior & self::FLATTEN_SINGLE_ELEMENT;
         $change_behavior = $change_behavior & ~self::FLATTEN_SINGLE_ELEMENT;
         $elements = $this->getElements($change_behavior, $validation_behavior);
+        // We disallow sending an empty value (i.e. zero elements) into AFAS.
+        // (For the rest we allow anything, also e.g. an object with only ID.)
+        if (empty($elements)) {
+            // Strictly speaking, this is "no non-empty elements" because empty
+            // ones are allowed in our internal structure, but filtered.
+            throw new UnexpectedValueException("'{$this->getType()}' object holds no elements.");
+        }
 
         switch (strtolower($format)) {
             case 'json':
@@ -2605,7 +2783,7 @@ class UpdateObject
                 if ($pretty) {
                     /** @noinspection PhpUndefinedVariableInspection */
                     $format_options['line_prefix'] = (empty($format_options['line_prefix']) ? '' : $format_options['line_prefix'])
-                        . str_repeat(' ', $indent * 3) ;
+                        . str_repeat(' ', $indent * 3);
                 }
                 // Iterating over the keys in 'Objects' is fine; it contains
                 // all object values we need including defaults. (No need to

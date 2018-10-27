@@ -44,7 +44,7 @@ KnOrganisation:insert
             "Fields": {
                 "Nm": "Wyz",
                 "AutoNum": true,
-                "MatchOga": "6"
+                "MatchOga": 6
             },
             "Objects": {
                 "KnBasicAddressAdr": {
@@ -89,7 +89,7 @@ KnOrganisation:insert
                                         "ViGe": "O",
                                         "Corr": false,
                                         "AutoNum": true,
-                                        "MatchPer": "7"
+                                        "MatchPer": 7
                                     }
                                 }
                             }

@@ -48,7 +48,7 @@ KnOrganisation:update:1079
                 "Nm": "Wyz",
 ; MatchOga is set to 0 by default, for most updates. If BcCo is not set, that
 ; would generate an AFAS error, which is on purpose. (See code comments.)
-                "MatchOga": "0"
+                "MatchOga": 0
             },
             "Objects": {
                 "KnBasicAddressAdr": {
@@ -57,7 +57,7 @@ KnOrganisation:update:1079
                             "Ad": "Govert Flinckstraat",
                             "ZpCd": "1072EP",
                             "Rs": "Amsterdam",
-                            "HmNr": "168",
+                            "HmNr": 168,
                             "HmAd": "A",
 ; PbAd = false is added automatically - not because it's the default value but
 ; because when ALLOW_CHANGES is specified, PbAd is derived from "Ad" on updates.
@@ -86,7 +86,7 @@ KnOrganisation:update:1079
                                         "SeNm": "MUIT",
 ; MatchPer is set to 0 by default, for most updates. If BcCo is not set, that
 ; would generate an AFAS error, which is on purpose. (See code comments.)
-                                        "MatchPer": "0"
+                                        "MatchPer": 0
                                     }
                                 }
                             }

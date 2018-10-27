@@ -33,7 +33,7 @@ KnOrganisation:insert:1079
                 "PbAd": true,
                 "AutoNum": true,
 ; MatchOga has a default of 6 (for inserts).
-                "MatchOga": "6"
+                "MatchOga": 6
             },
             "Objects": {
                 "KnBasicAddressAdr": {
@@ -42,7 +42,7 @@ KnOrganisation:insert:1079
                             "Ad": "Govert Flinckstraat",
                             "ZpCd": "1072EP",
                             "Rs": "Amsterdam",
-                            "HmNr": "168",
+                            "HmNr": 168,
                             "HmAd": "A",
                             "CoId": "NL",
                             "PbAd": false,
@@ -70,7 +70,7 @@ KnOrganisation:insert:1079
                                         "Corr": false,
                                         "AutoNum": true,
 ; MatchPer has a default of 7 (for inserts).
-                                        "MatchPer": "7"
+                                        "MatchPer": 7
                                     }
                                 }
                             }

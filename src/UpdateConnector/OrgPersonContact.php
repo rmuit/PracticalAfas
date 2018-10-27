@@ -312,6 +312,7 @@ class OrgPersonContact extends ObjectWithCountry
                             // "Automatic matching" in documentation in this dir.
                             'MatchPer' => [
                                 'alias' => 'match_method',
+                                'type' => 'integer',
                                 // A 'safe' default is set below. We make it so
                                 // that the default makes sense in situations
                                 // where we can assume we know what the user
@@ -561,6 +562,7 @@ class OrgPersonContact extends ObjectWithCountry
                             // "Automatic matching" in documentation in this dir.
                             'MatchOga' => [
                                 'alias' => 'match_method',
+                                'type' => 'integer',
                                 // A 'safe' default is set below. We make it so
                                 // that the default makes sense in situations
                                 // where we can assume we know what the user
@@ -742,8 +744,9 @@ class OrgPersonContact extends ObjectWithCountry
 
         $element = parent::validateFields($element, $element_index, $change_behavior, $validation_behavior);
 
-        // Set dynamic defaults for several objects. We could have set/reset
-        // the 'default' properties but that's more involved, without benefit.
+        // Set dynamic defaults (when value is still null) for several fields.
+        // We could have set/reset the 'default' properties above, but that's
+        // more involved, without benefit.
         $action = $this->getAction($element_index);
         $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
             || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
@@ -812,7 +815,7 @@ class OrgPersonContact extends ObjectWithCountry
                     // principle is we would rather insert duplicate data than
                     // silently overwrite data by accident...
                     if ($action === 'insert') {
-                        $element['Fields']['MatchPer'] = '7';
+                        $element['Fields']['MatchPer'] = 7;
                     } elseif (!empty($element['Fields']['BcCo'])) {
                         // ...but it seems very unlikely that someone would
                         // specify BcCo when they don't explicitly want the
@@ -828,11 +831,11 @@ class OrgPersonContact extends ObjectWithCountry
                         //        throws an error, we're back to the user
                         //        having to specify 0, which means it's easier
                         //        if we do it for them.)
-                        $element['Fields']['MatchPer'] = '0';
+                        $element['Fields']['MatchPer'] = 0;
                     } elseif (!empty($element['Fields']['SoSe'])) {
                         // I guess we can assume the same logic for BSN, since
                         // that's supposedly also a unique number.
-                        $element['Fields']['MatchPer'] = '1';
+                        $element['Fields']['MatchPer'] = 1;
                     } else {
                         // Probably even with action "update", a new record
                         // will be inserted if there is no match... but we do
@@ -842,7 +845,7 @@ class OrgPersonContact extends ObjectWithCountry
                         // in $element. (If anyone disagrees / encounters
                         // circumstances where this is not OK: open an issue/PR
                         // to refine this.)
-                        $element['Fields']['MatchPer'] = '0';
+                        $element['Fields']['MatchPer'] = 0;
                     }
                 }
                 break;
@@ -851,18 +854,18 @@ class OrgPersonContact extends ObjectWithCountry
                 if (!isset($element['Fields']['MatchOga']) && !$dont_change_anything) {
                     // See comments at MatchPer just above.
                     if ($action === 'insert') {
-                        $element['Fields']['MatchOga'] = '6';
+                        $element['Fields']['MatchOga'] = 6;
                     } elseif (!empty($element['Fields']['BcCo'])) {
-                        $element['Fields']['MatchOga'] = '0';
+                        $element['Fields']['MatchOga'] = 0;
                     } elseif (!empty($element['Fields']['CcNr'])) {
                         // I guess we can assume the same logic for KvK number,
                         // since that's supposedly also a unique number.
-                        $element['Fields']['MatchOga'] = '1';
+                        $element['Fields']['MatchOga'] = 1;
                     } elseif (!empty($element['Fields']['FiNr'])) {
                         // ...and fiscal number.
-                        $element['Fields']['MatchOga'] = '2';
+                        $element['Fields']['MatchOga'] = 2;
                     } else {
-                        $element['Fields']['MatchOga'] = '0';
+                        $element['Fields']['MatchOga'] = 0;
                     }
                 }
         }
@@ -1045,6 +1048,9 @@ class OrgPersonContact extends ObjectWithCountry
      *   embedded contact object, and then if not present, check in a person
      *   object embedded in the contact. All types are checked on all layers.)
      *
+     * @throws \UnexpectedValueException
+     *   If the address object (is still an object and) does not validate.
+     *
      * @return array|mixed
      */
     protected static function getAddressFields(array $element, array $search_address_types = ['KnBasicAddressAdr'], bool $search_current = true, array $search_embedded_types = []) {
@@ -1102,6 +1108,16 @@ class OrgPersonContact extends ObjectWithCountry
         // populate get set to either a derived value or '' - so any value
         // currently in AFAS can be overwritten. If the action is "insert",
         // most fields which are not set to a derived value, are not set at all.
+
+        // If any of the relevant fields are non-strings, skip silently.
+        if (isset($fields['LaNm']) && !is_string($fields['LaNm'])
+            || isset($fields['FiNm']) && !is_string($fields['FiNm'])
+            || isset($fields['SeNm']) && !is_string($fields['SeNm'])
+            || isset($fields['Is']) && !is_string($fields['Is'])
+            || isset($fields['In']) && !is_string($fields['In'])
+        ) {
+            return $fields;
+        }
 
         // Split off (Dutch) prefix from last name. NOTE: creepily hardcoded
         // stuff. Trailing spaces are necessary, and sometimes ordering matters.
@@ -1212,6 +1228,10 @@ class OrgPersonContact extends ObjectWithCountry
      */
     public static function validateDutchPhoneNr($phone_number)
     {
+        if (!is_string($phone_number)) {
+            return [];
+        }
+
         /*
           Accepts:
               06-12345678
