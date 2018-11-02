@@ -313,7 +313,7 @@ class UpdateObject
      *   classes for possible values. The data is assumed to represent multiple
      *   elements if all keys are numeric and all values are arrays (or if the
      *   value is a single empty array, meaning zero elements); it's processed
-     *    as a single element otherwise. Keys inside a single element can be:
+     *   as a single element otherwise. Keys inside a single element can be:
      *   - field names or aliases (as defined in __construct() / child classes);
      *   - names or aliases of the 'object reference fields' (see
      *     $propertyDefinitions)  which can be embedded into this object
@@ -1062,10 +1062,10 @@ class UpdateObject
     /**
      * Returns the action which should be performed on one or all elements.
      *
-     * @param int $element_index
-     *   (Optional) The 0-based index of the element whose action is requested.
-     *   Usually this class will contain data for only one element, in which
-     *   case this argument does not need to be specified (or should be 0).
+     * @param int|string $element_index
+     *   (Optional) The index of the element whose action is requested. Often
+     *   this class will contain data for only one element and this argument
+     *   does not need to be specified (or should be 0).
      *
      * @return string
      *
@@ -1150,18 +1150,17 @@ class UpdateObject
      *   (This argument has no effect on elements added later; if e.g. a later
      *   addElements() contains embedded objects, those will always inherit the
      *   action set on the parent element.)
-     * @param int $element_index
-     *   (Optional) The 0-based index of the element for which to set the
-     *   action. It's usually not needed even when the UpdateObject holds data
-     *   for multiple elements. It's only of theoretical use (which is:
-     *   outputting multiple objects with different "action" values as XML.
-     *   JSON output is likely bogus when different action values are set for
-     *   different elements).
+     * @param int|string $element_index
+     *   (Optional) The index of the element for which to set the action. It's
+     *   usually not needed even when the UpdateObject holds data for multiple
+     *   elements. It's only of theoretical use (which is: outputting multiple
+     *   objects with different "action" values as XML. JSON output is likely
+     *   bogus when different action values are set for different elements).
      *
      * @throws \InvalidArgumentException
      *   If the action value is unknown.
      */
-    public function setAction($action, $set_embedded = true, $element_index = -1)
+    public function setAction($action, $set_embedded = true, $element_index = null)
     {
         // Unify $action. We'll silently accept PUT/POST too, as long as the
         // REST API keeps the one-to-one relationship of these to update/insert.
@@ -1176,7 +1175,9 @@ class UpdateObject
             throw new InvalidArgumentException('Unknown action value' . var_export($action, true) . '.');
         }
 
-        if ($element_index == -1) {
+        if (isset($element_index)) {
+            $this->actions[$element_index] = $action;
+        } else {
             // Set the value in any defined actions. (Usually the actions
             // variable contains only one entry with index 0, regardless of
             // how many elements are present in this UpdateObject, which is
@@ -1188,15 +1189,18 @@ class UpdateObject
                     $this->actions[$index] = $action;
                 }
             }
-        } else {
-            $this->actions[$element_index] = $action;
         }
 
         if ($set_embedded && !empty($this->elements) && is_array($this->elements)) {
+            // Change $element_index if it's necessary for key comparisons.
+            if (is_float($element_index) || is_bool($element_index) ||
+                is_string($element_index) && (string) (int) $element_index === $element_index) {
+                $element_index = (int) $element_index;
+            }
             // Set all actions in embedded objects of the element corresponding
             // to the index we passed into this method.
             foreach ($this->elements as $i => $element) {
-                if ($element_index == -1 || $i == $element_index) {
+                if (!isset($element_index) || $i === $element_index) {
 
                     if (!empty($element['Objects']) && is_array($element['Objects'])) {
                         foreach ($element['Objects'] as $object) {
@@ -1213,8 +1217,8 @@ class UpdateObject
     /**
      * Returns the ID value of one of this object's elements.
      *
-     * @param int $element_index
-     *   (Optional) The 0-based index of the element whose ID is requested.
+     * @param int|string $element_index
+     *   (Optional) The index of the element whose ID is requested.
      *
      * @return int|string|null
      *   The ID value, or null if no value is set.
@@ -1242,10 +1246,9 @@ class UpdateObject
      *
      * @param int|string $value
      *   The ID value to set. Empty string means no value.
-     * @param int $element_index
-     *   (Optional) The 0-based index of the element whose ID is set. It is
-     *   allowed to set an ID for a new element, but only one with the 'next'
-     *   index (i.e. the index equal to the current number of elements).
+     * @param int|string $element_index
+     *   (Optional) The index of the element whose ID is set. If it does not
+     *   exist yet, a new element is created with just this ID.
      *
      * @throws \InvalidArgumentException
      *   If the value has an unexpected type.
@@ -1275,10 +1278,9 @@ class UpdateObject
      *
      * @param string $field_name
      *   The name of the field, or its alias.
-     * @param int $element_index
-     *   (Optional) The 0-based index of the element whose field value
-     *   is requested. The element must exist, except if no elements exist and
-     *   $return_default is passed; then this value must be 0.
+     * @param int|string $element_index
+     *   (Optional) The index of the element whose field value is requested.
+     *   The element must exist, except if $return_default is passed.
      * @param bool $return_default
      *   (Optional) If true, return the default value if no field value is set.
      * @param bool $wrap_array
@@ -1321,10 +1323,9 @@ class UpdateObject
      *   The name of the field, or its alias.
      * @param int|string $value
      *   The field value to set.
-     * @param int $element_index
-     *   (Optional) The 0-based index of the element. It is allowed to set a
-     *   field for a new element, but only one with the 'next' index (i.e. the
-     *   index equal to the current number of elements).
+     * @param int|string $element_index
+     *   (Optional) The index of the element whose ID is set. If it does not
+     *   exist yet, a new element is created with just this field.
      * @param int $validation_behavior
      *   (Optional) Specifies whether/how the elements should be validated,
      *   throwing an exception on failure. By default only very basic
@@ -1346,7 +1347,7 @@ class UpdateObject
      */
     public function setField($field_name, $value, $element_index = 0, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
-        $element = $this->checkElement($element_index, true, true);
+        $element = $this->checkElement($element_index, true);
         $field_name = $this->checkFieldName($field_name);
 
         // validateFieldValue() gets definitions too but caching it here would
@@ -1359,8 +1360,8 @@ class UpdateObject
      *
      * @param string $field_name
      *   The name of the field, or its alias.
-     * @param int $element_index
-     *   (Optional) The 0-based index of the element.
+     * @param int|string $element_index
+     *   (Optional) The index of the element.
      *
      * @return bool
      *   True if the field is set before calling this function (also if its
@@ -1372,7 +1373,6 @@ class UpdateObject
      */
     public function unsetField($field_name, $element_index = 0)
     {
-        $this->checkElement($element_index);
         $field_name = $this->checkFieldName($field_name);
 
         $return = false;
@@ -1396,10 +1396,9 @@ class UpdateObject
      *   The name of the reference field for the object, or its alias. (This is
      *   often but not always equal to the object type; see the docs at
      *   $propertyDefinitions.)
-     * @param int $element_index
-     *   (Optional) The 0-based index of the element whose embedded object
-     *   value is requested. The element must exist, except if no elements
-     *   exist and $return_default is passed; then this value must be 0.
+     * @param int|string $element_index
+     *   (Optional) The index of the element whose embedded object value is
+     *   requested. The element must exist except if $return_default is passed.
      * @param bool $return_default
      *   (Optional) If true, return an object with a default value, if no
      *   embedded object is set. In this case, changes made to the returned
@@ -1440,7 +1439,7 @@ class UpdateObject
                     throw new UnexpectedValueException($e->getMessage(), $e->getCode());
                 }
             } else {
-                $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
+                $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
                 throw new UnexpectedValueException("Default value for '$reference_field_name' object embedded in $element_descr must be array.");
             }
         } else {
@@ -1469,10 +1468,9 @@ class UpdateObject
      * @param string $action
      *   (Optional) The action to perform on the data. By default, the action
      *   set in the parent element (stored in this object) is taken.
-     * @param int $element_index
-     *   (Optional) The 0-based index of the element. It is allowed to set an
-     *   object for a new element, but only one with the 'next' index (i.e. the
-     *   index equal to the current number of elements).
+     * @param int|string $element_index
+     *   (Optional) The index of the element whose ID is set. If it does not
+     *   exist yet, a new element is created with just this embedded object.
      * @param int $validation_behavior
      *   (Optional) Specifies whether/how the elements should be validated; see
      *   create() for a more elaborate description.
@@ -1489,7 +1487,6 @@ class UpdateObject
      */
     public function setObject($reference_field_name, array $embedded_elements, $action = null, $element_index = 0, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
-        $this->checkElement($element_index, true, true);
         $reference_field_name = $this->checkObjectReferenceFieldName($reference_field_name);
 
         $this->elements[$element_index]['Objects'][$reference_field_name] = $this->createEmbeddedObject($reference_field_name, $embedded_elements, $action, $element_index, $validation_behavior);
@@ -1502,8 +1499,8 @@ class UpdateObject
      *   The name of the reference field for the object, or its alias. (This is
      *   often but not always equal to the object type; see the docs at
      *   $propertyDefinitions.)
-     * @param int $element_index
-     *   (Optional) The 0-based index of the element.
+     * @param int|string $element_index
+     *   (Optional) The index of the element.
      *
      * @return bool
      *   True if on object is set before calling this function; false otherwise.
@@ -1514,7 +1511,6 @@ class UpdateObject
      */
     public function unsetObject($reference_field_name, $element_index = 0)
     {
-        $this->checkElement($element_index);
         $reference_field_name = $this->checkObjectReferenceFieldName($reference_field_name);
 
         $return = false;
@@ -1544,7 +1540,7 @@ class UpdateObject
      * @param string $action
      *   (Optional) The action to perform on the data. By default, the action
      *   set in the parent element (stored in this object) is taken.
-     * @param int $element_index
+     * @param int|string $element_index
      *   The index that the element which the object will be embedded into, has
      *   or will have. When called from add/setElement(s), the element with the
      *   specified index does/may not exist yet.
@@ -1609,28 +1605,20 @@ class UpdateObject
      * We don't want to make this 'public getElement()' because that creates
      * too much choice / ambiguity; callers should use getElements().
      *
-     * @param int $element_index
+     * @param int|string $element_index
      *   The index of the requested element.
-     * @param bool $allow_zero_index
-     *   (Optional) if true, an index of 0 is allowed even if the element does
-     *   not exist; return empty array.
-     * @param bool $allow_next_index
-     *   (Optional) if true, the lowest un-populated index value  (i.e.
-     *   count($this->elements) is allowed even if the element does not exist.
-     *   In this case, the $allow_zero_index value doesn't matter.)
+     * @param bool $allow_nonexistent
+     *   (Optional) if true, return an empty array if the element with the
+     *   specified index does not exixt.
      *
      * @return array
      *   The element.
      */
-    protected function checkElement($element_index = 0, $allow_zero_index = false, $allow_next_index = false)
+    protected function checkElement($element_index = 0, $allow_nonexistent = false)
     {
         if (isset($this->elements[$element_index])) {
             $element = $this->elements[$element_index];
-        } elseif ($element_index == 0 && $allow_zero_index) {
-            $element = [];
-        } elseif ($allow_next_index && $element_index == count($this->elements)) {
-            // We are allowed to use the 'next' element. (Probably the caller
-            // is a setter.)
+        } elseif ($allow_nonexistent) {
             $element = [];
         } else {
             throw new OutOfBoundsException("No element present with index $element_index.");
@@ -1707,7 +1695,7 @@ class UpdateObject
      * @param array $elements
      *   The input data; see create() for details.
      *
-     * @return array
+     * @return array[]
      *   The data formatted as an array of elements.
      *
      * @throws \InvalidArgumentException
@@ -1744,8 +1732,8 @@ class UpdateObject
      *
      * @param array $element
      *   The input data; see create() for details.
-     * @param int $element_index
-     *   (Optional) The 0-based index which the element will get.
+     * @param int|string $element_index
+     *   (Optional) The index which the element will get.
      * @param int $validation_behavior
      *   (Optional) Specifies whether/how the elements should be validated; see
      *   create() for a more elaborate description.
@@ -1929,12 +1917,19 @@ class UpdateObject
      * Sets (a normalized/de-aliased version of) an element in this object.
      *
      * This can be used to set/change just one element if the object already
-     * contains multiple elements, without touching the other elements. In
+     * contains multiple elements, without touching the other elements, or if
+     * you really want to index your elements by strings for some reason. In
      * general it's more advisable to use setElements() if this object should
      * have just one element, or addElements() to add an additional element.
      *
-     * @param int $element_index
-     *   (Optional) The 0-based index of the element.
+     * @param int|string $element_index
+     *   (Optional) The index of the element which will be created or
+     *   overwritten. Indexes will not be present in output, and the order in
+     *   which elements are output depends only on the order in which they were
+     *   created; not directly on the index values. Their only use is for
+     *   referring to specific elements which are present in this object. By
+     *   default (when elements are created through create() -> addElement())
+     *   they are zero-based, incrementing integers.
      * @param array $element
      *   Data representing a single element to set; see create() for a
      *   description.
@@ -1953,7 +1948,6 @@ class UpdateObject
      */
     public function setElement($element_index, array $element, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
-        $this->checkElement($element_index, true, true);
         $this->elements[$element_index] = $this->normalizeElement($element, $element_index, $validation_behavior);
     }
 
@@ -1966,7 +1960,10 @@ class UpdateObject
      *
      * @param array $elements
      *   Data representing one or more elements to set; see create() for a
-     *   description.
+     *   description. Note that an array of elements can only be numerically
+     *   keyed; it will be interpreted as a single array otherwise. (This
+     *   unlike setElements(), setField() etc, which allow to set/reference
+     *   elements by alphanumeric indexes.)
      * @param int $validation_behavior
      *   (Optional) Specifies whether/how the elements should be validated; see
      *   create() for a more elaborate description.
@@ -1994,8 +1991,11 @@ class UpdateObject
      * validation and for embedded objects, which inherit that action.
      *
      * @param array $elements
-     *   Data representing one or more elements to add; see create() for a
-     *   description.
+     *   Data representing one or more elements to set; see create() for a
+     *   description. Note that an array of elements can only be numerically
+     *   keyed; it will be interpreted as a single array otherwise. (This
+     *   unlike setElements(), setField() etc, which allow to set/reference
+     *   elements by alphanumeric indexes.)
      * @param int $validation_behavior
      *   (Optional) Specifies whether/how the elements should be validated; see
      *   create() for a more elaborate description.
@@ -2014,13 +2014,17 @@ class UpdateObject
         $elements = $this->normalizeElements($elements);
 
         // Log messages will contain the index which the element will get; not
-        // the index which the element currently has in $elements. These differ
-        // if this object already contains elements, which can be confusing
-        // (only?) if we are also trying to add multiple elements in this call.
+        // the index which the element currently has in $elements. If this
+        // object already contains elements and we are trying to add multiple
+        // elements in this call, that could be confusing. Otherwise, not very.
         $next_index = count($this->elements);
         foreach ($elements as $element) {
-            $this->elements[] = $this->normalizeElement($element, $next_index, $validation_behavior);
-            $next_index++;
+            // We allow callers to add their own index values so we cannot
+            // assume that the one we want to add does not exist.
+            while (isset($this->elements[$next_index])) {
+                $next_index++;
+            }
+            $this->elements[$next_index] = $this->normalizeElement($element, $next_index, $validation_behavior);
         }
     }
 
@@ -2071,7 +2075,7 @@ class UpdateObject
             if (!is_array($element)) {
                 // We never expose the index value but let's keep it as-is in
                 // error messages - except suppress it when we have 1 element.
-                $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
+                $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
                 throw new UnexpectedValueException("$element_descr is not an array.");
             }
             $element = $this->validateElement($element, $element_index, $change_behavior, $validation_behavior);
@@ -2116,7 +2120,7 @@ class UpdateObject
      * @param array $element
      *   The element (usually the single one contained in $this->elements) that
      *   should be validated.
-     * @param int $element_index
+     * @param int|string $element_index
      *   The index of the element in our object data; usually there is one
      *   element and the index is 0.
      * @param int $change_behavior
@@ -2137,7 +2141,7 @@ class UpdateObject
     {
         // Do most low level structure checks here so that the other validate*()
         // methods are easier to override.
-        $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
+        $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
         if (isset($element['Fields']) && !is_array($element['Fields'])) {
             throw new UnexpectedValueException("$element_descr has a non-array 'Fields' property value.");
         }
@@ -2231,7 +2235,7 @@ class UpdateObject
      * @param array $element
      *   The element (usually the single one contained in $this->elements)
      *   whose embedded objects should be validated.
-     * @param int $element_index
+     * @param int|string $element_index
      *   The index of the element in our object data; usually there is one
      *   element and the index is 0.
      * @param int $change_behavior
@@ -2257,7 +2261,7 @@ class UpdateObject
         $action = $this->getAction($element_index);
         $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
             || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
-        $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
+        $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
 
         // Check requiredness for reference field, and create a default object
         // if it's missing (where defined. Defaults are unlikely to ever be
@@ -2341,7 +2345,7 @@ class UpdateObject
      * @param array $element
      *   The element (usually the single one contained in $this->elements)
      *   whose fields should be validated.
-     * @param int $element_index
+     * @param int|string $element_index
      *   The index of the element in our object data; usually there is one
      *   element and the index is 0.
      * @param int $change_behavior
@@ -2362,7 +2366,7 @@ class UpdateObject
         $action = $this->getAction($element_index);
         $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
             || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
-        $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
+        $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
 
         // Check required fields and add default values for fields (where
         // defined). About definitions:
@@ -2434,7 +2438,7 @@ class UpdateObject
      *   element and may still need to be amended to apply to embedded objects.
      * @param int $validation_behavior
      *   (Optional) see output().
-     * @param int $element_index
+     * @param int|string $element_index
      *   (Optional) The index of the element in our object data. Often only
      *   used for logging.
      *
@@ -2449,7 +2453,7 @@ class UpdateObject
     protected function validateObjectValue($value, $reference_field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, $element_index = null)
     {
         if (!$value instanceof UpdateObject) {
-            $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
+            $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
             $name_and_alias = "'$reference_field_name'" . (isset($this->propertyDefinitions['objects'][$reference_field_name]['alias']) ? " ({$this->propertyDefinitions['objects'][$reference_field_name]['alias']})" : '');
             throw new UnexpectedValueException("$name_and_alias object embedded in $element_descr must be an object of type UpdateObject.");
         }
@@ -2488,7 +2492,7 @@ class UpdateObject
             if (count($elements) == 1) {
                 $elements = reset($elements);
             } elseif ($elements && $validation_behavior & self::VALIDATE_ESSENTIAL) {
-                $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
+                $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
                 $name_and_alias = "'$reference_field_name'" . (isset($this->propertyDefinitions['objects'][$reference_field_name]['alias']) ? " ({$this->propertyDefinitions['objects'][$reference_field_name]['alias']})" : '');
                 throw new UnexpectedValueException("$name_and_alias object embedded in $element_descr contains " . count($elements) . ' elements but can only contain a single element.');
             }
@@ -2516,7 +2520,7 @@ class UpdateObject
      *   (Optional) see output().
      * @param int $validation_behavior
      *   (Optional) see output().
-     * @param int $element_index
+     * @param int|string $element_index
      *   The index that the element which the object will be embedded into, has
      *   or will have. When called from add/setElement(s), the element with the
      *   specified index does/may not exist yet.

@@ -48,7 +48,7 @@ class ObjectWithCountry extends UpdateObject
     /**
      * {@inheritdoc}
      */
-    public function __construct(array $elements = [], string $action = '', string $type = '', int $validation_behavior = self::VALIDATE_ESSENTIAL, string $parent_type = '')
+    public function __construct(array $elements = [], $action = '', $type = '', $validation_behavior = self::VALIDATE_ESSENTIAL, $parent_type = '')
     {
         // If we don't have definitions, we'll define them here for the one
         // known type, and otherwise fall through to the parent. This way, it's
@@ -369,7 +369,7 @@ class ObjectWithCountry extends UpdateObject
      *   The element (usually the single one contained in $this->elements)
      *   whose fields should be validated.
      * @param int $element_index
-     *   (optional) The index of the element in our object data; usually there
+     *   (Optional) The index of the element in our object data; usually there
      *   is one element and the index is 0. Used in exception messages.
      * @param string $iso_field_name
      *   The name of the 'fake field' (which should be emptied out after
@@ -394,7 +394,7 @@ class ObjectWithCountry extends UpdateObject
             // is to call validateFieldValue() (which may be repeated later).
             $iso_value = $this->validateFieldValue($element['Fields'][$iso_field_name], $iso_field_name, $change_behavior, self::DEFAULT_VALIDATION, $element_index, $element);
 
-            $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+            $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
 
             $afas_code = static::convertIsoCountryCode($iso_value);
             if (!$afas_code) {

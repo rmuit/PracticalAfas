@@ -120,8 +120,10 @@ class UpdateObjectTest extends TestCase
         // This adds a single empty element.
         $object2->addElements([[]]);
         // Adding object with empty embedded object, or an embedded object with
-        // one or more empty elements, should also be OK.
-        $object2->addElements(['last_name' => 'Muit', 'contact' => [[]]]);
+        // one or more empty elements, should also be OK. Keys for elements
+        // should not be used in output, only for manipulating the element
+        // inside this object.
+        $object2->setElement('randomkey', ['last_name' => 'Muit', 'contact' => [[]]]);
         // All this should only return 1 element with 1 field.
         $element = ['Fields' => ['LaNm' => 'Muit']];
         $this->assertEquals([$element], $object2->getElements());
@@ -135,7 +137,7 @@ class UpdateObjectTest extends TestCase
 
         // Remove the field. The resulting empty embedded object should yield
         // no elements. Note there should be 3 empty elements before.
-        $object2->unsetField('last_name', 3);
+        $object2->unsetField('last_name', 'randomkey');
         $this->assertEquals([], $object2->getElements());
 
         // setElements([]) should actually empty out the object (not only

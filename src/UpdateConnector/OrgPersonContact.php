@@ -722,11 +722,11 @@ class OrgPersonContact extends ObjectWithCountry
                 // cases it's also impossible to embed a KnPerson into this
                 // object. (Or a KnOrganisation; that's never possible.)
                 if (isset($this->propertyDefinitions['fields']['BcCoOga']) && empty($element['Fields']['BcCoOga'])) {
-                    $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+                    $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
                     $element['*errors']["Fields:BcCoOga"] = "No value provided for required 'BcCoOga' (organisation_code) field of $element_descr.";
                 }
                 if (isset($this->propertyDefinitions['fields']['BcCoPer']) && empty($element['Fields']['BcCoPer'])) {
-                    $element_descr = "'{$this->getType()}' element" . ($element_index ? ' with index ' . ($element_index + 1) : '');
+                    $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
                     $element['*errors']["Fields:BcCoPer"] = "No value provided for required 'BcCoPer' (person_code) field of $element_descr.";
                 }
                 break;

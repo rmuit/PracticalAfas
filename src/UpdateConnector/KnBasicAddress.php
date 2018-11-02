@@ -175,7 +175,7 @@ class KnBasicAddress extends ObjectWithCountry
      * @param array $fields
      *   The 'Fields' array of an element that is being validated.
      * @param int $element_index
-     *   (optional) The index of the element in our object data; usually there
+     *   (Optional) The index of the element in our object data; usually there
      *   is one element and the index is 0. For modifying a set of fields which
      *   are not stored in this object, do not pass this value.
      *
