@@ -319,7 +319,7 @@ class UpdateObject
      *     $propertyDefinitions)  which can be embedded into this object
      *     type; the values must be an array of data (one or multiple elements)
      *     to set in that object, or an UpdateObject;
-     *   - '@xxId' (where xx is a type-specific two letter code) or '#id', which
+     *   - '@xxId' (where xx is a type-specific two letter code) or '@id', which
      *     holds the 'ID value' for an element. (In the output, this ID value is
      *     located in the Element structure the same level as the Fields, rather
      *     than inside Fields. Or in XML: it's an attribute in the Element tag.)
@@ -1762,22 +1762,23 @@ class UpdateObject
         $normalized_element = [];
 
         // If this type has an ID field, check for it and set it in its
-        // dedicated location.
+        // dedicated location. AFAS has various names for various types' ID
+        // property, but we are also allowed to refer to each id by '@id'.
         if (!empty($this->propertyDefinitions['id_property'])) {
             if (!is_string($this->propertyDefinitions['id_property'])) {
                 throw new UnexpectedValueException("'id_property' definition in '{$this->getType()}' object is not a string value.");
             }
             $id_property = '@' . $this->propertyDefinitions['id_property'];
             if (array_key_exists($id_property, $element)) {
-                if (array_key_exists('#id', $element) && $element['#id'] !== $element[$id_property]) {
-                    throw new InvalidArgumentException($this->getType() . ' object has the ID field provided by both its field name $name and alias #id.');
+                if (array_key_exists('@id', $element) && $element['@id'] !== $element[$id_property]) {
+                    throw new InvalidArgumentException("{$this->getType()} object has the ID property provided by both its name '$id_property' and the generic alias '@id'.");
                 }
                 $normalized_element[$id_property] = $element[$id_property];
                 // Unset so that we won't throw an exception at the end.
                 unset($element[$id_property]);
-            } elseif (array_key_exists('#id', $element)) {
-                $normalized_element[$id_property] = $element['#id'];
-                unset($element['#id']);
+            } elseif (array_key_exists('@id', $element)) {
+                $normalized_element[$id_property] = $element['@id'];
+                unset($element['@id']);
             }
             if (isset($normalized_element[$id_property]) && !is_int($normalized_element[$id_property]) && !is_string($normalized_element[$id_property])) {
                 throw new InvalidArgumentException("'$id_property' property in $element_descr must hold integer/string value.");

@@ -1,7 +1,7 @@
 KnSubject
-; For 'id properties' we can specify either '#id' or '@SbId'.
+; For 'id properties' we can specify either '@id' or '@SbId'.
 [
-  [ '#id' =>   1957, 'type' => 1, 'description' => 'öndèrwérp', ],
+  [ '@id' =>   1957, 'type' => 1, 'description' => 'öndèrwérp', ],
   [ '@SbId' => 1958, 'type' => 2, 'description' => 'öndèrwérp twee', ],
 ]
 --
