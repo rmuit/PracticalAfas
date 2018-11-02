@@ -250,7 +250,7 @@ class UpdateObjectTest extends TestCase
             ]
         ];
         $this->expectException(OutOfBoundsException::class);
-        $this->expectExceptionMessage("Unknown element properties provided for 'FbSalesLines' element with key 1: names are '0'.");
+        $this->expectExceptionMessage("Unknown element properties provided for 'FbSalesLines' element which will get index 1: names are '0'.");
         UpdateObject::create('FbSales', $properties, 'update');
     }
 
@@ -262,14 +262,25 @@ class UpdateObjectTest extends TestCase
     public function testNonFirstErrorMessage2()
     {
         $properties = [
-            'line_items' => [
-                [],
-                [],
-                ['quantity' => 'x'],
-            ]
+            [
+                'line_items' => [
+                    [],
+                    [],
+                    ['quantity' => '1'],
+                ]
+            ],
+            [
+                'line_items' => [
+                    [],
+                    [],
+                    ['quantity' => 'x'],
+                ]
+            ],
         ];
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage("'QuUn' (quantity) field value of 'FbSalesLines' element with index 2  must be numeric.");
+        // The message is confined within one object (i.e. 'line_items' and
+        // does not indicate any parent element it would be embedded in.
+        $this->expectExceptionMessage("'QuUn' (quantity) field value of 'FbSalesLines' element which has (or will get) index 2 must be numeric.");
         UpdateObject::create('FbSales', $properties, 'update');
     }
 

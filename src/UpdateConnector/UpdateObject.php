@@ -1346,7 +1346,7 @@ class UpdateObject
      */
     public function setField($field_name, $value, $element_index = 0, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
-        $element = $this->checkElement($element_index, false, true);
+        $element = $this->checkElement($element_index, true, true);
         $field_name = $this->checkFieldName($field_name);
 
         // validateFieldValue() gets definitions too but caching it here would
@@ -1539,11 +1539,18 @@ class UpdateObject
      * @param string $reference_field_name
      *   Reference field name (not alias).
      * @param array $embedded_elements
+     *   Data to set in the embedded object, representing one or more elements.
+     *   See create().
      * @param string $action
+     *   (Optional) The action to perform on the data. By default, the action
+     *   set in the parent element (stored in this object) is taken.
      * @param int $element_index
-     *   Note that when called from addElements(), the element with the
-     *   specified index does not exist yet.
+     *   The index that the element which the object will be embedded into, has
+     *   or will have. When called from add/setElement(s), the element with the
+     *   specified index does/may not exist yet.
      * @param int $validation_behavior
+     *   (Optional) Specifies whether/how the elements should be validated; see
+     *   create() for a more elaborate description.
      *
      * @throws \InvalidArgumentException
      *   If the elements cannot be embedded or the action value cannot be null.
@@ -1568,7 +1575,7 @@ class UpdateObject
         // this is a mandatory check, but on 'input' it can be suppressed.
         if ($validation_behavior & self::VALIDATE_ESSENTIAL && count($embedded_elements) > 1
             && empty($this->propertyDefinitions['objects'][$reference_field_name]['multiple'])) {
-            $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
+            $element_descr = "'{$this->getType()}' element" . ($element_index ? " which has (or will get) index $element_index " : '');
             $name_and_alias = "'$reference_field_name'" . (isset($this->propertyDefinitions['objects'][$reference_field_name]['alias']) ? " ({$this->propertyDefinitions['objects'][$reference_field_name]['alias']})" : '');
             throw new InvalidArgumentException("$name_and_alias object embedded in $element_descr contains " . count($embedded_elements) . ' elements but can only contain a single element.');
         }
@@ -1597,43 +1604,6 @@ class UpdateObject
     }
 
     /**
-     * Returns a uniformly structured representation of one or more elements.
-     *
-     * @param array $elements
-     *   The input data; see create() for details.
-     *
-     * @return array
-     *   The data formatted as an array of elements.
-     *
-     * @throws \InvalidArgumentException
-     *   If the data has an invalid structure.
-     */
-    protected function normalizeElements(array $elements)
-    {
-        // If the caller passed the element(s) inside an 'Element' wrapper
-        // array (because they are handling e.g. some external json-decoded
-        // string from another source, or embedded objects inside the
-        // getElements() return value), accept that. Strip the wrapper off.
-        if (count($elements) == 1 && key($elements) === 'Element') {
-            $elements = reset($elements);
-            if (!is_array($elements)) {
-                throw new InvalidArgumentException("Element data inside 'Element' wrapper is not an array.");
-            }
-        }
-        // Determine if we have a single element or an array of elements.
-        foreach ($elements as $key => $element) {
-            if (is_scalar($element) || !is_numeric($key)) {
-                // This is assumed to be a single element. Normalize to an
-                // array of elements..
-                $elements = [$elements];
-                break;
-            }
-        }
-
-        return $elements;
-    }
-
-    /**
      * Helper method: get an element with a certain index.
      *
      * We don't want to make this 'public getElement()' because that creates
@@ -1647,6 +1617,7 @@ class UpdateObject
      * @param bool $allow_next_index
      *   (Optional) if true, the lowest un-populated index value  (i.e.
      *   count($this->elements) is allowed even if the element does not exist.
+     *   In this case, the $allow_zero_index value doesn't matter.)
      *
      * @return array
      *   The element.
@@ -1727,15 +1698,287 @@ class UpdateObject
     }
 
     /**
+     * Returns a uniformly structured representation of one or more elements.
+     *
+     * This is about converting a single element to an array if necessary. It
+     * does nothing to the structure of the element itself; that's
+     * normalizeElement().
+     *
+     * @param array $elements
+     *   The input data; see create() for details.
+     *
+     * @return array
+     *   The data formatted as an array of elements.
+     *
+     * @throws \InvalidArgumentException
+     *   If the data has an invalid structure.
+     */
+    protected function normalizeElements(array $elements)
+    {
+        // If the caller passed the element(s) inside an 'Element' wrapper
+        // array (because they are handling e.g. some external json-decoded
+        // string from another source, or embedded objects inside the
+        // getElements() return value), accept that. Strip the wrapper off.
+        if (count($elements) == 1 && key($elements) === 'Element') {
+            $elements = reset($elements);
+            if (!is_array($elements)) {
+                throw new InvalidArgumentException("Element data inside 'Element' wrapper is not an array.");
+            }
+        }
+        // Determine if we have a single element or an array of elements.
+        foreach ($elements as $key => $element) {
+            if (is_scalar($element) || !is_numeric($key)) {
+                // This is assumed to be a single element. Normalize to an
+                // array of elements..
+                $elements = [$elements];
+                break;
+            }
+        }
+
+        return $elements;
+    }
+
+
+    /**
+     * Returns a uniformly structured representation of a single element.
+     *
+     * @param array $element
+     *   The input data; see create() for details.
+     * @param int $element_index
+     *   (Optional) The 0-based index which the element will get.
+     * @param int $validation_behavior
+     *   (Optional) Specifies whether/how the elements should be validated; see
+     *   create() for a more elaborate description.
+     *
+     * @return array
+     *   The element with uniform structure and field/object names.
+     *
+     * @throws \InvalidArgumentException
+     *   If the data has an invalid structure.
+     *
+     * @see create()
+     */
+    protected function normalizeElement(array $element, $element_index, $validation_behavior = self::VALIDATE_ESSENTIAL)
+    {
+        if (empty($this->propertyDefinitions)) {
+            throw new UnexpectedValueException("'{$this->getType()}' object has no property definitions.");
+        }
+        if (!isset($this->propertyDefinitions['fields']) || !is_array($this->propertyDefinitions['fields'])) {
+            throw new UnexpectedValueException("'{$this->getType()}' object has no / a non-array 'fields' property definition.");
+        }
+        if (isset($this->propertyDefinitions['objects']) && !is_array($this->propertyDefinitions['objects'])) {
+            throw new UnexpectedValueException("'{$this->getType()}' object has a non-array 'objects' property definition.");
+        }
+
+        $element_descr = "'{$this->getType()}' element" . ($element_index ? " which will get index $element_index" : '');
+        $normalized_element = [];
+
+        // If this type has an ID field, check for it and set it in its
+        // dedicated location.
+        if (!empty($this->propertyDefinitions['id_property'])) {
+            if (!is_string($this->propertyDefinitions['id_property'])) {
+                throw new UnexpectedValueException("'id_property' definition in '{$this->getType()}' object is not a string value.");
+            }
+            $id_property = '@' . $this->propertyDefinitions['id_property'];
+            if (array_key_exists($id_property, $element)) {
+                if (array_key_exists('#id', $element) && $element['#id'] !== $element[$id_property]) {
+                    throw new InvalidArgumentException($this->getType() . ' object has the ID field provided by both its field name $name and alias #id.');
+                }
+                $normalized_element[$id_property] = $element[$id_property];
+                // Unset so that we won't throw an exception at the end.
+                unset($element[$id_property]);
+            } elseif (array_key_exists('#id', $element)) {
+                $normalized_element[$id_property] = $element['#id'];
+                unset($element['#id']);
+            }
+            if (isset($normalized_element[$id_property]) && !is_int($normalized_element[$id_property]) && !is_string($normalized_element[$id_property])) {
+                throw new InvalidArgumentException("'$id_property' property in $element_descr must hold integer/string value.");
+            }
+        }
+
+        // Check if this element now consists of nothing more than 'Fields' and
+        // 'Objects' sub-elements. (If there's an unrecognized sub-element, the
+        // below code will populate nothing and report unknown properties
+        // 'Fields, Objects, <extra>' in the end.)
+        $well_formed = count($element) == (isset($element['Fields']) ? 1 : 0) + (isset($element['Objects']) ? 1 : 0);
+
+        // The keys in $this->elements are not reordered on output, and we want
+        // to have 'Fields' go first just because it looks nice for humans who
+        // might look at the output. On the other hand, we need to populate
+        // 'Objects' first because we promised implementing code that during
+        // field validation, embedded objects are already validated. So,
+        // 'cheat' by pre-populating a 'Fields' key. (Note that if code
+        // populates a new element using individual setObject(), setField() and
+        // setId() calls, it can influence the order of keys in output.)
+        $normalized_element['Fields'] = [];
+
+        // Validate / add objects, if object property definitions exist /
+        // unless the 'well formed' element has no Objects.
+        if (!empty($this->propertyDefinitions['objects']) && (!$well_formed || isset($element['Objects']))) {
+            if ($well_formed) {
+                $real_element = $element;
+                $element = $element['Objects'];
+                if (!is_array($element)) {
+                    throw new InvalidArgumentException("$element_descr has a non-array 'Objects' value.");
+                }
+            }
+
+            foreach ($this->propertyDefinitions['objects'] as $name => $object_properties) {
+                if (!is_array($object_properties)) {
+                    throw new UnexpectedValueException("'{$this->getType()}' object has a non-array definition for object '$name'.");
+                }
+                $value_present = false;
+                // Get value from the property equal to the object name (case
+                // sensitive!), or the alias. If two values are present with
+                // both name and alias, throw an exception.
+                $value_exists_by_alias = isset($object_properties['alias']) && array_key_exists($object_properties['alias'], $element);
+                if (array_key_exists($name, $element)) {
+                    if ($value_exists_by_alias) {
+                        throw new InvalidArgumentException("$element_descr has a value provided by both its property name $name and alias $object_properties[alias].");
+                    }
+                    $value = $element[$name];
+                    unset($element[$name]);
+                    $value_present = true;
+                } elseif ($value_exists_by_alias) {
+                    $value = $element[$object_properties['alias']];
+                    unset($element[$object_properties['alias']]);
+                    $value_present = true;
+                }
+
+                if ($value_present) {
+                    /** @noinspection PhpUndefinedVariableInspection */
+                    if (!is_array($value)) {
+                        $property = $name . (isset($alias) ? " ($alias)" : '');
+                        throw new InvalidArgumentException("Value for '$property' object embedded in $element_descr must be array.");
+                    }
+
+                    $normalized_element['Objects'][$name] = $this->createEmbeddedObject($name, $value, null, $element_index, $validation_behavior);
+                }
+            }
+
+            // If the element is 'well formed', then we can check for unknown
+            // object definitions here.
+            if ($well_formed) {
+                if ($element) {
+                    $keys = "'" . implode(', ', array_keys($element)) . "'";
+                    throw new OutOfBoundsException("Unknown 'Objects' properties provided for $element_descr: names are $keys.");
+                }
+                /** @noinspection PhpUndefinedVariableInspection */
+                $element = $real_element;
+                unset($element['Objects']);
+            }
+        }
+
+        // Validate / add fields, if field property definitions exist / unless
+        // the element has no Fields.
+        if (!empty($this->propertyDefinitions['fields']) && ($well_formed ? isset($element['Fields']) : $element)) {
+            if ($well_formed) {
+                // Nothing except 'Fields' is left.
+                $element = $element['Fields'];
+                if (!is_array($element)) {
+                    throw new InvalidArgumentException("$element_descr has a non-array 'Fields' value.");
+                }
+            }
+
+            foreach ($this->propertyDefinitions['fields'] as $name => $field_properties) {
+                if (!is_array($field_properties)) {
+                    throw new UnexpectedValueException("'{$this->getType()}' object has a non-array definition for field '$name'.");
+                }
+                $value_present = false;
+                // Get value from the property equal to the field name (case
+                // sensitive!), or the alias. If two values are present with
+                // both field name and alias, throw an exception.
+                $value_exists_by_alias = isset($field_properties['alias']) && array_key_exists($field_properties['alias'], $element);
+                if (array_key_exists($name, $element)) {
+                    if ($value_exists_by_alias) {
+                        throw new InvalidArgumentException("$element_descr has a value provided by both its field name $name and alias $field_properties[alias].");
+                    }
+                    $value = $element[$name];
+                    unset($element[$name]);
+                    $value_present = true;
+                } elseif ($value_exists_by_alias) {
+                    $value = $element[$field_properties['alias']];
+                    unset($element[$field_properties['alias']]);
+                    $value_present = true;
+                }
+
+                if ($value_present) {
+                    /** @noinspection PhpUndefinedVariableInspection */
+                    $normalized_element['Fields'][$name] = $this->validateFieldValue($value, $name, self::ALLOW_NO_CHANGES, $validation_behavior, $element_index, $normalized_element);
+                }
+            }
+        }
+
+        // Throw exception if we have unknown data left (for which we have not
+        // seen a field/object/id).
+        if ($element) {
+            $keys = "'" . implode(', ', array_keys($element)) . "'";
+            $description = $well_formed ? "'Fields'" : 'element';
+            throw new OutOfBoundsException("Unknown $description properties provided for $element_descr: names are $keys.");
+        }
+
+        // If we didn't populate any fields, then unset our 'cheat' value.
+        if (empty($normalized_element['Fields'])) {
+            unset($normalized_element['Fields']);
+        }
+
+        return $normalized_element;
+    }
+
+    /**
+     * Sets (a normalized/de-aliased version of) an element in this object.
+     *
+     * This can be used to set/change just one element if the object already
+     * contains multiple elements, without touching the other elements. In
+     * general it's more advisable to use setElements() if this object should
+     * have just one element, or addElements() to add an additional element.
+     *
+     * @param int $element_index
+     *   (Optional) The 0-based index of the element.
+     * @param array $element
+     *   Data representing a single element to set; see create() for a
+     *   description.
+     * @param int $validation_behavior
+     *   (Optional) Specifies whether/how the elements should be validated; see
+     *   create() for a more elaborate description.
+     *
+     * @throws \InvalidArgumentException
+     *   If the element data contains invalid values.
+     * @throws \OutOfBoundsException
+     *   If the element data contains unknown field/object names.
+     * @throws \UnexpectedValueException
+     *   If this object's defined properties are invalid.
+     *
+     * @see create()
+     */
+    public function setElement($element_index, array $element, $validation_behavior = self::VALIDATE_ESSENTIAL)
+    {
+        $this->checkElement($element_index, true, true);
+        $this->elements[$element_index] = $this->normalizeElement($element, $element_index, $validation_behavior);
+    }
+
+    /**
      * Sets (a normalized/de-aliased version of) element values in this object.
      *
      * Unlike addElements(), this overwrites any existing element data which
-     * may have been present previously but not e.g. the action value(s).)
+     * may have been present previously. It does not overwrite e.g. the action
+     * value(s).
      *
      * @param array $elements
+     *   Data representing one or more elements to set; see create() for a
+     *   description.
      * @param int $validation_behavior
+     *   (Optional) Specifies whether/how the elements should be validated; see
+     *   create() for a more elaborate description.
      *
-     * @see addElements()
+     * @throws \InvalidArgumentException
+     *   If the element data contains invalid values.
+     * @throws \OutOfBoundsException
+     *   If the element data contains unknown field/object names.
+     * @throws \UnexpectedValueException
+     *   If this object's defined properties are invalid.
+     *
+     * @see create()
      */
     public function setElements(array $elements, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
@@ -1751,196 +1994,34 @@ class UpdateObject
      * validation and for embedded objects, which inherit that action.
      *
      * @param array $elements
-     *   (Optional) Data representing elements to add to the object; see
-     *   create() for a description.
+     *   Data representing one or more elements to add; see create() for a
+     *   description.
      * @param int $validation_behavior
      *   (Optional) Specifies whether/how the elements should be validated; see
      *   create() for a more elaborate description.
      *
      * @throws \InvalidArgumentException
-     *   If the element data contains invalid values
+     *   If the element data contains invalid values.
      * @throws \OutOfBoundsException
      *   If the element data contains unknown field/object names.
      * @throws \UnexpectedValueException
      *   If this object's defined properties are invalid.
      *
-     * @see __construct()
      * @see create()
-     * @see output()
      */
     public function addElements(array $elements, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
         $elements = $this->normalizeElements($elements);
 
-        if (empty($this->propertyDefinitions)) {
-            throw new UnexpectedValueException("'{$this->getType()}' object has no property definitions.");
+        // Log messages will contain the index which the element will get; not
+        // the index which the element currently has in $elements. These differ
+        // if this object already contains elements, which can be confusing
+        // (only?) if we are also trying to add multiple elements in this call.
+        $next_index = count($this->elements);
+        foreach ($elements as $element) {
+            $this->elements[] = $this->normalizeElement($element, $next_index, $validation_behavior);
+            $next_index++;
         }
-        if (!isset($this->propertyDefinitions['fields']) || !is_array($this->propertyDefinitions['fields'])) {
-            throw new UnexpectedValueException("'{$this->getType()}' object has no / a non-array 'fields' property definition.");
-        }
-        if (isset($this->propertyDefinitions['objects']) && !is_array($this->propertyDefinitions['objects'])) {
-            throw new UnexpectedValueException("'{$this->getType()}' object has a non-array 'objects' property definition.");
-        }
-
-        foreach ($elements as $key => $element) {
-            $element_descr = "'{$this->getType()}' element" . ($key ? " with key $key" : '');
-            // Construct new element with an optional id + fields + objects
-            // for this type.
-            $next_index = count($this->elements);
-            $normalized_element = [];
-
-            // If this type has an ID field, check for it and set it in its
-            // dedicated location.
-            if (!empty($this->propertyDefinitions['id_property'])) {
-                if (!is_string($this->propertyDefinitions['id_property'])) {
-                    throw new UnexpectedValueException("'id_property' definition in '{$this->getType()}' object is not a string value.");
-                }
-                $id_property = '@' . $this->propertyDefinitions['id_property'];
-                if (array_key_exists($id_property, $element)) {
-                    if (array_key_exists('#id', $element) && $element['#id'] !== $element[$id_property]) {
-                        throw new InvalidArgumentException($this->getType() . ' object has the ID field provided by both its field name $name and alias #id.');
-                    }
-                    $normalized_element[$id_property] = $element[$id_property];
-                    // Unset so that we won't throw an exception at the end.
-                    unset($element[$id_property]);
-                } elseif (array_key_exists('#id', $element)) {
-                    $normalized_element[$id_property] = $element['#id'];
-                    unset($element['#id']);
-                }
-                if (isset($normalized_element[$id_property]) && !is_int($normalized_element[$id_property]) && !is_string($normalized_element[$id_property])) {
-                    throw new InvalidArgumentException("'$id_property' property in $element_descr must hold integer/string value.");
-                }
-            }
-
-            // Check if this element now consists of nothing more than 'Fields'
-            // and 'Objects' sub-elements. (If there's an unrecognized
-            // sub-element, the below code will populate nothing and report
-            // unknown properties 'Fields, Objects, <extra>' in the end.)
-            $well_formed = count($element) == (isset($element['Fields']) ? 1 : 0) + (isset($element['Objects']) ? 1 : 0);
-
-            // The keys in $this->elements are not reordered on output, and we
-            // want to have 'Fields' go first just because it looks nice for
-            // humans who might look at the output. On the other hand, we need
-            // to populate 'Objects' first because we promised implementing
-            // code that during field validation, embedded objects are already
-            // validated. So, 'cheat' by pre-populating a 'Fields' key. (Note
-            // that if code populates a new element using individual
-            // setObject(), setField() and setId() calls, this can still
-            // influence the order of keys in the output.)
-            $normalized_element['Fields'] = [];
-
-            // Validate / add objects, if object property definitions exist /
-            // unless the 'well formed' element has no Objects.
-            if (!empty($this->propertyDefinitions['objects']) && (!$well_formed || isset($element['Objects']))) {
-                if ($well_formed) {
-                    $real_element = $element;
-                    $element = $element['Objects'];
-                    if (!is_array($element)) {
-                        throw new InvalidArgumentException("$element_descr has a non-array 'Objects' value.");
-                    }
-                }
-
-                foreach ($this->propertyDefinitions['objects'] as $name => $object_properties) {
-                    if (!is_array($object_properties)) {
-                        throw new UnexpectedValueException("'{$this->getType()}' object has a non-array definition for object '$name'.");
-                    }
-                    $value_present = false;
-                    // Get value from the property equal to the object name
-                    // (case sensitive!), or the alias. If two values are
-                    // present with both name and alias, throw an exception.
-                    $value_exists_by_alias = isset($object_properties['alias']) && array_key_exists($object_properties['alias'], $element);
-                    if (array_key_exists($name, $element)) {
-                        if ($value_exists_by_alias) {
-                            throw new InvalidArgumentException("$element_descr has a value provided by both its property name $name and alias $object_properties[alias].");
-                        }
-                        $value = $element[$name];
-                        unset($element[$name]);
-                        $value_present = true;
-                    } elseif ($value_exists_by_alias) {
-                        $value = $element[$object_properties['alias']];
-                        unset($element[$object_properties['alias']]);
-                        $value_present = true;
-                    }
-
-                    if ($value_present) {
-                        /** @noinspection PhpUndefinedVariableInspection */
-                        if (!is_array($value)) {
-                            $property = $name . (isset($alias) ? " ($alias)" : '');
-                            throw new InvalidArgumentException("Value for '$property' object embedded in $element_descr must be array.");
-                        }
-
-                        $normalized_element['Objects'][$name] = $this->createEmbeddedObject($name, $value, null, $next_index, $validation_behavior);
-                    }
-                }
-
-                // If the element is 'well formed', then we can check for
-                // unknown object definitions here.
-                if ($well_formed) {
-                    if ($element) {
-                        $keys = "'" . implode(', ', array_keys($element)) . "'";
-                        throw new OutOfBoundsException("Unknown 'Objects' properties provided for $element_descr: names are $keys.");
-                    }
-                    /** @noinspection PhpUndefinedVariableInspection */
-                    $element = $real_element;
-                    unset($element['Objects']);
-                }
-            }
-
-            // Validate / add fields, if field property definitions exist /
-            // unless the element has no Fields.
-            if (!empty($this->propertyDefinitions['fields']) && ($well_formed ? isset($element['Fields']) : $element)) {
-                if ($well_formed) {
-                    // Nothing except 'Fields' is left.
-                    $element = $element['Fields'];
-                    if (!is_array($element)) {
-                        throw new InvalidArgumentException("$element_descr has a non-array 'Fields' value.");
-                    }
-                }
-
-                foreach ($this->propertyDefinitions['fields'] as $name => $field_properties) {
-                    if (!is_array($field_properties)) {
-                        throw new UnexpectedValueException("'{$this->getType()}' object has a non-array definition for field '$name'.");
-                    }
-                    $value_present = false;
-                    // Get value from the property equal to the field name
-                    // (case sensitive!), or the alias. If two values are
-                    // present with both field name and alias, throw an exception.
-                    $value_exists_by_alias = isset($field_properties['alias']) && array_key_exists($field_properties['alias'], $element);
-                    if (array_key_exists($name, $element)) {
-                        if ($value_exists_by_alias) {
-                            throw new InvalidArgumentException("$element_descr has a value provided by both its field name $name and alias $field_properties[alias].");
-                        }
-                        $value = $element[$name];
-                        unset($element[$name]);
-                        $value_present = true;
-                    } elseif ($value_exists_by_alias) {
-                        $value = $element[$field_properties['alias']];
-                        unset($element[$field_properties['alias']]);
-                        $value_present = true;
-                    }
-
-                    if ($value_present) {
-                        /** @noinspection PhpUndefinedVariableInspection */
-                        $normalized_element['Fields'][$name] = $this->validateFieldValue($value, $name, self::ALLOW_NO_CHANGES, $validation_behavior, $next_index, $normalized_element);
-                    }
-                }
-            }
-
-            // Throw exception if we have unknown data left (for which we have
-            // not seen a field/object/id-
-            if ($element) {
-                $keys = "'" . implode(', ', array_keys($element)) . "'";
-                $description = $well_formed ? "'Fields'" : 'element';
-                throw new OutOfBoundsException("Unknown $description properties provided for $element_descr: names are $keys.");
-            }
-
-            // If we didn't populate any fields, then unset our 'cheat' value.
-            if (empty($normalized_element['Fields'])) {
-                unset($normalized_element['Fields']);
-            }
-            $this->elements[] = $normalized_element;
-        }
-
     }
 
     /**
@@ -2436,8 +2517,9 @@ class UpdateObject
      * @param int $validation_behavior
      *   (Optional) see output().
      * @param int $element_index
-     *   (Optional) The index of the element in our object data. Often only
-     *   used for logging.
+     *   The index that the element which the object will be embedded into, has
+     *   or will have. When called from add/setElement(s), the element with the
+     *   specified index does/may not exist yet.
      * @param array $element
      *   (Optional) The full element being validated, for the benefit of
      *   validation checks which depend on other values. (If the full element
@@ -2495,7 +2577,7 @@ class UpdateObject
                 } catch (InvalidArgumentException $e) {
                     // Catch and rethrow because we don't feel like repeatedly
                     // defining the element & field name constructions above.
-                    $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index " : '');
+                    $element_descr = "'{$this->getType()}' element" . ($element_index ? " which has (or will get) index $element_index" : '');
                     $name_and_alias = "'$field_name'" . (isset($this->propertyDefinitions['fields'][$field_name]['alias']) ? " ({$this->propertyDefinitions['fields'][$field_name]['alias']})" : '');
                     throw new InvalidArgumentException(str_replace('%NAME', $name_and_alias, str_replace('%ELEMENT', $element_descr, $e->getMessage())));
                 }

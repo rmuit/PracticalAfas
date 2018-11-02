@@ -83,7 +83,7 @@ class OrgPersonContact extends ObjectWithCountry
     /**
      * @inheritDoc
      */
-    public function __construct(array $elements = [], string $action = '', string $type = '', int $validation_behavior = self::VALIDATE_ESSENTIAL, string $parent_type = '')
+    public function __construct(array $elements = [], $action = '', $type = '', $validation_behavior = self::VALIDATE_ESSENTIAL, $parent_type = '')
     {
         // If we don't have definitions, we'll define them here for the one
         // known type, and otherwise fall through to the parent. This way, it's
@@ -1053,7 +1053,7 @@ class OrgPersonContact extends ObjectWithCountry
      *
      * @return array|mixed
      */
-    protected static function getAddressFields(array $element, array $search_address_types = ['KnBasicAddressAdr'], bool $search_current = true, array $search_embedded_types = []) {
+    protected static function getAddressFields(array $element, array $search_address_types = ['KnBasicAddressAdr'], $search_current = true, array $search_embedded_types = []) {
         $address = [];
         if ($search_current) {
             // First, see if there's an address directly inside this element.
