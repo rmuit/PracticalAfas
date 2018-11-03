@@ -958,7 +958,7 @@ class OrgPersonContact extends UpdateObject
         // validateFieldValue(). We need to do this once both objects are
         // validated, so this seems a good place. Note we don't need to
         // validate numbers in the current object; we've done that already.
-        if (empty($element['*errors'])) {
+        if (empty($element['*errors']) && ($change_behavior & self::ALLOW_REFORMAT_PHONE_NR || $validation_behavior & self::VALIDATE_FORMAT)) {
             $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad']);
             if ($address && (!isset($address['CoId']) || strtoupper($address['CoId']) === 'NL')) {
                 // This uses an extension of validateFieldValue() logic:

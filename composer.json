@@ -18,6 +18,10 @@
     "require": {
         "ext-json": "*"
         "ext-soap": "*"
+    "autoload-dev": {
+        "psr-4": {
+            "PracticalAfas\\TestHelpers\\": "tests/helpers"
+        }
     },
     "require-dev": {
         "phpunit/phpunit": "^7"

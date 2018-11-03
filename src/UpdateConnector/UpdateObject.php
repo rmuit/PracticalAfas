@@ -1276,6 +1276,10 @@ class UpdateObject
     /**
      * Returns the value of a field as stored in one of this object's elements.
      *
+     * This returns the stored value, not validated or changed. For a validated
+     * equivalent, call getElements(DEFAULT_CHANGE, DEFAULT_VALIDATION) and
+     * access the field inside the element.
+     *
      * @param string $field_name
      *   The name of the field, or its alias.
      * @param int|string $element_index
@@ -1312,6 +1316,13 @@ class UpdateObject
         } else {
             $return = $wrap_array ? [] : null;
         }
+        // A note: if we ever want to add validation here, that means that
+        // fields whose formatting/validation depends on other field values
+        // will not be properly validated anymore. (See comments at
+        // validateFieldValue() on the somewhat clunky, but more or less
+        // reliable, way this is implemented now.) Also, the companion
+        // getObject() will never validate its return value because it returns
+        // an object.
 
         return $return;
     }
@@ -2175,7 +2186,8 @@ class UpdateObject
             $id_property = '@' . $this->propertyDefinitions['id_property'];
             if (isset($element[$id_property]) && $element[$id_property] === '') {
                 unset($element[$id_property]);
-            } elseif ($validation_behavior & self::VALIDATE_ESSENTIAL) {
+            }
+            if ($validation_behavior & self::VALIDATE_ESSENTIAL) {
                 if (isset($element[$id_property])) {
                     if (!is_int($element[$id_property]) && !is_string($element[$id_property])) {
                         $element['*errors'][$id_property] = "'$id_property' property in $element_descr must hold integer/string value.";

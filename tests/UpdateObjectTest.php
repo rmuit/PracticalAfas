@@ -11,6 +11,7 @@
 use PHPUnit\Framework\TestCase;
 use PracticalAfas\UpdateConnector\UpdateObject;
 use PracticalAfas\UpdateConnector\OrgPersonContact;
+use PracticalAfas\TestHelpers\ArraysObject;
 
 class UpdateObjectTest extends TestCase
 {
@@ -201,6 +202,11 @@ class UpdateObjectTest extends TestCase
         // setId('') should empty out the ID.
         $object2->setId('');
         $this->assertEquals([], $object2->getElements());
+
+        // An update action should not work without an ID.
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage("'@SbId' property in 'KnSubject' element must have a value, or Action 'update' must be set to 'insert'.");
+        $object2->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
     }
 
     /**
@@ -353,6 +359,47 @@ class UpdateObjectTest extends TestCase
         $this->assertNotEquals($object1, $object2);
     }
 
+    /**
+     * Test a class which can contain 'metadata' for fields.
+     *
+     * This theoretical example is mostly meant to provide some extra testing
+     * for validation; to see if nothing goes wrong if we pass array values
+     * through all those functions, and only validateFieldValue() needs to be
+     * overridden. There are more test for person/address objects below.
+     */
+    public function testCustomFieldValues()
+    {
+        $properties = [
+            'type' => [1, 'meta'],
+            'description' => ['This thing', 'moremeta'],
+            // also do non-array value
+        ];
+        // This should store things as arrays...
+        $object = ArraysObject::create('KnSubject', $properties, 'insert');
+        // ...and getFields() should still get those arrays returned, because
+        // it does not do any kind of validation/change...
+        $this->assertEquals([1, 'meta'], $object->getField('type'));
+        $this->assertEquals(['This thing', 'moremeta'], $object->getField('description'));
+        // ...which also goes for getElements() without arguments...
+        $elements = $object->getElements();
+        $compare = [[
+            'Fields' => [
+                'StId' => [1, 'meta'],
+                'Ds' => ['This thing', 'moremeta'],
+            ]]];
+        $this->assertEquals($compare, $elements);
+        // ...but getElements() should return only the actual field value,
+        // if validated. (If it is given any non-default argument.)
+        $elements = $object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
+        $compare = [[
+            'Fields' => [
+                'StId' => 1,
+                'Ds' => 'moremeta:This thing',
+            ]]];
+        $this->assertEquals($compare, $elements);
+
+    }
+
     // The following methods test custom behavior in extending classes. Not
     // everything, though; much is already being tested implicitly by
     // interpreting the update_examples.
@@ -399,8 +446,9 @@ No value provided for required 'BcCoPer' (person_code) field of 'KnContact' elem
      */
     public function testValidateDutchPhoneNr1()
     {
-        // There's only one combination that works for this: KnPerson with a
-        // business phone, and an embedded KnContact with an address.
+        // This is testing the code in validateFieldValue(). There's only one
+        // combination that works for this: KnPerson with a business phone, and
+        // an embedded KnContact with an address.
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("Phone number 'TeNr' has invalid format.");
         $properties = [
@@ -414,6 +462,26 @@ No value provided for required 'BcCoPer' (person_code) field of 'KnContact' elem
             ],
         ];
         UpdateObject::create('KnPerson', $properties, 'update', UpdateObject::DEFAULT_VALIDATION | OrgPersonContact::VALIDATE_FORMAT);
+    }
+
+    /**
+     * Same as testValidateDutchPhoneNr1 but with 'array values'.
+     */
+    public function testValidateDutchPhoneNr1a()
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("Phone number 'TeNr' has invalid format.");
+        $properties = [
+            'first_name' => ['Roderik', 'x'],
+            'last_name' => ['Muit', 'm'],
+            'phone' => ['+3162251721', 'a'],
+            'contact' => [
+                'address' => [
+                    'country_iso' => ['NL', 2],
+                ],
+            ],
+        ];
+        ArraysObject::create('KnPerson', $properties, 'update', UpdateObject::DEFAULT_VALIDATION | OrgPersonContact::VALIDATE_FORMAT);
     }
 
     /**
@@ -435,6 +503,32 @@ No value provided for required 'BcCoPer' (person_code) field of 'KnContact' elem
         // Validation of the whole object does throw an exception because the
         // validation code is in the parent (containing the address), checking
         // if there's a wrong phone number in an embedded object.
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage("Phone number 'TeNr' has invalid format.");
+        $object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION | OrgPersonContact::VALIDATE_FORMAT);
+    }
+
+    /**
+     * Same as testValidateDutchPhoneNr2 but with 'array values'.
+     */
+    public function testValidateDutchPhoneNr2a()
+    {
+        $properties = [
+            'name' => ['Wyz', 7],
+            'address' => [
+                'street' => ['Govert Flinckstraat 168A', 7],
+                'zip_code' => ['1072EP', 7],
+                'town' => ['Amsterdam', 7],
+                'country_iso' => ['NL', 7],
+            ],
+            'contact' => [
+                'phone' => ['+31622517218', 7],
+            ],
+        ];
+        $object = ArraysObject::create('KnOrganisation', $properties, 'insert', UpdateObject::DEFAULT_VALIDATION | OrgPersonContact::VALIDATE_FORMAT);
+
+        $object->getObject('KnContact')->setField('phone', '+3162251721', 0, UpdateObject::DEFAULT_VALIDATION | OrgPersonContact::VALIDATE_FORMAT);
+
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessage("Phone number 'TeNr' has invalid format.");
         $object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION | OrgPersonContact::VALIDATE_FORMAT);
