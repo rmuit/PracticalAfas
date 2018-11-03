@@ -14,325 +14,71 @@ use InvalidArgumentException;
 use UnexpectedValueException;
 
 /**
- * An UpdateObject containing definitions for all types with a country field.
- *
- * We have special handling for converting ISO country codes to AFAS country
- * codes, since it is expected that not many people will want to use AFAS codes
- * directly.
+ * Helper code to introduce ISO country codes into objects.
  *
  * AFAS codes are completely custom, as far as I know. We want to be able to
- * use (e.g. while importing) more universally recognized codes, so this class
- * implements a way to add fake fields to object types, which can hold an
- * ISO3166 country code that will be converted into an AFAS code in the actual
- * field on output/validation. (The ALLOW_CHANGES bit does not need to
- * be specified for this to work, because converting to an equivalent code is
- * not considered an actual change.) It is recommended to always leave the AFAS
- * field empty and use the ISO 'fake field' instead, though that's not
- * required: validation will only throw an exception if both fields contain
- * non-equivalent values.
+ * use (e.g. while importing data from other sources) more universally
+ * recognized codes.
  *
- * I admit that it is not good practice to do such quasi arbitrary subclassing
- * for object types that don't necessarily have much else in common, but on
- * the other hand I didn't want to merge this custom-ish code into the base
- * object and wanted to make it at least possible to cancel out this behavior.
- * It was a judgment call and we'll see how it plays out.
- *
- * (Actually this implements only one object type now: FbSales - because others
- * are split out into child classes for their own reasons.)
+ * This trait provides a way to add fake fields to object
+ * types, which can hold an ISO3166 country code that is converted into an AFAS
+ * code in the actual country field on output/validation. (The ALLOW_CHANGES
+ * bit does not need to be specified for this to work, because converting to an
+ * equivalent code is not considered an actual change.)
  *
  * Extra property definitions used by this class: 'iso_country_fields'. See
  * below.
  */
-class ObjectWithCountry extends UpdateObject
+trait IsoCountryTrait
 {
     /**
-     * {@inheritdoc}
+     * Transfers ISO country values into AFAS values in the real field.
+     *
+     * This method can be called from validateFields(), before performing any
+     * other logic on the AFAS fields or calling the parent validateFields().
+     * Any class that calls it, must have an 'iso_country_fields' property
+     * definition must be present which is an array; each key-value represents:
+     * - The key is a 'fake' field name that can be populated with an ISO
+     *   country code (through e.g. create()). This fake field needs to be
+     *   defined in the 'fields' section too; this method will make sure all
+     *   the fake country fields are emptied so that they never appear in
+     *   output.
+     * - The value is the actual AFAS field name attached to this fake field.
+     *   This method will populate AFAS country values into this field,
+     *   converted from ISO values in the fake field.
+     * When using ISO country fields, it is recommended to always leave the
+     * AFAS field empty, though that's not required: validation will only throw
+     * an exception if both fields contain non-equivalent values.
+     *
+     * (We did not define this functionality as 'public validateFields' in this
+     * trait, because this would mean we need to call the parent from this
+     * method - which in turn means the implementing class cannot do anything
+     * else after having converted the fields.)
+     *
+     * @param array $element
+     *   The element (usually the single one contained in $this->elements)
+     *   whose fields should be validated.
+     * @param int|string $element_index
+     *   The index of the element in our object data; usually there is one
+     *   element and the index is 0.
+     * @param int $change_behavior
+     *   (Optional) see output().
+     *
+     * @return array
+     *   The element with its ISO country fields emptied and corresponding AFAS
+     *   country fields populated.
+     *
+     * @throws \InvalidArgumentException
+     *   If an ISO or AFAS country code is unknown or invalid.
+     * @throws \UnexpectedValueException
+     *   If property definitions are invalid and validation could not be done.
      */
-    public function __construct(array $elements = [], $action = '', $type = '', $validation_behavior = self::VALIDATE_ESSENTIAL, $parent_type = '')
+    protected function convertIsoCountryCodeFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE)
     {
-        // If we don't have definitions, we'll define them here for the one
-        // known type, and otherwise fall through to the parent. This way, it's
-        // possible for a custom object to extend this class but still use a
-        // definition in the parent as a basis.
-        if (empty($this->propertyDefinitions) && $type === 'FbSales') {
-            // Below definition is based on what AFAS calls the 'XSD Schema'
-            // for SOAP, retrieved though a Data Connector in november 2014,
-            // amended with extra info like aliases and defaults. There are
-            // lots of Dutch comment lines in this function; these were
-            // gathered from an online knowledge base page around 2012 when
-            // that was the only form/language of documentation.
-            $this->propertyDefinitions = [
-                // Define here which fields are 'fake country fields', with the
-                // real equivalents they are connected to. Both fields also
-                // still need to be defined inside 'fields'. (validateFields()
-                // doesn't need the ISO country definition; addElements() does.)
-                'iso_country_fields' => [
-                    'dest_country_iso' => 'CoId',
-                ],
-                'objects' => [
-                    'FbSalesLines' => [
-                        'alias' => 'line_items',
-                        'multiple' => true,
-                    ],
-                ],
-                'fields' => [
-                    // Nummer
-                    'OrNu' => [],
-                    // Datum
-                    'OrDa' => [
-                        'alias' => 'date',
-                        'type' => 'date',
-                    ],
-                    // Verkooprelatie (verwijzing naar: Verkooprelatie => AfasKnSalRelation)
-                    'DbId' => [
-                        'alias' => 'sales_relation',
-                    ],
-                    // Gewenste leverdatum
-                    'DaDe' => [
-                        'alias' => 'delivery_date_req',
-                        'type' => 'date',
-                    ],
-                    // Datum levering (toegezegd)
-                    'DaPr' => [
-                        'alias' => 'delivery_date_ack',
-                        'type' => 'date',
-                    ],
-                    // Valutacode (verwijzing naar: Valuta => AfasKnCurrency)
-                    'CuId' => [
-                        'alias' => 'currency_code',
-                    ],
-                    // Valutakoers
-                    'Rate' => [
-                        'alias' => 'currency_rate',
-                    ],
-                    // Backorder
-                    'BkOr' => [
-                        'type' => 'boolean',
-                    ],
-                    // Verkoopkanaal (verwijzing naar: Tabelwaarde,Verkoopkanaal => AfasKnCodeTableValue)
-                    'SaCh' => [
-                        'alias' => 'sales_channel',
-                    ],
-                    // Btw-plicht (verwijzing naar: Btw-plicht => AfasKnVatDuty)
-                    'VaDu' => [
-                        'alias' => 'vat_due',
-                    ],
-                    // Prijs incl. btw
-                    'InVa' => [
-                        'alias' => 'includes_vat',
-                    ],
-                    // Betalingsvoorwaarde (verwijzing naar: Betalingsvoorwaarde => AfasKnPaymentCondition)
-                    'PaCd' => [],
-                    // Betaalwijze (verwijzing naar: Betaalwijze => AfasKnPaymentType)
-                    'PaTp' => [
-                        'alias' => 'payment_type',
-                    ],
-                    // Opmerking
-                    'Re' => [
-                        'alias' => 'comment',
-                    ],
-                    // Administratie (verwijzing naar: Administratieparameters Algemeen => AfasKnUnitPar)
-                    'Unit' => [
-                        // We alias 'unit' to 'Unit' because names/aliases are
-                        // case sensitive, and people used to using aliases
-                        // will get confused if 'Unit' is the only field they
-                        // need to use an uppercase letter for.
-                        'alias' => 'unit',
-                        'type' => 'integer',
-                    ],
-                    // Incasseren
-                    'Coll' => [
-                        'type' => 'boolean',
-                    ],
-                    // Creditorder
-                    'CrOr' => [
-                        'type' => 'boolean',
-                    ],
-                    // Code route (verwijzing naar: Tabelwaarde,Routes => AfasKnCodeTableValue)
-                    'Rout' => [],
-                    // Magazijn (verwijzing naar: Magazijn => AfasFbWarehouse)
-                    'War' => [
-                        'alias' => 'warehouse',
-                    ],
-                    // Verzamelpakbon
-                    'CoDn' => [
-                        'type' => 'boolean',
-                    ],
-                    // Verzamelfactuur
-                    'CoIn' => [
-                        'type' => 'boolean',
-                    ],
-                    // Prioriteit levering
-                    'DlPr' => [
-                        'alias' => 'delivery_prio',
-                        'type' => 'integer',
-                    ],
-                    // Taal (verwijzing naar: Talen => AfasKnLanguage)
-                    'LgId' => [
-                        'alias' => 'language',
-                    ],
-                    // Leveringsconditie (verwijzing naar: Tabelwaarde,Leveringvoorwaarde => AfasKnCodeTableValue)
-                    // Values:  0:Deellevering toestaan   1:Regel volledig uitleveren   2:Order volledig uitleveren   3:Geen backorders leveren
-                    'DeCo' => [
-                        'alias' => 'delivery_cond',
-                    ],
-                    // CBS-typen (verwijzing naar: CBS-typen => AfasFbCBSType)
-                    'CsTy' => [
-                        'alias' => 'cbs_type',
-                    ],
-                    // Type vervoer CBS (verwijzing naar: Tabelwaarde,CBS Vervoerswijze => AfasKnCodeTableValue)
-                    // Values:  1:Zeevaart   2:Spoorvervoer   3:Wegvervoer   4:Luchtvaart   5:Postzendingen   7:Pijpleidingvervoer   8:Binnenvaart   9:Eigen vervoer
-                    'VaTr' => [],
-                    // Statistisch stelsel CBS (verwijzing naar: Tabelwaarde,CBS Statistisch stelsel => AfasKnCodeTableValue)
-                    // Values:  00:Reguliere invoer/ICV en uitvoer/ICL   01:Doorlevering (ICL) van onbewerkte goederen naar een andere Eu-lidstaat   02:Wederverkoop (ICL of uitvoer) van onbewerkte goederen   03:Invoer (al of niet via douane-entrepot) van goederen   04:Verwerving/levering vÃ³Ã³r eigen voorraadverplaatsing (fictieve zending)   05:Verwerving/levering nÃ¡ eigen voorraadverplaatsing (fictieve zending)   10:Actieve douaneveredeling met toepassing van het terugbetalingssysteem
-                    'VaSt' => [],
-                    // Goederenstroom CBS (verwijzing naar: Tabelwaarde,CBS Goederenstroom => AfasKnCodeTableValue)
-                    // 6:Invoer/intra-cummunautaire verwerving (ICV)   7:Uitvoer/intra-communautaire levering (ICL)
-                    'VaGs' => [],
-                    // Transactie CBS (verwijzing naar: Tabelwaarde,CBS Transactie => AfasKnCodeTableValue)
-                    // Values:  1:Koop, verkoop of huurkoop (financiële leasing)   2:Retourzending (excl. retour tijdelijke in- en uitvoer, zie code 6)   3:Gratis zending   4:Ontvangst of verzending vÃ³Ã³r loonveredeling   5:Ontvangst of verzending nÃ¡ loonveredeling   6:Tijdelijke in- en uitvoer en retour tijdelijke in- en uitvoer   7:Ontvangst of verzending in het kader van gecoÃ¶rdineerde fabrikage   8:Levering i.v.m. bouwmaterialen c.q. bouwkunde onder algemeen contract
-                    'VaTa' => [],
-                    // Land bestemming CBS (verwijzing naar: Land => AfasKnCountry)
-                    'CoId' => [
-                       'alias' =>'dest_country_afas',
-                    ],
-                    // Fake ISO field for CoId:
-                    'dest_country_iso' => [],
-                    // Factuurkorting (%)
-                    'InPc' => [
-                        'type' => 'decimal',
-                    ],
-                    // Kredietbeperking inclusief btw
-                    'VaCl' => [
-                        'type' => 'boolean',
-                    ],
-                    // Kredietbeperking (%)
-                    'ClPc' => [
-                        'type' => 'decimal',
-                    ],
-                    // Betalingskorting (%)
-                    'PaPc' => [
-                        'type' => 'decimal',
-                    ],
-                    // Betalingskorting incl. btw
-                    'VaPa' => [
-                        'type' => 'boolean',
-                    ],
-                    // Afwijkende btw-tariefgroep
-                    'VaYN' => [
-                        'type' => 'boolean',
-                    ],
-                    // Type barcode (verwijzing naar: Tabelwaarde,Type barcode => AfasKnCodeTableValue)-->
-                    // Values:  0:Geen controle   1:Barcode EAN8   2:Barcode UPC   3:Barcode EAN13   4:Barcode EAN14   5:Barcode SSCC   6:Code 128   7:Interleaved 2/5   8:Interleaved 2/5 (controlegetal)
-                    'VaBc' => [
-                        'alias' => 'barcode_type',
-                    ],
-                    // Barcode
-                    'BaCo' => [
-                        'alias' => 'barcode',
-                    ],
-                    // Rapport (verwijzing naar: Definitie => AfasKnMetaDefinition)
-                    'PrLa' => [],
-                    // Dagboek factuur (verwijzing naar: Dagboek => AfasKnJournal)
-                    'JoCo' => [
-                        'alias' => 'journal',
-                    ],
-                    // Factureren aan (verwijzing naar: Verkooprelatie => AfasKnSalRelation)
-                    'FaTo' => [
-                        'alias' => 'invoice_to',
-                    ],
-                    // Toekomstige order
-                    'FuOr' => [
-                        'alias' => 'future_order',
-                        'type' => 'boolean',
-                    ],
-                    // Type levering (verwijzing naar: Type levering => AfasFbDeliveryType)
-                    'DtId' => [
-                        'alias' => 'delivery_type',
-                        'type' => 'integer',
-                    ],
-                    // Project (verwijzing naar: Project => AfasPtProject)
-                    'PrId' => [
-                        'alias' => 'project',
-                    ],
-                    // Projectfase (verwijzing naar: Projectfase => AfasPtProjectStage)
-                    'PrSt' => [
-                        'alias' => 'project_stage',
-                    ],
-                    // Status verzending (verwijzing naar: Tabelwaarde,Verzendstatus => AfasKnCodeTableValue)
-                    // Values:  0:Niet aanbieden aan vervoerder   1:Aanbieden aan vervoerder   2:Aangeboden aan vervoerder   3:Verzending correct ontvangen   4:Fout bij aanbieden verzending
-                    'SeSt' => [
-                        'alias' => 'delivery_state',
-                    ],
-                    // Verzendgewicht
-                    'SeWe' => [
-                        'alias' => 'weight',
-                        'type' => 'decimal',
-                    ],
-                    // Aantal colli
-                    'QuCl' => [
-                        'type' => 'integer',
-                    ],
-                    // Verpakking (verwijzing naar: Tabelwaarde,Verpakkingssoort => AfasKnCodeTableValue)
-                    'PkTp' => [
-                        'alias' => 'package_type',
-                    ],
-                    // Vervoerder (verwijzing naar: Vervoerder => AfasKnTransporter)
-                    'TrPt' => [
-                        'alias' => 'shipping_company',
-                    ],
-                    // Dienst (verwijzing naar: Dienst => AfasKnShippingService)
-                    'SsId' => [
-                        'alias' => 'shipping_service',
-                    ],
-                    // Verwerking order (verwijzing naar: Tabelwaarde,Verwerking order => AfasKnCodeTableValue)
-                    // Values:  1:Pakbon, factuur na levering   2:Pakbon en factuur   3:Factuur, levering na vooruitbetaling   4:Pakbon, geen factuur   5:Pakbon, factuur via nacalculatie   6:Pakbon en factuur, factuur niet afdrukken of verzenden   7:Aanbetalen, levering na aanbetaling
-                    'OrPr' => [
-                        'alias' => 'order_processing',
-                    ],
-                    // Bedrag aanbetalen
-                    'AmDp' => [
-                        'type' => 'decimal',
-                    ],
-                    // Vertegenwoordiger (verwijzing naar: Vertegenwoordiger => AfasKnRepresentative)
-                    'VeId' => [],
-                    // Afleveradres (verwijzing naar: Adres => AfasKnBasicAddress)
-                    'DlAd' => [
-                        'type' => 'integer',
-                    ],
-                    // Omschrijving afleveradres
-                    'ExAd' => [
-                        'alias' => '',
-                    ],
-                    // Order blokkeren
-                    'FxBl' => [
-                        'alias' => 'block_order',
-                        'type' => 'boolean',
-                    ],
-                    // Uitleverbaar
-                    'DlYN' => [
-                        'type' => 'boolean',
-                    ],
-                ],
-            ];
-        }
-
-        parent::__construct($elements, $action, $type, $validation_behavior, $parent_type);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    protected function validateFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
-    {
-        // Convert ISO codes to AFAS codes, and empty the ISO code fields. Do
-        // this before the parent method fills defaults / checks unknown
-        // fields. The 'iso_country_fields' definition must be present; if not,
-        // this object type should not have / extend class ObjectWithCountry.
         // We react to behavior ALLOW_REFORMAT (rather than ALLOW_CHANGES)
         // because 1) we want to do this by default and 2) we regard the
         // combination of iso+afas code to represent one field only.
-        if ($change_behavior & self::ALLOW_REFORMAT) {
+        if ($change_behavior & UpdateObject::ALLOW_REFORMAT) {
             if (!isset($this->propertyDefinitions['iso_country_fields']) || !is_array($this->propertyDefinitions['iso_country_fields'])) {
                 // If a definition is wrong, we throw an exception rather than
                 // adding to $element['*errors'].
@@ -343,14 +89,12 @@ class ObjectWithCountry extends UpdateObject
                     throw new UnexpectedValueException("'iso_country_fields' property definition for '{$this->getType()}' object contains a non-string value.");
                 }
                 try {
-                    $element = $this->convertIsoCountryCodeField($element, $element_index, $iso_field_name, $afas_field_name);
+                    $element = $this->convertIsoCountryCodeField($iso_field_name, $afas_field_name, $element, $element_index);
                 } catch (InvalidArgumentException $e) {
                     $element['*errors']["Fields:$afas_field_name"] = $e->getMessage();
                 }
             }
         }
-
-        $element = parent::validateFields($element, $element_index, $change_behavior, $validation_behavior);
 
         return $element;
     }
@@ -365,21 +109,17 @@ class ObjectWithCountry extends UpdateObject
      * care and converts it... but unification is nice anyway. For instance
      * validation functions could benefit.)
      *
-     * @param array $element
-     *   The element (usually the single one contained in $this->elements)
-     *   whose fields should be validated.
-     * @param int $element_index
-     *   (Optional) The index of the element in our object data; usually there
-     *   is one element and the index is 0. Used in exception messages.
      * @param string $iso_field_name
      *   The name of the 'fake field' (which should be emptied out after
      *   conversion so it is not sent into AFAS).
      * @param string $afas_field_name
      *   The name of the actual AFAS field, which should be populated with an
      *   AFAS country code.
-     * @param int $change_behavior
-     *   Change behavior for checking fields. (ALLOW_REFORMAT is relevant for
-     *   trimming values.)
+     * @param array $element
+     *   The element whose fields should be validated.
+     * @param int $element_index
+     *   (Optional) The index of the element in our object data; usually there
+     *   is one element and the index is 0. Used in exception messages.
      *
      * @return array
      *   The element with its fields changed if appropriate.
@@ -387,12 +127,12 @@ class ObjectWithCountry extends UpdateObject
      * @throws \InvalidArgumentException
      *   If ISO or AFAS country code is unknown or invalid.
      */
-    protected function convertIsoCountryCodeField(array $element, $element_index, $iso_field_name, $afas_field_name, $change_behavior = self::DEFAULT_CHANGE)
+    protected function convertIsoCountryCodeField($iso_field_name, $afas_field_name, array $element, $element_index)
     {
         if (!empty($element['Fields'][$iso_field_name])) {
             // Make sure the fields are both strings. A quick way of doing this
             // is to call validateFieldValue() (which may be repeated later).
-            $iso_value = $this->validateFieldValue($element['Fields'][$iso_field_name], $iso_field_name, $change_behavior, self::DEFAULT_VALIDATION, $element_index, $element);
+            $iso_value = $this->validateFieldValue($element['Fields'][$iso_field_name], $iso_field_name, UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION, $element_index, $element);
 
             $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
 
@@ -404,7 +144,7 @@ class ObjectWithCountry extends UpdateObject
             // same as the converted ISO code, we allow that. (But uppercase it
             // just like if the ISO code is not filled.)
             if (!empty($element['Fields'][$afas_field_name])) {
-                $afas_value = $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, $change_behavior, self::DEFAULT_VALIDATION, $element_index, $element);
+                $afas_value = $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION, $element_index, $element);
                 if (strtoupper($afas_value) !== $afas_code) {
                     throw new InvalidArgumentException("Inconsistent ISO country code '$iso_value' and AFAS code '$afas_value'' found in $element_descr.");
                 }
@@ -412,7 +152,7 @@ class ObjectWithCountry extends UpdateObject
             $element['Fields'][$afas_field_name] = $afas_code;
             unset($element['Fields'][$iso_field_name]);
         } elseif (!empty($element['Fields'][$afas_field_name])) {
-            $afas_value = $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, $change_behavior, self::DEFAULT_VALIDATION, $element_index, $element);
+            $afas_value = $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION, $element_index, $element);
             $element['Fields'][$afas_field_name] = strtoupper($afas_value);
         }
 

@@ -42,9 +42,9 @@ KnOrganisation:insert:1079
                             "Ad": "Govert Flinckstraat",
                             "ZpCd": "1072EP",
                             "Rs": "Amsterdam",
+                            "CoId": "NL",
                             "HmNr": 168,
                             "HmAd": "A",
-                            "CoId": "NL",
                             "PbAd": false,
                             "ResZip": false
                         }
@@ -97,9 +97,9 @@ KnOrganisation:insert:1079
             <Ad>Govert Flinckstraat</Ad>
             <ZpCd>1072EP</ZpCd>
             <Rs>Amsterdam</Rs>
+            <CoId>NL</CoId>
             <HmNr>168</HmNr>
             <HmAd>A</HmAd>
-            <CoId>NL</CoId>
             <PbAd>0</PbAd>
             <ResZip>0</ResZip>
           </Fields>

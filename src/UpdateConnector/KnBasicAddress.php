@@ -28,8 +28,10 @@ namespace PracticalAfas\UpdateConnector;
  * some number (integer) referring to an address object; this suggests that an
  * address does have an internal ID which we should be able to retrieve.
  */
-class KnBasicAddress extends ObjectWithCountry
+class KnBasicAddress extends UpdateObject
 {
+    use IsoCountryTrait;
+
     /**
      * {@inheritdoc}
      */
@@ -137,6 +139,8 @@ class KnBasicAddress extends ObjectWithCountry
      */
     protected function validateFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
     {
+        $element = $this->convertIsoCountryCodeFields($element, $element_index, $change_behavior);
+
         // ALLOW_CHANGES is not set by default.
         if ($change_behavior & self::ALLOW_CHANGES) {
             $element['Fields'] = static::convertStreetName($element['Fields']);

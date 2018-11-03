@@ -172,7 +172,7 @@ class UpdateObject
      * @var string[]
      */
     public static $classMap = [
-        'FbSales' => '\PracticalAfas\UpdateConnector\ObjectWithCountry',
+        'FbSales' => '\PracticalAfas\UpdateConnector\FbSales',
         'KnBasicAddress' => '\PracticalAfas\UpdateConnector\KnBasicAddress',
         'KnContact' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
         'KnOrganisation' => '\PracticalAfas\UpdateConnector\OrgPersonContact',

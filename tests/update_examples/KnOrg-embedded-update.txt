@@ -57,12 +57,12 @@ KnOrganisation:update:1079
                             "Ad": "Govert Flinckstraat",
                             "ZpCd": "1072EP",
                             "Rs": "Amsterdam",
+                            "CoId": "NL",
                             "HmNr": 168,
                             "HmAd": "A",
 ; PbAd = false is added automatically - not because it's the default value but
 ; because when ALLOW_CHANGES is specified, PbAd is derived from "Ad" on updates.
                             "PbAd": false,
-                            "CoId": "NL",
                             "BeginDate": {TODAY}
                         }
                     }
@@ -112,10 +112,10 @@ KnOrganisation:update:1079
             <Ad>Govert Flinckstraat</Ad>
             <ZpCd>1072EP</ZpCd>
             <Rs>Amsterdam</Rs>
+            <CoId>NL</CoId>
             <HmNr>168</HmNr>
             <HmAd>A</HmAd>
             <PbAd>0</PbAd>
-            <CoId>NL</CoId>
             <BeginDate>{TODAY}</BeginDate>
           </Fields>
         </Element>

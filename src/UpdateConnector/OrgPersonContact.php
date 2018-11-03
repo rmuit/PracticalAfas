@@ -23,8 +23,10 @@ use UnexpectedValueException;
  * The objects are in one class because they have overlapping logic that
  * applies to certain fields.
  */
-class OrgPersonContact extends ObjectWithCountry
+class OrgPersonContact extends UpdateObject
 {
+    use IsoCountryTrait;
+
     /**
      * @see output(); bitmask value for the $change_behavior argument.
      *
@@ -709,6 +711,8 @@ class OrgPersonContact extends ObjectWithCountry
      */
     protected function validateFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
     {
+        $element = $this->convertIsoCountryCodeFields($element, $element_index, $change_behavior);
+
         // For requiredness (which is checked in the parent method) we have
         // 'dynamic' definitions that depend on the value of another field. Set
         // or reset them here - and do some other checks.
