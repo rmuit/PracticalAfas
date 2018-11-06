@@ -16,8 +16,9 @@
         }
     },
     "require": {
-        "ext-json": "*"
+        "ext-json": "*",
         "ext-soap": "*"
+    },
     "autoload-dev": {
         "psr-4": {
             "PracticalAfas\\TestHelpers\\": "tests/helpers"
