@@ -114,7 +114,7 @@ class SoapAppClient
             } else {
                 $connector_path = 'appconnector' . strtolower($type);
             }
-            $endpoint = 'https://' . $this->options['customerId'] . ".afasonlineconnector.nl/profitservices/$connector_path.asmx";
+            $endpoint = 'https://' . $this->options['customerId'] . ".soap.afas.online/profitservices/$connector_path.asmx";
         }
 
         if (!empty($this->soapClient)) {
