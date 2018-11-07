@@ -13,6 +13,8 @@ namespace PracticalAfas\Client;
 use InvalidArgumentException;
 
 /**
+ * (Given AFAS does not use NTLM anymore, this will be deleted at some point.)
+ *
  * Wrapper around client specific details of making a remote AFAS call.
  *
  * This class contains one public method: callAfas(), and uses
@@ -29,16 +31,20 @@ class SoapNtlmClient extends SoapAppClient
      * constructor and throw an exception if we know any AFAS calls will fail.
      *
      * @param array $options
-     *   Configuration options. Some of them are used for configuring the actual
-     *   NtlmSoapClient class; some are used as standard arguments in each SOAP
-     *   call, some are used for both. Keys used:
-     *   Required:
+     *   Configuration options. These are a bit messy:
+     *   - Some of them are used for configuring the NtlmSoapClient class;
+     *   - Some are used as standard arguments in each SOAP call;
+     *   - Some of them are used for both (because userId/password are
+     *     call arguments too, despite already having been used in NTLM auth);
+     *   - Some of them are used as configuration options by this class.
+     * Keys used:
+     *   Required (used by NtlmSoapClient and/or calls):
      *   - urlBase:       AFAS endpoint URL (without the variable last part).
      *   - environmentId: AFAS environment name.
      *   - domain         AFAS (NTLM) domain name.
      *   - userId:        AFAS user id.
      *   - password:      password.
-     *   Optional:
+     *   Optional (used by this class):
      *   - soapClientClass: classname for the actual Soap client to use. Should
      *     be compatible with PHP's SoapClient.
      *   - useWSDL:         boolean. (Suggestion: don't set it.)

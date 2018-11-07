@@ -6,6 +6,8 @@ use InvalidArgumentException;
 use RuntimeException;
 
 /**
+ * (Given AFAS does not use NTLM anymore, this will be deleted at some point.)
+ *
  * A subclass of SoapClient with support for NTLM authentication, using curl.
  *
  * The standard SOAPClient's __doRequest() cannot deal with NTLM authentication

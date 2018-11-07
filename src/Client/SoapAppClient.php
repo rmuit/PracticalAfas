@@ -13,6 +13,7 @@ namespace PracticalAfas\Client;
 use InvalidArgumentException;
 use SoapParam;
 use SoapVar;
+use RuntimeException;
 use UnexpectedValueException;
 
 /**
@@ -32,9 +33,16 @@ class SoapAppClient
     protected $options;
 
     /**
+     * Options to pass into the SOAP client.
+     *
+     * @var array
+     */
+    protected $soapClientOptions;
+
+    /**
      * The SOAP client.
      *
-     * @var \PracticalAfas\NtlmSoapClient
+     * @var \SoapClient
      */
     protected $soapClient;
 
@@ -52,26 +60,28 @@ class SoapAppClient
      * constructor and throw an exception if we know any AFAS calls will fail.
      *
      * @param array $options
-     *   Configuration options. Some of them are used for configuring the actual
-     *   NtlmSoapClient class; some are used as standard arguments in each SOAP
-     *   call, some are used for both. Keys used:
+     *   Configuration options used by this class.
      *   Required:
      *   - customerId:      Customer ID, as used in the AFAS endpoint URL.
      *   - appToken:        Token used for the App connector.
      *   Optional:
+     *   - environment:     Which AFAS environment to connect to. Can be 'test'
+     *                      or 'accept'; if not specified, the client connects
+     *                      to the live environment.
      *   - soapClientClass: classname for the actual Soap client to use. Should
      *     be compatible with PHP's SoapClient.
      *   - useWSDL:         boolean. (Suggestion: don't set it.)
      *   - cacheWSDL:       How long the WSDL should be cached locally in
      *     seconds. Other options (which are usually not camelCased but
      *     under_scored) are specific to the actual Soap client.
-     *
+     * @param array $soap_client_options
+     *   (Optional) Configuration options for the SOAP client class.
      * @throws \InvalidArgumentException
      *   If some option values are missing / incorrect.
      * @throws \Exception
      *   If something else went wrong / option values are unsupported.
      */
-    public function __construct(array $options)
+    public function __construct(array $options, $soap_client_options = [])
     {
         foreach (['customerId', 'appToken'] as $required_key) {
             if (empty($options[$required_key])) {
@@ -80,13 +90,28 @@ class SoapAppClient
             }
         }
 
-        // Add defaults for the SOAP client.
-        $options += [
+        // Add defaults for the SOAP client. (Some more defaults which are only
+        // set if the client does not use WSDL, are in getSoapClient().)
+        $soap_client_options += [
             'encoding' => 'utf-8',
             'soapClientClass' => '\SoapClient',
         ];
+        // From ~november 2018, AFAS has a new endpoint that forces TLS 1.2 as
+        // a minimum. We know how to force a specific TLS version but
+        // apparently cannot specify '1.2 or higher'. If people want TLS 1.3 or
+        // higher, they will have to pass their own stream_context option.
+        if ($soap_client_options['soapClientClass'] === '\SoapClient'
+            && !isset($soap_client_options['stream_context'])) {
+            if (!defined(CURL_SSLVERSION_TLSv1_2)) {
+                throw new RuntimeException("PHP's OpenSSL extension does not support TLS v1.2, which AFAS requires.");
+            }
+            $soap_client_options['stream_context'] = stream_context_create(
+                ['ssl' => ['crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT]]
+            );
+        }
 
         $this->options = $options;
+        $this->soapClientOptions = $soap_client_options;
     }
 
     /**
@@ -97,8 +122,8 @@ class SoapAppClient
      * @param string $endpoint
      *   (optional) The SOAP endpoint URL to use. (It's generally not necessary
      *   to set this because AFAS has a well defined structure for its endpoint
-     *   URLs. If this somehow changes, it's possible to pass this argument in
-     *   a subclass to override the defaults.)
+     *   URLs. If this somehow changes, it's possible to create a child class
+     *   that overrides getSoapClient() to pass an endpoint to this parent.
      *
      * @return \SoapClient
      *   Initialized SoapClient object.
@@ -114,12 +139,13 @@ class SoapAppClient
             } else {
                 $connector_path = 'appconnector' . strtolower($type);
             }
-            $endpoint = 'https://' . $this->options['customerId'] . ".afasonlineconnector.nl/profitservices/$connector_path.asmx";
+            $env = empty($this->options['environment']) ? $this->options['environment'] : '';
+            $endpoint = 'https://' . $this->options['customerId'] . ".soap$env.afas.online/profitservices/$connector_path.asmx";
         }
 
         if (!empty($this->soapClient)) {
-            // We can reuse the SOAP client object if we have the same connector type
-            // as last time.
+            // We can reuse the SOAP client object if we have the same
+            // connector type as last time.
             if ($type === $this->connectorType) {
                 return $this->soapClient;
             }
@@ -133,30 +159,28 @@ class SoapAppClient
             // to change the WSDL for an object). So we create a new object.
         }
 
-        $options = $this->options;
+        $soap_client_options = $this->soapClientOptions;
         $wsdl_endpoint = null;
-        if (empty($options['useWSDL'])) {
-            $options += [
-                'location' => $endpoint,
+        if (empty($this->options['useWSDL'])) {
+            // 'location' cannot be overridden. This keeps things consistent
+            // with the code just above here.
+            $soap_client_options['location'] = $endpoint;
+            // It would be remarkable if the following options needed to be
+            // overridden (by passing them into the constructor) but in case
+            // AFAS changes their endpoint for some reason... you can try...
+            $soap_client_options += [
                 'uri' => 'urn:Afas.Profit.Services',
                 'style' => SOAP_DOCUMENT,
                 'use' => SOAP_LITERAL,
             ];
         } else {
             $wsdl_endpoint = $endpoint . '?WSDL';
-            if ($options['cacheWSDL']) {
-                ini_set('soap.wsdl_cache_ttl', $options['cacheWSDL']);
+            if ($this->options['cacheWSDL']) {
+                ini_set('soap.wsdl_cache_ttl', $this->options['cacheWSDL']);
             }
         }
 
-        // $options contains both SoapClient options and call/argument options
-        // used by this class. We shouldn't be passing the latter ones to our
-        // client, so we should be doing some filtering at this point. But since
-        // that's a bit hard to do generically now that we have a configurable
-        // soapClientClass, we'll try to get away with just passing everything,
-        // for now. (A previous version of the code contained a list of
-        // SoapClient / Curl options.)
-        $this->soapClient = new $options['soapClientClass']($wsdl_endpoint, $options);
+        $this->soapClient = new $this->options['soapClientClass']($wsdl_endpoint, $soap_client_options);
         $this->connectorType = $type;
 
         return $this->soapClient;

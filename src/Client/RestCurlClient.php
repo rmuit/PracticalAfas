@@ -34,6 +34,13 @@ class RestCurlClient
     protected $options;
 
     /**
+     * Options to set for Curl.
+     *
+     * @var array
+     */
+    protected $curlOptions;
+
+    /**
      * HTTP headers which are disallowed, or seen in constructor options.
      *
      * Header names, lower case, in the array keys. Disallowed headers are
@@ -64,22 +71,34 @@ class RestCurlClient
      *   - customerId:      Customer ID, as used in the AFAS endpoint URL.
      *   - appToken:        Token used for the App connector.
      *   Optional:
+     *   - environment:     Which AFAS environment to connect to. Can be 'test'
+     *                      or 'accept'; if not specified, the client connects
+     *                      to the live environment.
      *   - headers:         HTTP headers to pass to Curl: an array of key-value
      *                      pairs in the form of ['User-Agent' => 'Me', ...].
-     *   - curlOptions:     Options to pass to Curl: an array of values keyed by
-     *                      CURLOPT_ constants. Some options are overridden /
-     *                      not possible to set through here.
+     * @param array $curl_options
+     *   Options to pass to Curl (besides the HTTP headers), keyed by CURLOPT_
+     *   constants. Some are overridden / not possible to set through here.
      *
      * @throws \InvalidArgumentException
      *   If some option values are missing / incorrect.
+     * @throws \RuntimeException
+     *   If the AFAS connection is known to fail.
      */
-    public function __construct(array $options)
+    public function __construct(array $options, $curl_options = [])
     {
         foreach (['customerId', 'appToken'] as $required_key) {
             if (empty($options[$required_key])) {
                 $classname = get_class($this);
                 throw new InvalidArgumentException("Required configuration parameter for $classname missing: $required_key.", 1);
             }
+        }
+
+        // For v1.0 compatibility:
+        if (empty($curl_options) && isset($options['curlOptions']) && is_array($options['curlOptions'])) {
+            $this->curlOptions = $options['curlOptions'];
+        } else {
+            $this->curlOptions = $curl_options;
         }
 
         $options += ['headers' => []];
@@ -94,7 +113,18 @@ class RestCurlClient
             'Authorization' => 'AfasToken ' . base64_encode('<token><version>1</version><data>' . $options['appToken'] . '</data></token>')
         ], $options['headers'], 'strcasecmp');
         // Sanitize/set HTTPHEADER Curl option.
-        $options['curlOptions'][CURLOPT_HTTPHEADER] = $this->httpHeaders($options['headers'] + $default_headers);
+        $this->curlOptions[CURLOPT_HTTPHEADER] = $this->httpHeaders($options['headers'] + $default_headers);
+
+        // From ~november 2018, AFAS has a new endpoint that forces TLS 1.2 as
+        // a minimum. We know how to force a specific TLS version but
+        // apparently cannot specify '1.2 or higher'. If people want TLS 1.3 or
+        // higher, they will have to pass CURLOPT_SSLVERSION in curlOptions.
+        if (!isset($this->curlOptions[CURLOPT_SSLVERSION])) {
+            if (!defined(CURL_SSLVERSION_TLSv1_2)) {
+                throw new RuntimeException("PHP's Curl extension does not support TLS v1.2, which AFAS requires.");
+            }
+            $this->curlOptions[CURLOPT_SSLVERSION] = CURL_SSLVERSION_TLSv1_2;
+        }
 
         // We will not use 'headers' and 'appToken' in our own code (because
         // they are contained in 'curlOptions'), but won't clean them out.
@@ -246,9 +276,10 @@ class RestCurlClient
 
         $arguments = $this->validateArguments($arguments, $function, $type, $request_body);
 
+        $env = empty($this->options['environment']) ? $this->options['environment'] : '';
         // Unlike other input, we don't escape $function (we assume it is safe)
         // because otherwise we can't have slashes in there.
-        $endpoint = 'https://' . rawurlencode($this->options['customerId']) . ".afasonlineconnector.nl/ProfitRestServices/$function";
+        $endpoint = 'https://' . rawurlencode($this->options['customerId']) . ".rest$env.afas.online.nl/profitrestservices/$function";
         if ($arguments) {
             $params = [];
             foreach ($arguments as $key => $value) {
@@ -278,7 +309,7 @@ class RestCurlClient
             // All our content so far is JSON, so it seems good to specify a
             // Content-Type including character set.
             if (!isset($this->headersSeenOrDisallowed['content-type'])) {
-                $this->options['curlOptions'][CURLOPT_HTTPHEADER][] = 'Content-Type: application/json; charset="utf-8"';
+                $this->curlOptions[CURLOPT_HTTPHEADER][] = 'Content-Type: application/json; charset="utf-8"';
             }
             // We will not set Content-Length because it seems to potentially
             // complicate matters (w.r.t. multi-byte strings) and does not
@@ -286,7 +317,7 @@ class RestCurlClient
         }
 
         $ch = curl_init();
-        curl_setopt_array($ch, $forced_options + $this->options['curlOptions']);
+        curl_setopt_array($ch, $forced_options + $this->curlOptions);
         $response = curl_exec($ch);
         list($response_headers, $response) = explode("\r\n\r\n", $response);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);

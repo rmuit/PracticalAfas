@@ -20,6 +20,11 @@ use wsdlcache;
 /**
  * Wrapper around client specific details of making a remote AFAS call.
  *
+ * This class is really old. It is still here as a reminder that anyone who
+ * cannot or does not want to use the php-soap extension, could convert this
+ * into a client working with NuSoap (which is still around) and the
+ * 'app connector'.
+ *
  * This class contains one public method: callAfas(), and uses:
  * - the external (older) NuSOAP library. It can be used if the (preferred) PHP
  *   SOAP extension is not compiled/enabled on your server.
