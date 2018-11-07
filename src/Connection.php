@@ -11,6 +11,7 @@
 namespace PracticalAfas;
 
 use InvalidArgumentException;
+use PracticalAfas\UpdateConnector\UpdateObject;
 use RuntimeException;
 use SimpleXMLElement;
 use UnexpectedValueException;
@@ -96,16 +97,6 @@ class Connection
     const GET_METADATA_YES = 1;
 
     /**
-     * The name of the helper class we use for many sendData calls.
-     *
-     * There is no getter/setter for this. It's only injected in the
-     * constructor.
-     *
-     * @var string
-     */
-    protected $helperClassName;
-
-    /**
      * The PracticalAfas client we use to execute actual AFAS calls.
      *
      * @var object
@@ -145,22 +136,17 @@ class Connection
      *
      * @param object $client
      *   A PracticalAfas client object.
-     * @param string $helper_class_name
-     *   (optional) name of a class containing helper methods. This is used in
-     *   sendData(), for now; see there for the method names. We inject a class
-     *   name, not an instantiated object, since the methods are static and not
-     *   always used. The typical use case for passing this argument is to set
-     *   a subclass of Helper, which has had objectTypeInfo() extended with
-     *   custom field definitions.
+     *
+     * @throws \RuntimeException
+     *   If the object is not recognized as a PracticalAfas client.
      */
-    public function __construct($client, $helper_class_name = '\PracticalAfas\Helper')
+    public function __construct($client)
     {
         $this->setClient($client);
-        $this->helperClassName = $helper_class_name;
     }
 
     /**
-     * Returns the AFAS client object.
+     * Returns the PracticalAfas client object.
      *
      * @return object
      */
@@ -177,18 +163,45 @@ class Connection
      * to a value that makes getData() calls throw an exception, so these
      * properties might need to be explicitly (re)set too.
      *
+     * The object type for a client is not strictly defined. (It does not have
+     * an interface.) This is on purpose; as long as the 'interface' is as
+     * simple as it is (i.e. one method 'callAfas()') and testing is not
+     * impaired, we can enable anyone to use those client classes standalone
+     * in their PHP experiments, without even using an autoloader.
+     *
      * @param object $client
      *   An AFAS client object.
+     *
+     * @throws \InvalidArgumentException
+     *   If the object is not recognized as a PracticalAfas client.
+     * @throws \RuntimeException
+     *   If the system is not capable of executing AFAS calls with this client.
      */
     public function setClient($client)
     {
+        if (!is_callable([$client, 'callAfas'])) {
+            throw new InvalidArgumentException('Object is not a PracticalAfas client class.', 2);
+        }
         $this->client = $client;
+
         $class = get_class($client);
         // Set the type so the rest of our code can decide on logic to follow.
         // Historically, SOAP classes have not had a type defined.
         $this->clientType = defined("$class::CLIENT_TYPE") ? $class::CLIENT_TYPE : 'SOAP';
         if (!in_array($this->clientType, ['REST', 'SOAP'], true)) {
             throw new InvalidArgumentException("Unrecognized client type {$this->clientType}.", 1);
+        }
+
+        $required_extensions = $this->clientType === 'SOAP'
+            ? ['openssl', 'simplexml', 'soap'] : ['curl', 'json', 'openssl'];
+        $missing_extensions = [];
+        foreach ($required_extensions as $extension) {
+            if (extension_loaded($extension)) {
+                $missing_extensions[] = $extension;
+            }
+        }
+        if ($missing_extensions) {
+            throw new RuntimeException('The following PHP extension(s) must be installed to work with the AFAS client: ' . implode(',', $missing_extensions) . '.');
         }
     }
 
@@ -310,81 +323,87 @@ class Connection
     }
 
     /**
-     * Calls AFAS Update Connector with standard arguments and an XML string.
-     *
-     * @param $connector_name
-     *   Name of the Update Connector.
-     * @param string $xml
-     *   XML string as specified by AFAS. See their XSD Schemas, or use
-     *   AfasApiHelper::constructXML($connector_name, ...) as an argument to
-     *     this method if you would rather pass custom arrays than an XML
-     *     string.
-     *
-     * @return string
-     *   Response from SOAP call. Most successful calls return empty string.
-     *
-     * @throws \RuntimeException
-     *   If called for a REST client.
-     * @throws \UnexpectedValueException
-     *   If the SoapClient returned a response in an unknown format.
-     * @throws \Exception
-     *   If anything else went wrong. (e.g. a client specific error.)
-     *
-     * @deprecated We now have sendData which is more general and where you
-     *   can provide an array as the second parameter.
-     */
-    function sendXml($connector_name, $xml)
-    {
-        if ($this->clientType !== 'SOAP') {
-            throw new RuntimeException('sendXml() is not supported by REST clients.', 30);
-        }
-        return $this->client->callAfas('update', 'Execute', ['connectorType' => $connector_name, 'dataXml' => $xml]);
-    }
-
-    /**
      * Sends data to an AFAS Update Connector.
      *
      * @param $connector_name
      *   Name of the Update Connector.
-     * @param string|array $data
-     *   Data string to send in to the Update Connector; must be XML or JSON
-     *   depending on the client type. If this is an array, it will be converted
-     *   to a string using the helper class configured for this Connection.
-     * @param string $rest_verb
-     *   (optional) the HTTP verb representing the action to take: "POST" for
-     *   insert, "PUT" for update, "DELETE" for delete. Must be in upper case;
-     *   defaults to PUT. This also applies to SOAP clients if the $data
-     *   argument is an array: specify "POST" for inserting new data, because
-     *   this will influence how the XML is built.
+     * @param string|array|\PracticalAfas\UpdateConnector\UpdateObject $data
+     *   Data to send in to the Update Connector; can be:
+     *   - a string, which will be sent into the connector as-is. Must be JSON
+     *     or XML depending on the client type.
+     *   - an UpdateObject instance containing the data to send.
+     *   - an array, which will be passed into an UpdateObject to generate
+     *     the data to send.
+     * @param string $action
+     *   (Optional) The action to take on the data: "insert", "update" or
+     *   "delete". It is required if the data is an array, or if it's a string
+     *   and we are connecting to the REST API.
      *
      * @return string
      *   Response from SOAP call. Most successful calls return empty string.
+     *   (If a call is not successful, it is expected to throw an exception;
+     *   the details depend on the client.)
      *
+     * @throws \InvalidArgumentException
+     *   If any of the arguments are invalid (which includes invalid keys/
+     *   values in the array).
      */
-    function sendData($connector_name, $data, $rest_verb = 'PUT')
+    function sendData($connector_name, $data, $action = '')
     {
-        // We've specified a rest verb instead of "insert" / "update" / "delete"
-        // because this way, it is still easier to change things if necessary
-        // with regards to the $fields_action argument to the Helper methods.
-        // For now, there is a direct relation between the verb and the action.
-        // If there are ever situations in which this should change, then
-        // (documented) PRs are welcomed.
-        if (!is_string($data)) {
-            $actions = ['PUT' => 'update', 'POST' => 'insert', 'DELETE' => 'delete'];
-            $fields_action = isset($actions[$rest_verb]) ? $actions[$rest_verb] : '';
-            $class = $this->helperClassName;
+        $action = strtolower($action);
+        // We accept REST verbs POST/PUT/DELETE too, since this was the
+        // argument in v1 of this method. Implicitly convert by array_search.
+        $rest_verbs = ['update' => 'PUT', 'insert' => 'POST', 'delete' => 'DELETE'];
+        if ($action && !isset($rest_verbs[$action]) && !($action = array_search(strtoupper($action), $rest_verbs, true))) {
+            throw new InvalidArgumentException('Invalid action ' . var_export($action, true) . '.');
+        }
+
+        if (is_array($data)) {
+            // We'll require the action also for SOAP/XML. (The UpdateObject
+            // in practice will treat an empty string the same as "update" but
+            // it wants you to specify a nonempty string.)
+            if (!$action) {
+                throw new InvalidArgumentException('Action must be specified.');
+            }
+            $data = UpdateObject::create($connector_name, $data, $action);
+        }
+        if (!is_string($data) && !($data instanceof UpdateObject)) {
+            throw new InvalidArgumentException('Data is of invalid type.');
         }
 
         if ($this->clientType === 'SOAP') {
+            // $action is ignored, except (earlier) if an array was passed. We
+            // should not check it against the UpdateObject because in theory
+            // multiple actions can be defined for multiple elements present in
+            // the UpdateObject.
             if (!is_string($data)) {
-                $data = $class::constructXml($connector_name, $data, $fields_action);
+                $data = $data->output('xml');
             }
             $response = $this->client->callAfas('update', 'Execute', ['connectorType' => $connector_name, 'dataXml' => $data]);
         } else {
-            if (!is_string($data)) {
-                $data = json_encode($class::normalizeDataToSend($connector_name, $data, $fields_action));
+            if (is_string($data)) {
+                if (!$action) {
+                    throw new InvalidArgumentException('Action argument is required (insert, update or delete).');
+                }
+            } else {
+                // If we passed an UpdateObject into here, check it against the
+                // action argument. We do not support elements with different
+                // actions being sent over REST, because the action is tied to
+                // the verb - so if getAction() throws an exception, we want
+                // that to happen.
+                try {
+                    $object_action = $data->getAction();
+                } catch (UnexpectedValueException $e) {
+                    throw new InvalidArgumentException('Data argument is an UpdateObject with several different actions set. This is not supported by REST clients.');
+                }
+                if ($action && $object_action !== $action) {
+                    // We could just ignore $action but this seems like a
+                    // potentially dangerous mistake.
+                    throw new InvalidArgumentException("Provided action argument ($action) differs from action specified in the UpdateObject ($object_action).");
+                }
+                $data = $data->output('json');
             }
-            $response = $this->client->callAfas($rest_verb, "connectors/$connector_name", [], $data);
+            $response = $this->client->callAfas($rest_verbs[$action], "connectors/$connector_name", [], $data);
         }
 
         return $response;
@@ -466,11 +485,11 @@ class Connection
         // of data_id (e.g. connector), but at least throw here for any
         // non-scalar.
         if ((!is_string($data_id) || $data_id === '') && !is_int($data_id)) {
-            throw new InvalidArgumentException("Invalid 'data_id' argument: " . json_encode($data_id), 32);
+            throw new InvalidArgumentException("Invalid 'data_id' argument: " . var_export($data_id, true), 32);
         }
         // Just in case the user specified something other than a constant:
         if (!is_string($data_type)) {
-            throw new InvalidArgumentException("Invalid 'data_type' argument: " . json_encode($data_type), 32);
+            throw new InvalidArgumentException("Invalid 'data_type' argument: " . var_export($data_type, true), 32);
         }
         $data_type = strtolower($data_type);
         // Unify case of arguments, so we don't skip any validation. (If two
@@ -762,7 +781,7 @@ class Connection
                 $function = "profitversion";
         }
         if (!$function) {
-            throw new InvalidArgumentException('Unknown data_type value: ' . json_encode($data_type), 32);
+            throw new InvalidArgumentException('Unknown data_type value: ' . var_export($data_type, true), 32);
         }
 
         return [$http_verb, $function, $extra_arguments];
@@ -926,7 +945,7 @@ class Connection
                 $function = 'GetProductVersion';
         }
         if (!$function) {
-            throw new InvalidArgumentException('Unknown data_type value: ' . json_encode($data_type), 32);
+            throw new InvalidArgumentException('Unknown data_type value: ' . var_export($data_type, true), 32);
         }
 
         return [$data_type, $function, $extra_arguments];
@@ -958,7 +977,7 @@ class Connection
         if ($filters) {
             $operator = !empty($filters['#op']) ? $filters['#op'] : self::OP_EQUAL;
             if (!is_numeric($operator) || $operator < 1 || $operator > 14) {
-                throw new InvalidArgumentException('Unknown filter operator: ' . json_encode($operator), 33);
+                throw new InvalidArgumentException('Unknown filter operator: ' . var_export($operator, true), 33);
             }
             foreach ($filters as $outerfield => $filter) {
                 if ($outerfield !== '#op') {
@@ -967,13 +986,13 @@ class Connection
                         // Process all fields on an inner layer.
                         $op = !empty($filter['#op']) ? $filter['#op'] : self::OP_EQUAL;
                         if (!is_numeric($op) || $op < 1 || $op > 14) {
-                            throw new InvalidArgumentException('Unknown filter operator: ' . json_encode($operator), 33);
+                            throw new InvalidArgumentException('Unknown filter operator: ' . var_export($operator, true), 33);
                         }
                         foreach ($filter as $key => $value) {
                             if ($key !== '#op') {
 
                                 if (is_array($value)) {
-                                    throw new InvalidArgumentException('Filter has more than two array dimensions: ' . json_encode($filters), 33);
+                                    throw new InvalidArgumentException('Filter has more than two array dimensions: ' . var_export($filters, true), 33);
                                 }
                                 $fields[] = $key;
                                 $values[] = $value;
@@ -1043,7 +1062,7 @@ class Connection
         if ($filters) {
             $operator = !empty($filters['#op']) ? $filters['#op'] : self::OP_EQUAL;
             if (!is_numeric($operator) || $operator < 1 || $operator > 14) {
-                throw new InvalidArgumentException('Unknown filter operator: ' . json_encode($operator), 33);
+                throw new InvalidArgumentException('Unknown filter operator: ' . var_export($operator, true), 33);
             }
             foreach ($filters as $outerfield => $filter) {
                 if ($outerfield !== '#op') {
@@ -1052,13 +1071,13 @@ class Connection
                         // Process all fields on an inner layer.
                         $op = !empty($filter['#op']) ? $filter['#op'] : self::OP_EQUAL;
                         if (!is_numeric($op) || $op < 1 || $op > 14) {
-                            throw new InvalidArgumentException('Unknown filter operator: ' . json_encode($operator), 33);
+                            throw new InvalidArgumentException('Unknown filter operator: ' . var_export($operator, true), 33);
                         }
                         foreach ($filter as $key => $value) {
                             if ($key !== '#op') {
 
                                 if (is_array($value)) {
-                                    throw new InvalidArgumentException('Filter has more than two array dimensions: ' . json_encode($filters), 33);
+                                    throw new InvalidArgumentException('Filter has more than two array dimensions: ' . var_export($filters, true), 33);
                                 }
                                 $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . static::xmlValue($value) . '</Field>';
                             }
@@ -1077,7 +1096,7 @@ class Connection
     }
 
     /**
-     * Prepare a value for inclusion in XML: trim and encode.
+     * Encode a value for inclusion in XML.
      *
      * @param string $text
      *
@@ -1085,10 +1104,6 @@ class Connection
      */
     protected static function xmlValue($text)
     {
-        // check_plain() / ENT_QUOTES converts single quotes to &#039; which is
-        // illegal in XML so we can't use it for sanitizing.) The below is
-        // equivalent to "htmlspecialchars($text, ENT_QUOTES | ENT_XML1)", but
-        // also valid in PHP < 5.4.
-        return str_replace("'", '&apos;', htmlspecialchars(trim($text)));
+        return htmlspecialchars($text, ENT_QUOTES | ENT_XML1);
     }
 }

@@ -241,6 +241,6 @@ class NusoapNtlmClient
         if (isset($response[$function . 'Result'])) {
             return $response[$function . 'Result'];
         }
-        throw new UnexpectedValueException('Unknown response format: ' . json_encode($response), 24);
+        throw new UnexpectedValueException('Unknown response format: ' . var_export($response, true), 24);
     }
 }

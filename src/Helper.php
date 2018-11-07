@@ -123,13 +123,13 @@ class Helper
             throw new InvalidArgumentException("'connector' argument not provided.", 32);
         }
         if (empty($args['connector']) || !is_string($args['connector'])) {
-            throw new InvalidArgumentException("Invalid 'connector' argument: " . json_encode($args['connector']), 32);
+            throw new InvalidArgumentException("Invalid 'connector' argument: " . var_export($args['connector'], true), 32);
         }
         if (!isset($args['id_field'])) {
             throw new InvalidArgumentException("'id_field' argument not provided.", 32);
         }
         if (empty($args['id_field']) || !is_string($args['id_field'])) {
-            throw new InvalidArgumentException("Invalid 'id_field' argument: " . json_encode($args['id_field']), 32);
+            throw new InvalidArgumentException("Invalid 'id_field' argument: " . var_export($args['id_field'], true), 32);
         }
         if (isset($args['filters']) && !is_array($args['filters'])) {
             throw new InvalidArgumentException("'filters' argument must be an array.", 32);

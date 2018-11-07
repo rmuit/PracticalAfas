@@ -338,7 +338,7 @@ class SoapAppClient
             // WSDL-less call returns a string.
             return $response;
         } else {
-            throw new UnexpectedValueException('Unknown response format: ' . json_encode($response), 24);
+            throw new UnexpectedValueException('Unknown response format: ' . var_export($response, true), 24);
         }
     }
 }
