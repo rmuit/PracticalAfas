@@ -396,636 +396,16 @@ class UpdateObject
      */
     public function __construct(array $elements = [], $action = '', $type = '', $validation_behavior = self::VALIDATE_ESSENTIAL, $parent_type = '')
     {
-        if (empty($this->propertyDefinitions)) {
-            // Below definitions are based on what AFAS calls the 'XSD Schema'
-            // for SOAP, retrieved though a Data Connector in november 2014.
-            // They're amended with extra info like more understandable aliases
-            // for the field names, and default values. There are lots of Dutch
-            // comment lines in this function; these were gathered from an
-            // online knowledge base page around 2012 when that was the only
-            // form/language of documentation.
-            switch ($type) {
-                case 'KnSalesRelationPer':
-                    // [ Contains notes from 2014, based on an example XML snippet
-                    //   from 2011 which I inherited from a commerce system. Please
-                    //   send PRs to fix the fields / comments if you feel inclined. ]
-                    // NOTE - not checked against XSD yet, only taken over from Qoony example
-                    // Fields:
-                    // ??? = Overheids Identificatienummer, which an AFAS expert recommended
-                    //       for using as a secondary-unique-id, when we want to insert an
-                    //       auto-numbered object and later retrieve it to get the inserted ID.
-                    //       I don't know what this is but it's _not_ 'OIN', I tried that.
-                    //       (In the end we never used this field.)
-                    $this->propertyDefinitions = [
-                        'id_property' => 'DbId',
-                        'objects' => [
-                            'KnPerson' => [
-                                'alias' => 'person',
-                            ],
-                        ],
-                        'fields' => [
-                            // 'is debtor'?
-                            'IsDb' => [
-                                'type' => 'boolean',
-                                'default' => true,
-                            ],
-                            // According to AFAS docs, PaCd / VaDu "are required
-                            // if IsDb==True" ... no further specs.
-                            // [ comment 2014: ]
-                            // Heh, VaDu is not even in our inserted XML so
-                            // that does not seem to be actually true.
-                            'PaCd' => [
-                                'default' => '14',
-                            ],
-                            'CuId' => [
-                                'alias' => 'currency_code',
-                                'default' => 'EUR',
-                            ],
-                            'Bl' => [
-                                'default' => 'false',
-                            ],
-                            'AuPa' => [
-                                'default' => '0',
-                            ],
-                            // Verzamelrekening Debiteur -- apparently these
-                            // just need to be specified by whoever is setting
-                            // up the AFAS administration?
-                            'ColA' => [
-                                'alias' => 'verzamelreking_debiteur',
-                            ],
-                            // [ comment 2014: ]
-                            // ?? Doesn't seem to be required, but we're still
-                            // setting default to the old value we're used to,
-                            // until we know what this field means.
-                            'VtIn' => [
-                                'default' => '1',
-                            ],
-                            'PfId' => [
-                                'default' => '*****',
-                            ],
-                        ],
-                    ];
-                    break;
-
-                case 'KnSubject':
-                    $this->propertyDefinitions = [
-                        'id_property' => 'SbId',
-                        // See definition of KnS01: I'm not sure if this is correct.
-                        'objects' => [
-                            'KnSubjectLink' => [
-                                'alias' => 'subject_link',
-                            ],
-                            'KnS01' => [
-                                'alias' => 'subject_link_1',
-                            ],
-                            'KnS02' => [
-                                'alias' => 'subject_link_2',
-                            ],
-                            // If there are more KnSNN, they have all custom fields?
-                        ],
-                        'fields' => [
-                            // Type dossieritem (verwijzing naar: Type dossieritem => AfasKnSubjectType)
-                            'StId' => [
-                                'alias' => 'type',
-                                'type' => 'integer',
-                                'required' => true,
-                            ],
-                            // Onderwerp
-                            'Ds' => [
-                                'alias' => 'description',
-                            ],
-                            // Toelichting
-                            'SbTx' => [
-                                'alias' => 'comment',
-                            ],
-                            // Instuurdatum
-                            'Da' => [
-                                'alias' => 'date',
-                                'type' => 'date',
-                            ],
-                            // Verantwoordelijke (verwijzing naar: Medewerker => AfasKnEmployee)
-                            'EmId' => [
-                                'alias' => 'responsible',
-                            ],
-                            // Aanleiding (verwijzing naar: Dossieritem => AfasKnSubject)
-                            'SbHi' => [
-                                'type' => 'integer',
-                            ],
-                            // Type actie (verwijzing naar: Type actie => AfasKnSubjectActionType)
-                            'SaId' => [
-                                'alias' => 'action_type',
-                            ],
-                            // Prioriteit (verwijzing naar: Tabelwaarde,Prioriteit actie => AfasKnCodeTableValue)
-                            'ViPr' => [],
-                            // Bron (verwijzing naar: Brongegevens => AfasKnSourceData)
-                            'ScId' => [
-                                'alias' => 'source',
-                            ],
-                            // Begindatum
-                            'DtFr' => [
-                                'alias' => 'start_date',
-                                'type' => 'date',
-                            ],
-                            // Einddatum
-                            'DtTo' => [
-                                'alias' => 'end_date',
-                                'type' => 'date',
-                            ],
-                            // Afgehandeld
-                            'St' => [
-                                'alias' => 'done',
-                                'type' => 'boolean',
-                            ],
-                            // Datum afgehandeld
-                            'DtSt' => [
-                                'alias' => 'done_date',
-                                'type' => 'date',
-                            ],
-                            // Waarde kenmerk 1 (verwijzing naar: Waarde kenmerk => AfasKnFeatureValue)
-                            'FvF1' => [
-                                'type' => 'integer',
-                            ],
-                            // Waarde kenmerk 2 (verwijzing naar: Waarde kenmerk => AfasKnFeatureValue)
-                            'FvF2' => [
-                                'type' => 'integer',
-                            ],
-                            // Waarde kenmerk 3 (verwijzing naar: Waarde kenmerk => AfasKnFeatureValue)
-                            'FvF3' => [
-                                'type' => 'integer',
-                            ],
-                            // Geblokkeerd
-                            'SbBl' => [
-                                'alias' => 'blocked',
-                                'type' => 'boolean',
-                            ],
-                            // Bijlage
-                            'SbPa' => [
-                                'alias' => 'attachment',
-                            ],
-                            // Save file with subject
-                            'FileTrans' => [
-                                'type' => 'boolean',
-                            ],
-                            // File as byte-array
-                            'FileStream' => [],
-                        ],
-                    ];
-                    break;
-
-                case 'KnSubjectLink':
-                    $this->propertyDefinitions = [
-                        'id_property' => 'SbId',
-                        'fields' => [
-                            // Save in CRM Subject
-                            'DoCRM' => [
-                                'type' => 'boolean',
-                            ],
-                            // Organisatie/persoon
-                            'ToBC' => [
-                                'alias' => 'is_org_person',
-                                'type' => 'boolean',
-                            ],
-                            // Medewerker
-                            'ToEm' => [
-                                'alias' => 'is_employee',
-                                'type' => 'boolean',
-                            ],
-                            // Verkooprelatie
-                            'ToSR' => [
-                                'alias' => 'is_sales_relation',
-                                'type' => 'boolean',
-                            ],
-                            // Inkooprelatie
-                            'ToPR' => [
-                                'alias' => 'is_purchase_relation',
-                                'type' => 'boolean',
-                            ],
-                            // Cliënt IB
-                            'ToCl' => [
-                                'alias' => 'is_client_ib',
-                                'type' => 'boolean',
-                            ],
-                            // Cliënt Vpb
-                            'ToCV' => [
-                                'alias' => 'is_client_vpb',
-                                'type' => 'boolean',
-                            ],
-                            // Werkgever
-                            'ToEr' => [
-                                'alias' => 'is_employer',
-                                'type' => 'boolean',
-                            ],
-                            // Sollicitant
-                            'ToAp' => [
-                                'alias' => 'is_applicant',
-                                'type' => 'boolean',
-                            ],
-                            // Type bestemming
-                            // Values:  1:Geen   2:Medewerker   3:Organisatie/persoon   4:Verkooprelatie   8:Cliënt IB   9:Cliënt Vpb   10:Werkgever   11:Inkooprelatie   17:Sollicitant   30:Campagne   31:Item   32:Cursusevenement-->
-                            'SfTp' => [
-                                'alias' => 'destination_type',
-                                'type' => 'integer',
-                            ],
-                            // Bestemming
-                            'SfId' => [
-                                'alias' => 'destination_id',
-                            ],
-                            // Organisatie/persoon (verwijzing naar: Organisatie/persoon => AfasKnBasicContact)
-                            'BcId' => [
-                                'alias' => 'org_person',
-                            ],
-                            // Contact (verwijzing naar: Contact => AfasKnContactData)
-                            'CdId' => [
-                                'alias' => 'contact',
-                                'type' => 'integer',
-                            ],
-                            // Administratie (Verkoop) (verwijzing naar: Administratie => AfasKnUnit)
-                            'SiUn' => [
-                                'type' => 'integer',
-                            ],
-                            // Factuurtype (verkoop) (verwijzing naar: Type factuur => AfasFiInvoiceType)
-                            'SiTp' => [
-                                'alias' => 'sales_invoice_type',
-                                'type' => 'integer',
-                            ],
-                            // Verkoopfactuur (verwijzing naar: Factuur => AfasFiInvoice)
-                            'SiId' => [
-                                'alias' => 'sales_invoice',
-                            ],
-                            // Administratie (Inkoop) (verwijzing naar: Administratie => AfasKnUnit)
-                            'PiUn' => [
-                                'type' => 'integer',
-                            ],
-                            // Factuurtype (inkoop) (verwijzing naar: Type factuur => AfasFiInvoiceType)
-                            'PiTp' => [
-                                'alias' => 'purchase_invoice_type',
-                                'type' => 'integer',
-                            ],
-                            // Inkoopfactuur (verwijzing naar: Factuur => AfasFiInvoice)
-                            'PiId' => [
-                                'alias' => 'purchase_invoice',
-                            ],
-                            // Fiscaal jaar (verwijzing naar: Aangiftejaren => AfasTxDeclarationYear)
-                            'FiYe' => [
-                                'alias' => 'fiscal_year',
-                                'type' => 'integer',
-                            ],
-                            // Project (verwijzing naar: Project => AfasPtProject)
-                            'PjId' => [
-                                'alias' => 'project',
-                            ],
-                            // Campagne (verwijzing naar: Campagne => AfasCmCampaign)
-                            'CaId' => [
-                                'alias' => 'campaign',
-                                'type' => 'integer',
-                            ],
-                            // Actief (verwijzing naar: Vaste activa => AfasFaFixedAssets)
-                            'FaSn' => [
-                                'type' => 'integer',
-                            ],
-                            // Voorcalculatie (verwijzing naar: Voorcalculatie => AfasKnQuotation)
-                            'QuId' => [],
-                            // Dossieritem (verwijzing naar: Dossieritem => AfasKnSubject)
-                            'SjId' => [
-                                'type' => 'integer',
-                            ],
-                            // Abonnement (verwijzing naar: Abonnement => AfasFbSubscription
-                            'SuNr' => [
-                                'alias' => 'subscription',
-                                'type' => 'integer',
-                            ],
-                            // Dienstverband
-                            'DvSn' => [
-                                'type' => 'integer',
-                            ],
-                            // Type item (verwijzing naar: Tabelwaarde,Itemtype => AfasKnCodeTableValue)
-                            // Values:  Wst:Werksoort   Pid:Productie-indicator   Deg:Deeg   Dim:Artikeldimensietotaal   Art:Artikel   Txt:Tekst   Sub:Subtotaal   Tsl:Toeslag   Kst:Kosten   Sam:Samenstelling   Crs:Cursus-->
-                            'VaIt' => [
-                                'alias' => 'item_type',
-                            ],
-                            // Itemcode (verwijzing naar: Item => AfasFbBasicItems)
-                            'BiId' => [
-                                'alias' => 'item_code',
-                            ],
-                            // Cursusevenement (verwijzing naar: Evenement => AfasKnCourseEvent)
-                            'CrId' => [
-                                'alias' => 'course_event',
-                                'type' => 'integer',
-                            ],
-                            // Verzuimmelding (verwijzing naar: Verzuimmelding => AfasHrAbsIllnessMut)
-                            'AbId' => [
-                                'type' => 'integer',
-                            ],
-                            // Forecast (verwijzing naar: Forecast => AfasCmForecast)
-                            'FoSn' => [
-                                'type' => 'integer',
-                            ],
-                        ],
-                    ];
-                    break;
-
-                // I do not know if the following is correct: back in 2014, the
-                // XSD schema / Data Connector contained separate explicit
-                // definitions for KnS01 and KnS02, which suggested they are
-                // separate object types with defined fields, even though their
-                // fields all start with 'U'. I can imagine that the XSD
-                // contained just examples and actually it is up to the AFAS
-                // environment to define these. In that case, the following
-                // definitions should be removed from here and KnS01 should be
-                // implemented (and the corresponding 'object reference fields'
-                // in KnSubject should be overridden) in custom classes.
-                case 'KnS01':
-                    $this->propertyDefinitions = [
-                        'id_property' => 'SbId',
-                        'fields' => [
-                            // Vervaldatum
-                            'U001' => [
-                                'alias' => 'end_date',
-                                'type' => 'date',
-                            ],
-                            // Identiteitsnummer
-                            'U002' => [
-                                'alias' => 'id_number',
-                            ],
-                        ],
-                    ];
-                    break;
-
-                case 'KnS02':
-                    $this->propertyDefinitions = [
-                        'id_property' => 'SbId',
-                        'fields' => [
-                            // Contractnummer
-                            'U001' => [
-                                'alias' => 'contract_number',
-                            ],
-                            // Begindatum contract
-                            'U002' => [
-                                'alias' => 'start_date',
-                                'type' => 'date',
-                            ],
-                            // Einddatum contract
-                            'U003' => [
-                                'alias' => 'start_date',
-                                'type' => 'date',
-                            ],
-                            // Waarde
-                            'U004' => [
-                                'alias' => 'value',
-                                'type' => 'decimal',
-                            ],
-                            // Beëindigd
-                            'U005' => [
-                                'alias' => 'ended',
-                                'type' => 'boolean',
-                            ],
-                            // Stilzwijgend verlengen
-                            'U006' => [
-                                'alias' => 'recurring',
-                                'type' => 'boolean',
-                            ],
-                            // Opzegtermijn (verwijzing naar: Tabelwaarde,(Afwijkende) opzegtermijn => AfasKnCodeTableValue)
-                            'U007' => [
-                                'alias' => 'cancel_term',
-                            ],
-                        ],
-                    ];
-                    break;
-
-                case 'FbSalesLines':
-                    $this->propertyDefinitions = [
-                        'objects' => [
-                            'FbOrderBatchLines' => [
-                                'alias' => 'batch_line_items',
-                                'multiple' => true,
-                            ],
-                            'FbOrderSerialLines' => [
-                                'alias' => 'serial_line_items',
-                                'multiple' => true,
-                            ],
-                        ],
-                        'fields' => [
-                            // Type item (verwijzing naar: Tabelwaarde,Itemtype => AfasKnCodeTableValue)
-                            // Values:  1:Werksoort   10:Productie-indicator   11:Deeg   14:Artikeldimensietotaal   2:Artikel   3:Tekst   4:Subtotaal   5:Toeslag   6:Kosten   7:Samenstelling   8:Cursus
-                            'VaIt' => [
-                                'alias' => 'item_type',
-                            ],
-                            // Itemcode
-                            'ItCd' => [
-                                'alias' => 'item_code',
-                            ],
-                            // Omschrijving
-                            'Ds' => [
-                                'alias' => 'description',
-                            ],
-                            // Btw-tariefgroep (verwijzing naar: Btw-tariefgroep => AfasKnVatTarifGroup)
-                            'VaRc' => [
-                                'alias' => 'vat_type',
-                            ],
-                            // Eenheid (verwijzing naar: Eenheid => AfasFbUnit)
-                            'BiUn' => [
-                                'alias' => 'unit_type',
-                            ],
-                            // Aantal eenheden
-                            'QuUn' => [
-                                'alias' => 'quantity',
-                                'type' => 'decimal',
-                            ],
-                            // Lengte
-                            'QuLe' => [
-                                'alias' => 'length',
-                                'type' => 'decimal',
-                            ],
-                            // Breedte
-                            'QuWi' => [
-                                'alias' => 'width',
-                                'type' => 'decimal',
-                            ],
-                            // Hoogte
-                            'QuHe' => [
-                                'alias' => 'height',
-                                'type' => 'decimal',
-                            ],
-                            // Aantal besteld
-                            'Qu' => [
-                                'alias' => 'quantity_ordered',
-                                'type' => 'decimal',
-                            ],
-                            // Aantal te leveren
-                            'QuDl' => [
-                                'alias' => 'quantity_deliver',
-                                'type' => 'decimal',
-                            ],
-                            // Prijslijst (verwijzing naar: Prijslijst verkoop => AfasFbPriceListSale)
-                            'PrLi' => [
-                                'alias' => 'price_list',
-                            ],
-                            // Magazijn (verwijzing naar: Magazijn => AfasFbWarehouse)
-                            'War' => [
-                                'alias' => 'warehouse',
-                            ],
-                            // Dienstenberekening
-                            'EUSe' => [
-                                'type' => 'boolean',
-                            ],
-                            // Gewichtseenheid (verwijzing naar: Tabelwaarde,Gewichtseenheid => AfasKnCodeTableValue)
-                            // Values:  0:Geen gewicht   1:Microgram (Âµg)   2:Milligram (mg)   3:Gram (g)   4:Kilogram (kg)   5:Ton
-                            'VaWt' => [
-                                'alias' => 'weight_unit',
-                            ],
-                            // Nettogewicht
-                            'NeWe' => [
-                                'alias' => 'weight_net',
-                                'type' => 'decimal',
-                            ],
-                            //
-                            'GrWe' => [
-                                'alias' => 'weight_gross',
-                                'type' => 'decimal',
-                            ],
-                            // Prijs per eenheid
-                            'Upri' => [
-                                'alias' => 'unit_price',
-                                'type' => 'decimal',
-                            ],
-                            // Kostprijs
-                            'CoPr' => [
-                                'alias' => 'cost_price',
-                                'type' => 'decimal',
-                            ],
-                            // Korting toestaan (verwijzing naar: Tabelwaarde,Toestaan korting => AfasKnCodeTableValue)
-                            // Values:  0:Factuur- en regelkorting   1:Factuurkorting   2:Regelkorting   3:Geen factuur- en regelkorting
-                            'VaAD' => [],
-                            // % Regelkorting
-                            'PRDc' => [
-                                'type' => 'decimal',
-                            ],
-                            // Bedrag regelkorting
-                            'ARDc' => [
-                                'type' => 'decimal',
-                            ],
-                            // Handmatig bedrag regelkorting
-                            'MaAD' => [
-                                'type' => 'boolean',
-                            ],
-                            // Opmerking
-                            'Re' => [
-                                'alias' => 'comment',
-                            ],
-                            // GUID regel
-                            'GuLi' => [
-                                'alias' => 'guid',
-                            ],
-                            // Artikeldimensiecode 1 (verwijzing naar: Artikeldimensiecodes => AfasFbStockDimLines)
-                            'StL1' => [
-                                'alias' => 'dimension_1',
-                            ],
-                            // Artikeldimensiecode 2 (verwijzing naar: Artikeldimensiecodes => AfasFbStockDimLines)
-                            'StL2' => [
-                                'alias' => 'dimension_2',
-                            ],
-                            // Direct leveren vanuit leverancier
-                            'DiDe' => [
-                                'alias' => 'direct_delivery',
-                                'type' => 'boolean',
-                            ],
-                        ],
-                    ];
-                    break;
-
-                case 'FbOrderBatchLines':
-                    $this->propertyDefinitions = [
-                        'fields' => [
-                            // Partijnummer
-                            'BaNu' => [
-                                'alias' => 'batch_number',
-                            ],
-                            // Eenheid (verwijzing naar: Eenheid => AfasFbUnit)
-                            'BiUn' => [
-                                'alias' => 'unit_type',
-                            ],
-                            // Aantal eenheden
-                            'QuUn' => [
-                                'alias' => 'quantity_units',
-                                'type' => 'decimal',
-                            ],
-                            // Aantal
-                            'Qu' => [
-                                'alias' => 'quantity',
-                                'type' => 'decimal',
-                            ],
-                            // Factuuraantal
-                            'QuIn' => [
-                                'alias' => 'quantity_invoice',
-                                'type' => 'decimal',
-                            ],
-                            // Opmerking
-                            'Re' => [
-                                'alias' => 'comment',
-                            ],
-                            // Lengte
-                            'QuLe' => [
-                                'alias' => 'length',
-                                'type' => 'decimal',
-                            ],
-                            // Breedte
-                            'QuWi' => [
-                                'alias' => 'width',
-                                'type' => 'decimal',
-                            ],
-                            // Hoogte
-                            'QuHe' => [
-                                'alias' => 'height',
-                                'type' => 'decimal',
-                            ],
-                        ],
-                    ];
-                    break;
-
-                case 'FbOrderSerialLines':
-                    $this->propertyDefinitions = [
-                        'fields' => [
-                            // Serienummer
-                            'SeNu' => [
-                                'alias' => 'serial_number',
-                            ],
-                            // Eenheid (verwijzing naar: Eenheid => AfasFbUnit)
-                            'BiUn' => [
-                                'alias' => 'unit_type',
-                            ],
-                            // Aantal eenheden
-                            'QuUn' => [
-                                'alias' => 'quantity_units',
-                                'type' => 'decimal',
-                            ],
-                            // Aantal
-                            'Qu' => [
-                                'alias' => 'quantity',
-                                'type' => 'decimal',
-                            ],
-                            // Factuuraantal
-                            'QuIn' => [
-                                'alias' => 'quantity_invoice',
-                                'type' => 'decimal',
-                            ],
-                            // Opmerking
-                            'Re' => [
-                                'alias' => 'comment',
-                            ],
-                        ],
-                    ];
-                    break;
-
-                default:
-                    throw new InvalidArgumentException("No property definitions found for '$type' object.");
-            }
-        }
         $this->type = $type;
         if (!is_string($parent_type)) {
             throw new InvalidArgumentException('$parent_type argument is not a string.');
         }
         $this->parentType = $parent_type;
         $this->setAction($action);
+
+        if (empty($this->propertyDefinitions)) {
+            $this->setPropertyDefinitions();
+        }
         $this->addElements($elements, $validation_behavior);
     }
 
@@ -2905,4 +2285,637 @@ class UpdateObject
         return $xml;
     }
 
+    /**
+     * Sets property definitions.
+     *
+     * This method exists for subclassing. Setting the property definitions is
+     * only supposed to be done in the constructor, but if we had this code in
+     * the constructor (directly followed by adding the element values into the
+     * object based on these properties), child classes would not be able to
+     * add their own customizations to these definitions in time.
+     */
+    protected function setPropertyDefinitions() {
+        // Below definitions are based on what AFAS calls the 'XSD Schema' for
+        // SOAP, retrieved though a Data Connector in november 2014. They're
+        // amended with extra info like more understandable aliases for the
+        // field names, and default values. There are lots of Dutch comment
+        // lines in this function; these were gathered from an online knowledge
+        // base page around 2012 when that was the only form / language of
+        // documentation.
+        switch ($this->type) {
+            case 'KnSalesRelationPer':
+                // [ Contains notes from 2014, based on an example XML snippet
+                //   from 2011 which I inherited from a commerce system. Please
+                //   send PRs to fix the fields / comments if you feel inclined. ]
+                // NOTE - not checked against XSD yet, only taken over from Qoony example
+                // Fields:
+                // ??? = Overheids Identificatienummer, which an AFAS expert recommended
+                //       for using as a secondary-unique-id, when we want to insert an
+                //       auto-numbered object and later retrieve it to get the inserted ID.
+                //       I don't know what this is but it's _not_ 'OIN', I tried that.
+                //       (In the end we never used this field.)
+                $this->propertyDefinitions = [
+                    'id_property' => 'DbId',
+                    'objects' => [
+                        'KnPerson' => [
+                            'alias' => 'person',
+                        ],
+                    ],
+                    'fields' => [
+                        // 'is debtor'?
+                        'IsDb' => [
+                            'type' => 'boolean',
+                            'default' => true,
+                        ],
+                        // According to AFAS docs, PaCd / VaDu "are required
+                        // if IsDb==True" ... no further specs.
+                        // [ comment 2014: ]
+                        // Heh, VaDu is not even in our inserted XML so that
+                        // does not seem to be actually true.
+                        'PaCd' => [
+                            'default' => '14',
+                        ],
+                        'CuId' => [
+                            'alias' => 'currency_code',
+                            'default' => 'EUR',
+                        ],
+                        'Bl' => [
+                            'default' => 'false',
+                        ],
+                        'AuPa' => [
+                            'default' => '0',
+                        ],
+                        // Verzamelrekening Debiteur
+                        // [ comment 2014: ] Apparently these just need to be
+                        // specified by whoever is setting up the AFAS
+                        // administration?
+                        'ColA' => [
+                            'alias' => 'verzamelreking_debiteur',
+                        ],
+                        // [ comment 2014: ]
+                        // ?? Doesn't seem to be required, but we're still
+                        // setting default to the old value we're used to,
+                        // until we know what this field means.
+                        'VtIn' => [
+                            'default' => '1',
+                        ],
+                        'PfId' => [
+                            'default' => '*****',
+                        ],
+                    ],
+                ];
+                break;
+
+            case 'KnSubject':
+                $this->propertyDefinitions = [
+                    'id_property' => 'SbId',
+                    // See definition of KnS01: I'm not sure if this is correct.
+                    'objects' => [
+                        'KnSubjectLink' => [
+                            'alias' => 'subject_link',
+                        ],
+                        'KnS01' => [
+                            'alias' => 'subject_link_1',
+                        ],
+                        'KnS02' => [
+                            'alias' => 'subject_link_2',
+                        ],
+                        // If there are more KnSNN, they have all custom fields?
+                    ],
+                    'fields' => [
+                        // Type dossieritem (verwijzing naar: Type dossieritem => AfasKnSubjectType)
+                        'StId' => [
+                            'alias' => 'type',
+                            'type' => 'integer',
+                            'required' => true,
+                        ],
+                        // Onderwerp
+                        'Ds' => [
+                            'alias' => 'description',
+                        ],
+                        // Toelichting
+                        'SbTx' => [
+                            'alias' => 'comment',
+                        ],
+                        // Instuurdatum
+                        'Da' => [
+                            'alias' => 'date',
+                            'type' => 'date',
+                        ],
+                        // Verantwoordelijke (verwijzing naar: Medewerker => AfasKnEmployee)
+                        'EmId' => [
+                            'alias' => 'responsible',
+                        ],
+                        // Aanleiding (verwijzing naar: Dossieritem => AfasKnSubject)
+                        'SbHi' => [
+                            'type' => 'integer',
+                        ],
+                        // Type actie (verwijzing naar: Type actie => AfasKnSubjectActionType)
+                        'SaId' => [
+                            'alias' => 'action_type',
+                        ],
+                        // Prioriteit (verwijzing naar: Tabelwaarde,Prioriteit actie => AfasKnCodeTableValue)
+                        'ViPr' => [],
+                        // Bron (verwijzing naar: Brongegevens => AfasKnSourceData)
+                        'ScId' => [
+                            'alias' => 'source',
+                        ],
+                        // Begindatum
+                        'DtFr' => [
+                            'alias' => 'start_date',
+                            'type' => 'date',
+                        ],
+                        // Einddatum
+                        'DtTo' => [
+                            'alias' => 'end_date',
+                            'type' => 'date',
+                        ],
+                        // Afgehandeld
+                        'St' => [
+                            'alias' => 'done',
+                            'type' => 'boolean',
+                        ],
+                        // Datum afgehandeld
+                        'DtSt' => [
+                            'alias' => 'done_date',
+                            'type' => 'date',
+                        ],
+                        // Waarde kenmerk 1 (verwijzing naar: Waarde kenmerk => AfasKnFeatureValue)
+                        'FvF1' => [
+                            'type' => 'integer',
+                        ],
+                        // Waarde kenmerk 2 (verwijzing naar: Waarde kenmerk => AfasKnFeatureValue)
+                        'FvF2' => [
+                            'type' => 'integer',
+                        ],
+                        // Waarde kenmerk 3 (verwijzing naar: Waarde kenmerk => AfasKnFeatureValue)
+                        'FvF3' => [
+                            'type' => 'integer',
+                        ],
+                        // Geblokkeerd
+                        'SbBl' => [
+                            'alias' => 'blocked',
+                            'type' => 'boolean',
+                        ],
+                        // Bijlage
+                        'SbPa' => [
+                            'alias' => 'attachment',
+                        ],
+                        // Save file with subject
+                        'FileTrans' => [
+                            'type' => 'boolean',
+                        ],
+                        // File as byte-array
+                        'FileStream' => [],
+                    ],
+                ];
+                break;
+
+            case 'KnSubjectLink':
+                $this->propertyDefinitions = [
+                    'id_property' => 'SbId',
+                    'fields' => [
+                        // Save in CRM Subject
+                        'DoCRM' => [
+                            'type' => 'boolean',
+                        ],
+                        // Organisatie/persoon
+                        'ToBC' => [
+                            'alias' => 'is_org_person',
+                            'type' => 'boolean',
+                        ],
+                        // Medewerker
+                        'ToEm' => [
+                            'alias' => 'is_employee',
+                            'type' => 'boolean',
+                        ],
+                        // Verkooprelatie
+                        'ToSR' => [
+                            'alias' => 'is_sales_relation',
+                            'type' => 'boolean',
+                        ],
+                        // Inkooprelatie
+                        'ToPR' => [
+                            'alias' => 'is_purchase_relation',
+                            'type' => 'boolean',
+                        ],
+                        // Cliënt IB
+                        'ToCl' => [
+                            'alias' => 'is_client_ib',
+                            'type' => 'boolean',
+                        ],
+                        // Cliënt Vpb
+                        'ToCV' => [
+                            'alias' => 'is_client_vpb',
+                            'type' => 'boolean',
+                        ],
+                        // Werkgever
+                        'ToEr' => [
+                            'alias' => 'is_employer',
+                            'type' => 'boolean',
+                        ],
+                        // Sollicitant
+                        'ToAp' => [
+                            'alias' => 'is_applicant',
+                            'type' => 'boolean',
+                        ],
+                        // Type bestemming
+                        // Values:  1:Geen   2:Medewerker   3:Organisatie/persoon   4:Verkooprelatie   8:Cliënt IB   9:Cliënt Vpb   10:Werkgever   11:Inkooprelatie   17:Sollicitant   30:Campagne   31:Item   32:Cursusevenement-->
+                        'SfTp' => [
+                            'alias' => 'destination_type',
+                            'type' => 'integer',
+                        ],
+                        // Bestemming
+                        'SfId' => [
+                            'alias' => 'destination_id',
+                        ],
+                        // Organisatie/persoon (verwijzing naar: Organisatie/persoon => AfasKnBasicContact)
+                        'BcId' => [
+                            'alias' => 'org_person',
+                        ],
+                        // Contact (verwijzing naar: Contact => AfasKnContactData)
+                        'CdId' => [
+                            'alias' => 'contact',
+                            'type' => 'integer',
+                        ],
+                        // Administratie (Verkoop) (verwijzing naar: Administratie => AfasKnUnit)
+                        'SiUn' => [
+                            'type' => 'integer',
+                        ],
+                        // Factuurtype (verkoop) (verwijzing naar: Type factuur => AfasFiInvoiceType)
+                        'SiTp' => [
+                            'alias' => 'sales_invoice_type',
+                            'type' => 'integer',
+                        ],
+                        // Verkoopfactuur (verwijzing naar: Factuur => AfasFiInvoice)
+                        'SiId' => [
+                            'alias' => 'sales_invoice',
+                        ],
+                        // Administratie (Inkoop) (verwijzing naar: Administratie => AfasKnUnit)
+                        'PiUn' => [
+                            'type' => 'integer',
+                        ],
+                        // Factuurtype (inkoop) (verwijzing naar: Type factuur => AfasFiInvoiceType)
+                        'PiTp' => [
+                            'alias' => 'purchase_invoice_type',
+                            'type' => 'integer',
+                        ],
+                        // Inkoopfactuur (verwijzing naar: Factuur => AfasFiInvoice)
+                        'PiId' => [
+                            'alias' => 'purchase_invoice',
+                        ],
+                        // Fiscaal jaar (verwijzing naar: Aangiftejaren => AfasTxDeclarationYear)
+                        'FiYe' => [
+                            'alias' => 'fiscal_year',
+                            'type' => 'integer',
+                        ],
+                        // Project (verwijzing naar: Project => AfasPtProject)
+                        'PjId' => [
+                            'alias' => 'project',
+                        ],
+                        // Campagne (verwijzing naar: Campagne => AfasCmCampaign)
+                        'CaId' => [
+                            'alias' => 'campaign',
+                            'type' => 'integer',
+                        ],
+                        // Actief (verwijzing naar: Vaste activa => AfasFaFixedAssets)
+                        'FaSn' => [
+                            'type' => 'integer',
+                        ],
+                        // Voorcalculatie (verwijzing naar: Voorcalculatie => AfasKnQuotation)
+                        'QuId' => [],
+                        // Dossieritem (verwijzing naar: Dossieritem => AfasKnSubject)
+                        'SjId' => [
+                            'type' => 'integer',
+                        ],
+                        // Abonnement (verwijzing naar: Abonnement => AfasFbSubscription
+                        'SuNr' => [
+                            'alias' => 'subscription',
+                            'type' => 'integer',
+                        ],
+                        // Dienstverband
+                        'DvSn' => [
+                            'type' => 'integer',
+                        ],
+                        // Type item (verwijzing naar: Tabelwaarde,Itemtype => AfasKnCodeTableValue)
+                        // Values:  Wst:Werksoort   Pid:Productie-indicator   Deg:Deeg   Dim:Artikeldimensietotaal   Art:Artikel   Txt:Tekst   Sub:Subtotaal   Tsl:Toeslag   Kst:Kosten   Sam:Samenstelling   Crs:Cursus-->
+                        'VaIt' => [
+                            'alias' => 'item_type',
+                        ],
+                        // Itemcode (verwijzing naar: Item => AfasFbBasicItems)
+                        'BiId' => [
+                            'alias' => 'item_code',
+                        ],
+                        // Cursusevenement (verwijzing naar: Evenement => AfasKnCourseEvent)
+                        'CrId' => [
+                            'alias' => 'course_event',
+                            'type' => 'integer',
+                        ],
+                        // Verzuimmelding (verwijzing naar: Verzuimmelding => AfasHrAbsIllnessMut)
+                        'AbId' => [
+                            'type' => 'integer',
+                        ],
+                        // Forecast (verwijzing naar: Forecast => AfasCmForecast)
+                        'FoSn' => [
+                            'type' => 'integer',
+                        ],
+                    ],
+                ];
+                break;
+
+            // I do not know if the following is correct: back in 2014, the XSD
+            // schema / Data Connector contained separate explicit definitions
+            // for KnS01 and KnS02, which suggested they are separate object
+            // types with defined fields, even though their fields all start
+            // with 'U'. I can imagine that the XSD contained just examples and
+            // actually it is up to the AFAS environment to define these. If
+            // so, the following definitions should be removed from here and
+            // KnS01 should be implemented (and the related 'object reference
+            // fields' in KnSubject should be overridden) in custom classes.
+            case 'KnS01':
+                $this->propertyDefinitions = [
+                    'id_property' => 'SbId',
+                    'fields' => [
+                        // Vervaldatum
+                        'U001' => [
+                            'alias' => 'end_date',
+                            'type' => 'date',
+                        ],
+                        // Identiteitsnummer
+                        'U002' => [
+                            'alias' => 'id_number',
+                        ],
+                    ],
+                ];
+                break;
+
+            case 'KnS02':
+                $this->propertyDefinitions = [
+                    'id_property' => 'SbId',
+                    'fields' => [
+                        // Contractnummer
+                        'U001' => [
+                            'alias' => 'contract_number',
+                        ],
+                        // Begindatum contract
+                        'U002' => [
+                            'alias' => 'start_date',
+                            'type' => 'date',
+                        ],
+                        // Einddatum contract
+                        'U003' => [
+                            'alias' => 'start_date',
+                            'type' => 'date',
+                        ],
+                        // Waarde
+                        'U004' => [
+                            'alias' => 'value',
+                            'type' => 'decimal',
+                        ],
+                        // Beëindigd
+                        'U005' => [
+                            'alias' => 'ended',
+                            'type' => 'boolean',
+                        ],
+                        // Stilzwijgend verlengen
+                        'U006' => [
+                            'alias' => 'recurring',
+                            'type' => 'boolean',
+                        ],
+                        // Opzegtermijn (verwijzing naar: Tabelwaarde,(Afwijkende) opzegtermijn => AfasKnCodeTableValue)
+                        'U007' => [
+                            'alias' => 'cancel_term',
+                        ],
+                    ],
+                ];
+                break;
+
+            case 'FbSalesLines':
+                $this->propertyDefinitions = [
+                    'objects' => [
+                        'FbOrderBatchLines' => [
+                            'alias' => 'batch_line_items',
+                            'multiple' => true,
+                        ],
+                        'FbOrderSerialLines' => [
+                            'alias' => 'serial_line_items',
+                            'multiple' => true,
+                        ],
+                    ],
+                    'fields' => [
+                        // Type item (verwijzing naar: Tabelwaarde,Itemtype => AfasKnCodeTableValue)
+                        // Values:  1:Werksoort   10:Productie-indicator   11:Deeg   14:Artikeldimensietotaal   2:Artikel   3:Tekst   4:Subtotaal   5:Toeslag   6:Kosten   7:Samenstelling   8:Cursus
+                        'VaIt' => [
+                            'alias' => 'item_type',
+                        ],
+                        // Itemcode
+                        'ItCd' => [
+                            'alias' => 'item_code',
+                        ],
+                        // Omschrijving
+                        'Ds' => [
+                            'alias' => 'description',
+                        ],
+                        // Btw-tariefgroep (verwijzing naar: Btw-tariefgroep => AfasKnVatTarifGroup)
+                        'VaRc' => [
+                            'alias' => 'vat_type',
+                        ],
+                        // Eenheid (verwijzing naar: Eenheid => AfasFbUnit)
+                        'BiUn' => [
+                            'alias' => 'unit_type',
+                        ],
+                        // Aantal eenheden
+                        'QuUn' => [
+                            'alias' => 'quantity',
+                            'type' => 'decimal',
+                        ],
+                        // Lengte
+                        'QuLe' => [
+                            'alias' => 'length',
+                            'type' => 'decimal',
+                        ],
+                        // Breedte
+                        'QuWi' => [
+                            'alias' => 'width',
+                            'type' => 'decimal',
+                        ],
+                        // Hoogte
+                        'QuHe' => [
+                            'alias' => 'height',
+                            'type' => 'decimal',
+                        ],
+                        // Aantal besteld
+                        'Qu' => [
+                            'alias' => 'quantity_ordered',
+                            'type' => 'decimal',
+                        ],
+                        // Aantal te leveren
+                        'QuDl' => [
+                            'alias' => 'quantity_deliver',
+                            'type' => 'decimal',
+                        ],
+                        // Prijslijst (verwijzing naar: Prijslijst verkoop => AfasFbPriceListSale)
+                        'PrLi' => [
+                            'alias' => 'price_list',
+                        ],
+                        // Magazijn (verwijzing naar: Magazijn => AfasFbWarehouse)
+                        'War' => [
+                            'alias' => 'warehouse',
+                        ],
+                        // Dienstenberekening
+                        'EUSe' => [
+                            'type' => 'boolean',
+                        ],
+                        // Gewichtseenheid (verwijzing naar: Tabelwaarde,Gewichtseenheid => AfasKnCodeTableValue)
+                        // Values:  0:Geen gewicht   1:Microgram (Âµg)   2:Milligram (mg)   3:Gram (g)   4:Kilogram (kg)   5:Ton
+                        'VaWt' => [
+                            'alias' => 'weight_unit',
+                        ],
+                        // Nettogewicht
+                        'NeWe' => [
+                            'alias' => 'weight_net',
+                            'type' => 'decimal',
+                        ],
+                        //
+                        'GrWe' => [
+                            'alias' => 'weight_gross',
+                            'type' => 'decimal',
+                        ],
+                        // Prijs per eenheid
+                        'Upri' => [
+                            'alias' => 'unit_price',
+                            'type' => 'decimal',
+                        ],
+                        // Kostprijs
+                        'CoPr' => [
+                            'alias' => 'cost_price',
+                            'type' => 'decimal',
+                        ],
+                        // Korting toestaan (verwijzing naar: Tabelwaarde,Toestaan korting => AfasKnCodeTableValue)
+                        // Values:  0:Factuur- en regelkorting   1:Factuurkorting   2:Regelkorting   3:Geen factuur- en regelkorting
+                        'VaAD' => [],
+                        // % Regelkorting
+                        'PRDc' => [
+                            'type' => 'decimal',
+                        ],
+                        // Bedrag regelkorting
+                        'ARDc' => [
+                            'type' => 'decimal',
+                        ],
+                        // Handmatig bedrag regelkorting
+                        'MaAD' => [
+                            'type' => 'boolean',
+                        ],
+                        // Opmerking
+                        'Re' => [
+                            'alias' => 'comment',
+                        ],
+                        // GUID regel
+                        'GuLi' => [
+                            'alias' => 'guid',
+                        ],
+                        // Artikeldimensiecode 1 (verwijzing naar: Artikeldimensiecodes => AfasFbStockDimLines)
+                        'StL1' => [
+                            'alias' => 'dimension_1',
+                        ],
+                        // Artikeldimensiecode 2 (verwijzing naar: Artikeldimensiecodes => AfasFbStockDimLines)
+                        'StL2' => [
+                            'alias' => 'dimension_2',
+                        ],
+                        // Direct leveren vanuit leverancier
+                        'DiDe' => [
+                            'alias' => 'direct_delivery',
+                            'type' => 'boolean',
+                        ],
+                    ],
+                ];
+                break;
+
+            case 'FbOrderBatchLines':
+                $this->propertyDefinitions = [
+                    'fields' => [
+                        // Partijnummer
+                        'BaNu' => [
+                            'alias' => 'batch_number',
+                        ],
+                        // Eenheid (verwijzing naar: Eenheid => AfasFbUnit)
+                        'BiUn' => [
+                            'alias' => 'unit_type',
+                        ],
+                        // Aantal eenheden
+                        'QuUn' => [
+                            'alias' => 'quantity_units',
+                            'type' => 'decimal',
+                        ],
+                        // Aantal
+                        'Qu' => [
+                            'alias' => 'quantity',
+                            'type' => 'decimal',
+                        ],
+                        // Factuuraantal
+                        'QuIn' => [
+                            'alias' => 'quantity_invoice',
+                            'type' => 'decimal',
+                        ],
+                        // Opmerking
+                        'Re' => [
+                            'alias' => 'comment',
+                        ],
+                        // Lengte
+                        'QuLe' => [
+                            'alias' => 'length',
+                            'type' => 'decimal',
+                        ],
+                        // Breedte
+                        'QuWi' => [
+                            'alias' => 'width',
+                            'type' => 'decimal',
+                        ],
+                        // Hoogte
+                        'QuHe' => [
+                            'alias' => 'height',
+                            'type' => 'decimal',
+                        ],
+                    ],
+                ];
+                break;
+
+            case 'FbOrderSerialLines':
+                $this->propertyDefinitions = [
+                    'fields' => [
+                        // Serienummer
+                        'SeNu' => [
+                            'alias' => 'serial_number',
+                        ],
+                        // Eenheid (verwijzing naar: Eenheid => AfasFbUnit)
+                        'BiUn' => [
+                            'alias' => 'unit_type',
+                        ],
+                        // Aantal eenheden
+                        'QuUn' => [
+                            'alias' => 'quantity_units',
+                            'type' => 'decimal',
+                        ],
+                        // Aantal
+                        'Qu' => [
+                            'alias' => 'quantity',
+                            'type' => 'decimal',
+                        ],
+                        // Factuuraantal
+                        'QuIn' => [
+                            'alias' => 'quantity_invoice',
+                            'type' => 'decimal',
+                        ],
+                        // Opmerking
+                        'Re' => [
+                            'alias' => 'comment',
+                        ],
+                    ],
+                ];
+                break;
+
+            default:
+                throw new InvalidArgumentException("No property definitions found for '{$this->type}' object.");
+        }
+    }
 }

@@ -85,625 +85,615 @@ class OrgPersonContact extends UpdateObject
     /**
      * @inheritDoc
      */
-    public function __construct(array $elements = [], $action = '', $type = '', $validation_behavior = self::VALIDATE_ESSENTIAL, $parent_type = '')
+    protected function setPropertyDefinitions()
     {
-        // If we don't have definitions, we'll define them here for the one
-        // known type, and otherwise fall through to the parent. This way, it's
-        // possible for a custom object to extend this class but still use a
-        // definition in the parent as a basis.
-        if (empty($this->propertyDefinitions)) {
-            // Below definitions are based on what AFAS calls the 'XSD Schema'
-            // for SOAP, retrieved though a Data Connector in november 2014,
-            // amended with extra info like aliases and defaults. There are
-            // lots of Dutch comment lines in this function; these were
-            // gathered from an online knowledge base page around 2012 when
-            // that was the only form/language of documentation.
-            switch ($type) {
-                case 'KnContact':
-                    // This has no ID property. Updating standalone knContact
-                    // objects can be done by passing BcCoOga + BcCoPer values.
-                    $this->propertyDefinitions = [
-                        // As we are extending ObjectWithCountry (for KnPerson),
-                        // we have to define this even though we don't use it.
-                        'iso_country_fields' => [],
-                        'objects' => [
-                            // KnPerson added conditionally below.
-                            'KnBasicAddressAdr' => [
-                                'type' => 'KnBasicAddress',
-                                'alias' => 'address',
-                            ],
-                            'KnBasicAddressPad' =>  [
-                                'type' => 'KnBasicAddress',
-                                'alias' => 'postal_address',
-                            ],
+        // Below definitions are based on what AFAS calls the 'XSD Schema' for
+        // SOAP, retrieved though a Data Connector in november 2014. They're
+        // amended with extra info like more understandable aliases for the
+        // field names, and default values. There are lots of Dutch comment
+        // lines in this function; these were gathered from an online knowledge
+        // base page around 2012 when that was the only form / language of
+        // documentation.
+        switch ($this->type) {
+            case 'KnContact':
+                // This has no ID property. Updating standalone knContact
+                // objects can be done by passing BcCoOga + BcCoPer values.
+                $this->propertyDefinitions = [
+                    // As we are extending ObjectWithCountry (for KnPerson), we
+                    // have to define this even though we don't use it.
+                    'iso_country_fields' => [],
+                    'objects' => [
+                        // KnPerson added conditionally below.
+                        'KnBasicAddressAdr' => [
+                            'type' => 'KnBasicAddress',
+                            'alias' => 'address',
                         ],
-                        'fields' => [
-                            // The 2 code fields are only defined if KnContact
-                            // isn't embedded in another object; see below.
-                            // They're also required in that case, both on
-                            // insert and update; see validateFields().
-                            'BcCoOga' => [
-                                'alias' => 'organisation_code',
-                                'required' => true,
-                            ],
-                            // Code persoon
-                            'BcCoPer' => [
-                                'alias' => 'person_code',
-                                'required' => true,
-                            ],
-                            // Postadres is adres
-                            'PadAdr' => [
-                                'alias' => 'postal_address_is_address',
-                                'type' => 'boolean',
-                                // Default of true is set dynamically in
-                                // validateFields(), depending on presence of
-                                // KnAddress objects.
-                            ],
-                            // Afdeling contact
-                            'ExAd' => [],
-                            // Functie (verwijzing naar: Tabelwaarde,Functie contact => AfasKnCodeTableValue)
-                            'ViFu' => [],
-                            // Functie op visitekaart
-                            'FuDs' => [
-                                // Abbreviates 'function description', but that seems too Dutch.
-                                'alias' => 'job_title',
-                            ],
-                            // Correspondentie
-                            'Corr' => [
-                                'type' => 'boolean',
-                            ],
-                            // Voorkeursmedium (verwijzing naar: Tabelwaarde,Medium voor correspondentie => AfasKnCodeTableValue)
-                            'ViMd' => [],
-                            // Telefoonnr. werk
-                            'TeNr' => [
-                                'alias' => 'phone',
-                            ],
-                            // Fax werk
-                            'FaNr' => [
-                                'alias' => 'fax',
-                            ],
-                            // Mobiel werk
-                            'MbNr' => [
-                                'alias' => 'mobile',
-                            ],
-                            // E-mail werk
-                            'EmAd' => [
-                                'alias' => 'email',
-                            ],
-                            // Homepage
-                            'HoPa' => [
-                                'alias' => 'homepage',
-                            ],
-                            // Toelichting
-                            'Re' => [
-                                'alias' => 'comment',
-                            ],
-                            // Geblokkeerd
-                            'Bl' => [
-                                'alias' => 'blocked',
-                                'type' => 'boolean',
-                            ],
-                            // T.a.v. regel
-                            'AtLn' => [],
-                            // Briefaanhef
-                            'LeHe' => [],
-                            // Sociale netwerken
-                            'SocN' => [],
-                            // Facebook
-                            'Face' => [
-                                'alias' => 'facebook',
-                            ],
-                            // LinkedIn
-                            'Link' => [
-                                'alias' => 'linkedin',
-                            ],
-                            // Twitter
-                            'Twtr' => [
-                                'alias' => 'twitter',
-                            ],
-                            // I never used below 2 fields but it feels like
-                            // AFAS is using KnContact for both 'contact
-                            // database' and 'AFAS user accounts' and these are
-                            // applicable to the latter. Which would be why
-                            // they're only defined if KnContact is not
-                            // embedded (as per below).
-                            // Persoon toegang geven tot afgeschermde deel van de portal(s)
-                            'AddToPortal' => [
-                                'type' => 'boolean',
-                            ],
-                            // E-mail toegang
-                            'EmailPortal' => [],
+                        'KnBasicAddressPad' =>  [
+                            'type' => 'KnBasicAddress',
+                            'alias' => 'postal_address',
                         ],
-                    ];
+                    ],
+                    'fields' => [
+                        // The 2 code fields are only defined if KnContact
+                        // isn't embedded in another object; see below. They're
+                        // also required in that case, both on insert and
+                        // update; see validateFields().
+                        'BcCoOga' => [
+                            'alias' => 'organisation_code',
+                            'required' => true,
+                        ],
+                        // Code persoon
+                        'BcCoPer' => [
+                            'alias' => 'person_code',
+                            'required' => true,
+                        ],
+                        // Postadres is adres
+                        'PadAdr' => [
+                            'alias' => 'postal_address_is_address',
+                            'type' => 'boolean',
+                            // Default of true is set dynamically in
+                            // validateFields(), depending on presence of
+                            // KnAddress objects.
+                        ],
+                        // Afdeling contact
+                        'ExAd' => [],
+                        // Functie (verwijzing naar: Tabelwaarde,Functie contact => AfasKnCodeTableValue)
+                        'ViFu' => [],
+                        // Functie op visitekaart
+                        'FuDs' => [
+                            // Abbreviates 'function description', but that seems too Dutch.
+                            'alias' => 'job_title',
+                        ],
+                        // Correspondentie
+                        'Corr' => [
+                            'type' => 'boolean',
+                        ],
+                        // Voorkeursmedium (verwijzing naar: Tabelwaarde,Medium voor correspondentie => AfasKnCodeTableValue)
+                        'ViMd' => [],
+                        // Telefoonnr. werk
+                        'TeNr' => [
+                            'alias' => 'phone',
+                        ],
+                        // Fax werk
+                        'FaNr' => [
+                            'alias' => 'fax',
+                        ],
+                        // Mobiel werk
+                        'MbNr' => [
+                            'alias' => 'mobile',
+                        ],
+                        // E-mail werk
+                        'EmAd' => [
+                            'alias' => 'email',
+                        ],
+                        // Homepage
+                        'HoPa' => [
+                            'alias' => 'homepage',
+                        ],
+                        // Toelichting
+                        'Re' => [
+                            'alias' => 'comment',
+                        ],
+                        // Geblokkeerd
+                        'Bl' => [
+                            'alias' => 'blocked',
+                            'type' => 'boolean',
+                        ],
+                        // T.a.v. regel
+                        'AtLn' => [],
+                        // Briefaanhef
+                        'LeHe' => [],
+                        // Sociale netwerken
+                        'SocN' => [],
+                        // Facebook
+                        'Face' => [
+                            'alias' => 'facebook',
+                        ],
+                        // LinkedIn
+                        'Link' => [
+                            'alias' => 'linkedin',
+                        ],
+                        // Twitter
+                        'Twtr' => [
+                            'alias' => 'twitter',
+                        ],
+                        // I never used below 2 fields but it feels like AFAS
+                        // is using KnContact for both 'contact database' and
+                        // 'AFAS user accounts' and these are applicable to the
+                        // latter. Which would be why they're only defined if
+                        // KnContact is not embedded (as per below).
+                        // Persoon toegang geven tot afgeschermde deel van de portal(s)
+                        'AddToPortal' => [
+                            'type' => 'boolean',
+                        ],
+                        // E-mail toegang
+                        'EmailPortal' => [],
+                    ],
+                ];
 
-                    // There's an extra field and some are invalid, if this
-                    // element is embedded in an organisation/person element.
-                    // (Which likely means: if it's embedded in any element.)
-                    if ($parent_type === 'KnOrganisation' || $parent_type === 'KnPerson') {
-                        // According to the XSD, a knContact can contain a
-                        // knPerson if it's inside a knOrganisation, but not if
-                        // it's standalone.
-                        if ($parent_type === 'KnOrganisation') {
-                            $this->propertyDefinitions['objects']['KnPerson'] = ['alias' => 'person'];
-                        }
-                        // (It doesn't make immediate sense to me that e.g.
-                        // BcCoOga would not be available if the parent is a
-                        // person; especially because of above. I assume this
-                        // came from the same XSD though, so let's stick with
-                        // it.)
-                        unset($this->propertyDefinitions['fields']['BcCoOga']);
-                        unset($this->propertyDefinitions['fields']['BcCoPer']);
-                        unset($this->propertyDefinitions['fields']['AddToPortal']);
-                        unset($this->propertyDefinitions['fields']['EmailPortal']);
-                        $this->propertyDefinitions['fields'] += [
-                            // Soort Contact
-                            // Values:  AFD:Afdeling bij organisatie   AFL:Afleveradres
-                            // if parent is knOrganisation: + PRS:Persoon bij organisatie (alleen mogelijk i.c.m. KnPerson tak)
-                            //
-                            // The description in 'parent' update connectors' (KnOrganisation, knContact) KB pages is:
-                            // "Voor afleveradressen gebruikt u de waarde 'AFL': <ViKc>AFL</ViKc>"
-                            'ViKc' => [
-                                'alias' => 'contact_type',
-                                // Dynamic default depending on parent; see
-                                // validateFields().
-                                // @todo should this be required? I've been
-                                //   inadvertently inserting contacts without
-                                //   types for ages, myself.
-                            ],
-                            // A note: we could be validating ViKc values in
-                            // validateFields() but so far have decided to let
-                            // AFAS do that during the API call, so our
-                            // validation does not go outdated. If AFAS itself
-                            // does not give clear error messages, we should
-                            // start doing the validation ourselves.
-                        ];
+                // There's an extra field and some are invalid, if this element
+                // is embedded in an organisation/person element. (Which likely
+                // means: if it's embedded in any element.)
+                if ($this->parentType === 'KnOrganisation' || $this->parentType === 'KnPerson') {
+                    // According to the XSD, a knContact can contain a knPerson
+                    // if it's inside a knOrganisation, but not if standalone.
+                    if ($this->parentType === 'KnOrganisation') {
+                        $this->propertyDefinitions['objects']['KnPerson'] = ['alias' => 'person'];
                     }
-                    break;
-
-                case 'KnPerson':
-                    $this->propertyDefinitions = [
-                        'iso_country_fields' => [
-                            'birth_country_iso' => 'DaBi'
+                    // (It doesn't make immediate sense to me that e.g. BcCoOga
+                    // would not be available if the parent is a person;
+                    // especially because of above. I assume this came from the
+                    // same XSD though, so let's stick with it.)
+                    unset($this->propertyDefinitions['fields']['BcCoOga']);
+                    unset($this->propertyDefinitions['fields']['BcCoPer']);
+                    unset($this->propertyDefinitions['fields']['AddToPortal']);
+                    unset($this->propertyDefinitions['fields']['EmailPortal']);
+                    $this->propertyDefinitions['fields'] += [
+                        // Soort Contact
+                        // Values:  AFD:Afdeling bij organisatie   AFL:Afleveradres
+                        // if parent is knOrganisation: + PRS:Persoon bij organisatie (alleen mogelijk i.c.m. KnPerson tak)
+                        //
+                        // The description in 'parent' update connectors' (KnOrganisation, knContact) KB pages is:
+                        // "Voor afleveradressen gebruikt u de waarde 'AFL': <ViKc>AFL</ViKc>"
+                        'ViKc' => [
+                            'alias' => 'contact_type',
+                            // Dynamic default depending on parent; see
+                            // validateFields().
+                            // @todo should this be required? I've been
+                            //   inadvertently inserting contacts without
+                            //   types for ages, myself.
                         ],
-                        'objects' => [
-                            //'KnBankAccount' => 'bank_account',
-                            'KnBasicAddressAdr' => [
-                                'type' => 'KnBasicAddress',
-                                'alias' => 'address',
-                            ],
-                            'KnBasicAddressPad' => [
-                                'type' => 'KnBasicAddress',
-                                'alias' => 'postal_address',
-                            ],
-                            'KnContact' => [
-                                'alias' => 'contact',
-                            ],
-                        ],
-                        'fields' => [
-                            'AutoNum' => [
-                                'alias' => 'auto_num',
-                                'type' => 'boolean',
-                                // See below for a dynamic default.
-                            ],
-                            /* NOTE - in Qoony sources in 2011 (which inserted KnPerson objects
-                             *   inside KnSalesRelationPer), MatchPer value 3 had the comment
-                             *   "match customer by mail". Qoony used 3 until april 2014, when
-                             *   suddenly updates broke, giving "organisation vs person objects"
-                             *   and "multiple person objects found for these search criteria"
-                             *   errors. So apparently the official description (below) was not
-                             *   accurate until 2014, and maybe the "match customer by mail"
-                             *   was implemented until then?
-                             *   While fixing the breakage, AFAS introduced an extra value for
-                             *   us which we used from april 2014 until Qoony EOL:
-                             * 9: always update embedded knPerson objects with the given data.
-                             *    (We know which knPerson object to update because they already
-                             *    have a reference from the embedding KnSalesRelationPer.
-                             *    When inserting instead of updating data, I guess this falls
-                             *    back to behavior '7', given our usage at Qoony.)
-                             */
-                            // Persoon vergelijken op
-                            // Values:  0:Zoek op BcCo (Persoons-ID)   1:Burgerservicenummer   2:Naam + voorvoegsel + initialen + geslacht   3:Naam + voorvoegsel + initialen + geslacht + e-mail werk   4:Naam + voorvoegsel + initialen + geslacht + mobiel werk   5:Naam + voorvoegsel + initialen + geslacht + telefoon werk   6:Naam + voorvoegsel + initialen + geslacht + geboortedatum   7:Altijd nieuw toevoegen
-                            // If MatchPer is specified and if the corresponding
-                            // fields have values, the difference between action
-                            // "update" and "insert" falls away: if there is a match
-                            // (but only one) the existing record is updated; if
-                            // there isn't, a new one is inserted. If there are
-                            // multiple matches, or a wrong match method is
-                            // specified, AFAS throws an error. 7 should always
-                            // insert, regardless of action. For more details see
-                            // "Automatic matching" in documentation in this dir.
-                            'MatchPer' => [
-                                'alias' => 'match_method',
-                                'type' => 'integer',
-                                // A 'safe' default is set below. We make it so
-                                // that the default makes sense in situations
-                                // where we can assume we know what the user
-                                // wants, and will cause an error to be thrown
-                                // otherwise (meaning that the user is forced
-                                // to pass a MatchPer value in those cases).
-                            ],
-                            // Organisatie/persoon (intern)
-                            // From "Organisaties toevoegen en wijzigen (UpdateConnector KnOrganisation)":
-                            // "Do not deliver the 'BcId' field."
-                            // (Because it really is internal. So why should we define it?)
-                            //'BcId' => [
-                            //  'type' => 'integer',
-                            //),
-                            // Nummer, 1-15 chars
-                            'BcCo' => [
-                                // This is called "Nummer" here by AFAS but the
-                                // field name itself obviously refers to 'code',
-                                // and also a reference field in KnContact is
-                                // called "Code organisatie" by AFAS. Let's be
-                                // consistent and call it "code" here too.
-                                // ('ID' would be more confusing because it's
-                                // not the internal ID.)
-                                'alias' => 'code',
-                            ],
-                            'SeNm' => [
-                                'alias' => 'search_name',
-                            ],
-                            // Roepnaam
-                            'CaNm' => [
-                                'alias' => 'name',
-                            ],
-                            // Voornaam
-                            'FiNm' => [
-                                'alias' => 'first_name',
-                                // Requiredness is sometimes unset below.
-                                'required' => true,
-                            ],
-                            // Initialen
-                            'In' => [
-                                'alias' => 'initials',
-                            ],
-                            // Prefix has mostly Dutch, like "van"
-                            'Is' => [
-                                'alias' => 'prefix',
-                            ],
-                            'LaNm' => [
-                                'alias' => 'last_name',
-                                'required' => true,
-                            ],
-                            // Geboortenaam apart vastleggen
-                            'SpNm' => [
-                                'type' => 'boolean',
-                                'default' => false,
-                            ],
-                            // Voorv. geb.naam
-                            'IsBi' => [],
-                            // Geboortenaam
-                            'NmBi' => [],
-                            // Voorvoegsel partner
-                            'IsPa' => [],
-                            // Geb.naam partner
-                            'NmPa' => [],
-                            // Naamgebruik (verwijzing naar: Tabelwaarde,Naamgebruik (meisjesnaam etc.) => AfasKnCodeTableValue)
-                            // Values:  0:Geboortenaam   1:Geb. naam partner + Geboortenaam   2:Geboortenaam partner   3:Geboortenaam + Geb. naam partner
-                            'ViUs' => [],
-                            // Sex (M = Man, V = Vrouw, O = Onbekend)
-                            'ViGe' => [
-                                'alias' => 'gender',
-                                'default' => 'O',
-                            ],
-                            // Nationaliteit (verwijzing naar: Tabelwaarde,Nationaliteit (NEN1888) => AfasKnCodeTableValue)
-                            // Values:  000:Onbekend   NL:Nederlandse   DZ:Algerijnse   AN:Angolese   RU:Burundische   RB:Botswaanse   BU:Burger van Burkina Faso   RCA:Centrafrikaanse   KM:Comorese   RCB:Kongolese   DY:Beninse   ET:Egyptische   EQ:Equatoriaalguinese   ETH:Etiopische   DJI:Djiboutiaanse   GA:Gabonese   WAG:Gambiaanse   GH:Ghanese   GN:Guinese   CI:Ivoriaanse   CV:Kaapverdische   TC:Kameroense   EAK:Kenyaanse   CD:ZaÃ¯rese   LS:Lesothaanse   LB:Liberiaanse   LAR:Libische   RM:Malagassische   MW:Malawische   RMM:Malinese   MA:Marokkaanse   RIM:Burger van Mauritanië   MS:Burger van Mauritius   MOC:Mozambiquaanse   SD:Swazische   RN:Burger van Niger   WAN:Burger van Nigeria   EAU:Ugandese   GW:Guineebissause   ZA:Zuidafrikaanse   ZW:Zimbabwaanse   RWA:Rwandese   ST:Burger van SÃ£o TomÃ© en Principe   SN:Senegalese   WAL:Sierraleoonse   SUD:Soedanese   SP:Somalische   EAT:Tanzaniaanse   TG:Togolese   TS:Tsjadische   TN:Tunesische   Z:Zambiaanse   ZSUD:Zuid-Soedanese   BS:Bahamaanse   BH:Belizaanse   CDN:Canadese   CR:Costaricaanse   C:Cubaanse   DOM:Burger van Dominicaanse Republiek   EL:Salvadoraanse   GCA:Guatemalteekse   RH:HaÃ¯tiaanse   HON:Hondurese   JA:Jamaicaanse   MEX:Mexicaanse   NIC:Nicaraguaanse   PA:Panamese   TT:Burger van Trinidad en Tobago   USA:Amerikaans burger   RA:Argentijnse   BDS:Barbadaanse   BOL:Boliviaanse   BR:Braziliaanse   RCH:Chileense   CO:Colombiaanse   EC:Ecuadoraanse   GUY:Guyaanse   PY:Paraguayaanse   PE:Peruaanse   SME:Surinaamse   ROU:Uruguayaanse   YV:Venezolaanse   WG:Grenadaanse   KN:Burger van Saint Kitts-Nevis   SK:Slowaakse   CZ:Tsjechische   BA:Burger van Bosnië-Herzegovina   GE:Burger van Georgië   AFG:Afgaanse   BRN:Bahreinse   BT:Bhutaanse   BM:Burmaanse   BRU:Bruneise   K:Kambodjaanse   CL:Srilankaanse   CN:Chinese   CY:Cyprische   RP:Filipijnse   TMN:Burger van Toerkmenistan   RC:Taiwanese   IND:Burger van India   RI:Indonesische   IRQ:Iraakse   IR:Iraanse   IL:Israëlische   J:Japanse   HKJ:Jordaanse   TAD:Burger van Tadzjikistan   KWT:Koeweitse   LAO:Laotiaanse   RL:Libanese   MV:Maldivische   MAL:Maleisische   MON:Mongolische   OMA:Omanitische   NPL:Nepalese   KO:Noordkoreaanse   OEZ:Burger van Oezbekistan   PK:Pakistaanse   KG:Katarese   AS:Saoediarabische   SGP:Singaporaanse   SYR:Syrische   T:Thaise   AE:Burger van de Ver. Arabische Emiraten   TR:Turkse   UA:Burger van Oekraine   ROK:Zuidkoreaanse   VN:Viëtnamese   BD:Burger van Bangladesh   KYR:Burger van Kyrgyzstan   MD:Burger van Moldavië   KZ:Burger van Kazachstan   BY:Burger van Belarus (Wit-Rusland)   AZ:Burger van Azerbajdsjan   AM:Burger van Armenië   AUS:Australische   PNG:Burger van Papua-Nieuwguinea   NZ:Nieuwzeelandse   WSM:Westsamoaanse   RUS:Burger van Rusland   SLO:Burger van Slovenië   AG:Burger van Antigua en Barbuda   VU:Vanuatuse   FJI:Fijische   GB4:Burger van Britse afhankelijke gebieden   HR:Burger van Kroatië   TO:Tongaanse   NR:Nauruaanse   USA2:Amerikaans onderdaan   LV:Letse   SB:Solomoneilandse   SY:Seychelse   KIR:Kiribatische   TV:Tuvaluaanse   WL:Sintluciaanse   WD:Burger van Dominica   WV:Burger van Sint Vincent en de Grenadinen   EW:Estnische   IOT:British National (overseas)   ZRE:ZaÃ¯rese (Congolese)   TLS:Burger van Timor Leste   SCG:Burger van Servië en Montenegro   SRB:Burger van Servië   MNE:Burger van Montenegro   LT:Litouwse   MAR:Burger van de Marshalleilanden   BUR:Myanmarese   SWA:Namibische   499:Staatloos   AL:Albanese   AND:Andorrese   B:Belgische   BG:Bulgaarse   DK:Deense   D:Duitse   FIN:Finse   F:Franse   YMN:Jemenitische   GR:Griekse   GB:Brits burger   H:Hongaarse   IRL:Ierse   IS:IJslandse   I:Italiaanse   YU:Joegoslavische   FL:Liechtensteinse   L:Luxemburgse   M:Maltese   MC:Monegaskische   N:Noorse   A:Oostenrijkse   PL:Poolse   P:Portugese   RO:Roemeense   RSM:Sanmarinese   E:Spaanse   VAT:Vaticaanse   S:Zweedse   CH:Zwitserse   GB2:Brits onderdaan   ERI:Eritrese   GB3:Brits overzees burger   MK:Macedonische   XK:Kosovaar
-                            'PsNa' => [],
-                            // Geboortedatum
-                            'DaBi' => [],
-                            // Geboorteland (verwijzing naar: Land => AfasKnCountry)
-                            'CoBi' => [],
-                            // Fake ISO field for CoBi:
-                            'birth_country_iso' => [],
-                            // Geboorteplaats (verwijzing naar: Woonplaats => AfasKnResidence)
-                            'RsBi' => [],
-                            // BSN
-                            'SoSe' => [
-                                'alias' => 'bsn',
-                            ],
-                            // Burgerlijke staat (verwijzing naar: Tabelwaarde,Burgerlijke staat => AfasKnCodeTableValue)
-                            'ViCs' => [],
-                            // Huwelijksdatum
-                            'DaMa' => [],
-                            // Datum scheiding
-                            'DaDi' => [],
-                            // Overlijdensdatum
-                            'DaDe' => [],
-                            // Titel/aanhef (verwijzing naar: Titel => AfasKnTitle)
-                            'TtId' => [
-                                // [ comment 2014: ]
-                                // ALG was given in Qoony (where person was inside knSalesRelationPer).
-                                // in newer environment where it's inside knOrganisation > knContact,
-                                // I don't even see this one in an entry screen.
-                                //'default' => 'ALG',
-                            ],
-                            // Tweede titel (verwijzing naar: Titel => AfasKnTitle)
-                            'TtEx' => [],
-                            // Briefaanhef
-                            'LeHe' => [],
-                            // Postadres is adres
-                            'PadAdr' => [
-                                'alias' => 'postal_address_is_address',
-                                'type' => 'boolean',
-                                // Default of true is set below, dependent on
-                                // presence of KnAddress objects.
-                            ],
-                            // Telefoonnr. werk
-                            'TeNr' => [
-                                // Note aliases are reassigned if this object
-                                // is embedded in KnSalesRelationPer; see below.
-                                'alias' => 'phone',
-                            ],
-                            // Telefoonnr. privé
-                            'TeN2' => [],
-                            // Fax werk
-                            'FaNr' => [
-                                'alias' => 'fax',
-                            ],
-                            // Mobiel werk
-                            'MbNr' => [
-                                'alias' => 'mobile',
-                            ],
-                            // Mobiel privé
-                            'MbN2' => [],
-                            // E-mail werk
-                            'EmAd' => [
-                                'alias' => 'email',
-                            ],
-                            'EmA2' => [],
-                            // Homepage
-                            'HoPa' => [
-                                'alias' => 'homepage',
-                            ],
-                            // Correspondentie
-                            'Corr' => [
-                                'type' => 'boolean',
-                                'default' => false,
-                            ],
-                            // Voorkeursmedium (verwijzing naar: Tabelwaarde,Medium voor correspondentie => AfasKnCodeTableValue)
-                            'ViMd' => [],
-                            // Opmerking
-                            'Re' => [
-                                'alias' => 'comment',
-                            ],
-                            // Status (verwijzing naar: Tabelwaarde,Status verkooprelatie => AfasKnCodeTableValue)
-                            'StId' => [],
-                            // Sociale netwerken
-                            'SocN' => [],
-                            // Facebook
-                            'Face' => [
-                                'alias' => 'facebook',
-                            ],
-                            // LinkedIn
-                            'Link' => [
-                                'alias' => 'linkedin',
-                            ],
-                            // Twitter
-                            'Twtr' => [
-                                'alias' => 'twitter',
-                            ],
-                            // Naam bestand
-                            'FileName' => [],
-                            // Afbeelding (base64Binary field)
-                            'FileStream' => [],
-                            // Persoon toegang geven tot afgeschermde deel van de portal(s)
-                            'AddToPortal' => [
-                                'type' => 'boolean',
-                            ],
-                            // E-mail toegang
-                            'EmailPortal' => [],
-                        ],
+                        // A note: we could be validating ViKc values in
+                        // validateFields() but so far have decided to let AFAS
+                        // do that during the API call, so our validation does
+                        // not go outdated. If AFAS itself does not give clear
+                        // error messages, we should start doing the validation
+                        // ourselves.
                     ];
-
-                    if ($parent_type === 'KnContact' || $parent_type === 'KnSalesRelationPer') {
-                        // Note that a 'standalone' KnContact cannot contain a
-                        // knPerson. We know only of the situation where this
-                        // parent knContact is embedded in a knOrganisation.
-                        $this->propertyDefinitions['fields'] += [
-                            // Land wetgeving (verwijzing naar: Land => AfasKnCountry)
-                            'CoLw' => [],
-                            // Fake ISO field for CoLw:
-                            'regul_country_iso' => [],
-                        ];
-                        $this->propertyDefinitions['iso_country_fields']['regul_country_iso'] = 'CoLw';
-
-                        if ($parent_type === 'KnSalesRelationPer') {
-                            // [ Tested in 2012: ]
-                            // Usually, phone/mobile/e-mail aliases are set to the
-                            // business ones, and these are the ones shown in the
-                            // AFAS UI. If this KnPerson object is embedded in
-                            // KnSalesRelationPer, the AFAS UI shows the private
-                            // equivalents instead. (At least that was the case for
-                            // Qoony.) So it's those you want to fill by default.
-                            // Reassign aliases from business to private fields.
-                            $this->propertyDefinitions['fields']['TeN2']['alias'] = $this->propertyDefinitions['fields']['TeNr']['alias'];
-                            unset($this->propertyDefinitions['fields']['TeNr']['alias']);
-                            $this->propertyDefinitions['fields']['MbN2']['alias'] = $this->propertyDefinitions['fields']['MbNr']['alias'];
-                            unset($this->propertyDefinitions['fields']['MbNr']['alias']);
-                            $this->propertyDefinitions['fields']['EmA2']['alias'] = $this->propertyDefinitions['fields']['EmAd']['alias'];
-                            unset($this->propertyDefinitions['fields']['EmAd']['alias']);
-                        }
-                    }
-                    break;
-
-                case 'KnOrganisation':
-                    $this->propertyDefinitions = [
-                        // As we are extending ObjectWithCountry (for KnPerson),
-                        // we have to define this even though we don't use it.
-                        'iso_country_fields' => [],
-                        'objects' => [
-                            //'KnBankAccount' => 'bank_account',
-                            'KnBasicAddressAdr' => [
-                                'type' => 'KnBasicAddress',
-                                'alias' => 'address',
-                            ],
-                            'KnBasicAddressPad' => [
-                                'type' => 'KnBasicAddress',
-                                'alias' => 'postal_address',
-                            ],
-                            'KnContact' => [
-                                'alias' => 'contact',
-                            ],
-                        ],
-                        'fields' => [
-                            'AutoNum' => [
-                                'alias' => 'auto_num',
-                                'type' => 'boolean',
-                                // See below for a dynamic default.
-                            ],
-                            // Organisatie vergelijken op
-                            // Values:  0:Zoek op BcCo   1:KvK-nummer   2:Fiscaal nummer   3:Naam   4:Adres   5:Postadres   6:Altijd nieuw toevoegen
-                            // If MatchOga is specified and if the corresponding
-                            // fields have values, the difference between action
-                            // "update" and "insert" falls away: if there is a match
-                            // (but only one) the existing record is updated; if
-                            // there isn't, a new one is inserted. If there are
-                            // multiple matches, or a wrong match method is
-                            // specified, AFAS throws an error. 6 should always
-                            // insert, regardless of action. For more details see
-                            // "Automatic matching" in documentation in this dir.
-                            'MatchOga' => [
-                                'alias' => 'match_method',
-                                'type' => 'integer',
-                                // A 'safe' default is set below. We make it so
-                                // that the default makes sense in situations
-                                // where we can assume we know what the user
-                                // wants, and will cause an error to be thrown
-                                // otherwise (meaning that the user is forced
-                                // to pass a MatchOga value in those cases).
-                            ],
-                            // Organisatie/persoon (intern)
-                            // From docs "Organisaties toevoegen en wijzigen (UpdateConnector KnOrganisation)":
-                            // "Do not deliver the 'BcId' field."
-                            // (Because it really is internal. So why should we define it?)
-                            //'BcId' => [
-                            //),
-                            // Nummer, 1-15 chars
-                            'BcCo' => [
-                                // This is called "Nummer" here by AFAS but the
-                                // field name itself obviously refers to 'code',
-                                // and also a reference field in KnContact is
-                                // called "Code organisatie" by AFAS. Let's be
-                                // consistent and call it "code" here too.
-                                // ('ID' would be more confusing because it's
-                                // not the internal ID.)
-                                'alias' => 'code',
-                            ],
-                            'SeNm' => [
-                                'alias' => 'search_name',
-                            ],
-                            // Name. Is not required officially, but I guess we
-                            // must fill in either BcCo, SeNm or Nm to be able
-                            // to find the record back. (Or maybe you get an
-                            // error if you don't specify any.)
-                            'Nm' => [
-                                'alias' => 'name',
-                            ],
-                            // Rechtsvorm (verwijzing naar: Tabelwaarde,Rechtsvorm => AfasKnCodeTableValue)
-                            'ViLe' => [
-                                'alias' => 'org_type',
-                            ],
-                            // Branche (verwijzing naar: Tabelwaarde,Branche => AfasKnCodeTableValue)
-                            'ViLb' => [
-                                'alias' => 'branche',
-                            ],
-                            // KvK-nummer
-                            'CcNr' => [
-                                'alias' => 'coc_number',
-                            ],
-                            // Datum KvK
-                            'CcDa' => [
-                                'type' => 'date',
-                            ],
-                            // Naam (statutair)
-                            'NmRg' => [],
-                            // Vestiging (statutair)
-                            'RsRg' => [],
-                            // Titel/aanhef (verwijzing naar: Titel => AfasKnTitle)
-                            'TtId' => [],
-                            // Briefaanhef
-                            'LeHe' => [],
-                            // Organisatorische eenheid (verwijzing naar: Organisatorische eenheid => AfasKnOrgUnit)
-                            'OuId' => [],
-                            // Postadres is adres
-                            // The name is equal to KnBasicAddress.PbAd but the
-                            // meaning is equal to KnContact/KnPerson.PadAdr.
-                            // Was that a mistake on AFAS' part or mine? I did
-                            // add the same alias as to the PadAdr's.
-                            'PbAd' => [
-                                'alias' => 'postal_address_is_address',
-                                'type' => 'boolean',
-                                // Default of true is set below, dependent on
-                                // presence of KnAddress objects.
-                            ],
-                            // Telefoonnr. werk
-                            'TeNr' => [
-                                'alias' => 'phone',
-                            ],
-                            // Fax werk
-                            'FaNr' => [
-                                'alias' => 'fax',
-                            ],
-                            // Mobiel werk
-                            'MbNr' => [
-                                'alias' => 'mobile',
-                            ],
-                            // E-mail werk
-                            'EmAd' => [
-                                'alias' => 'email',
-                            ],
-                            // Homepage
-                            'HoPa' => [
-                                'alias' => 'homepage',
-                            ],
-                            // Correspondentie
-                            'Corr' => [
-                                'type' => 'boolean',
-                            ],
-                            // Voorkeursmedium (verwijzing naar: Tabelwaarde,Medium voor correspondentie => AfasKnCodeTableValue)
-                            'ViMd' => [],
-                            // Opmerking
-                            'Re' => [
-                                'alias' => 'comment',
-                            ],
-                            // Fiscaalnummer
-                            'FiNr' => [
-                                'alias' => 'fiscal_number',
-                            ],
-                            // Status (verwijzing naar: Tabelwaarde,Status verkooprelatie => AfasKnCodeTableValue)
-                            'StId' => [],
-                            // Sociale netwerken
-                            'SocN' => [],
-                            // Facebook
-                            'Face' => [
-                                'alias' => 'facebook',
-                            ],
-                            // LinkedIn
-                            'Link' => [
-                                'alias' => 'linkedin',
-                            ],
-                            // Twitter
-                            'Twtr' => [
-                                'alias' => 'twitter',
-                            ],
-                            // Onderdeel van organisatie (verwijzing naar: Organisatie/persoon => AfasKnBasicContact)
-                            'BcPa' => [],
-                        ],
-                    ];
-                    break;
-            }
-            if ($this->propertyDefinitions) {
-                // An object cannot contain its parent type. (Example: knPerson
-                // can have knContact as a parent, and it can also contain
-                // knContact... except when its parent is knContact. Note this
-                // implies the 'reference field name' is the same as the type.
-                if (isset($this->propertyDefinitions['objects'][$parent_type])) {
-                    unset($this->propertyDefinitions['objects'][$parent_type]);
                 }
+                break;
+
+            case 'KnPerson':
+                $this->propertyDefinitions = [
+                    'iso_country_fields' => [
+                        'birth_country_iso' => 'DaBi'
+                    ],
+                    'objects' => [
+                        //'KnBankAccount' => 'bank_account',
+                        'KnBasicAddressAdr' => [
+                            'type' => 'KnBasicAddress',
+                            'alias' => 'address',
+                        ],
+                        'KnBasicAddressPad' => [
+                            'type' => 'KnBasicAddress',
+                            'alias' => 'postal_address',
+                        ],
+                        'KnContact' => [
+                            'alias' => 'contact',
+                        ],
+                    ],
+                    'fields' => [
+                        'AutoNum' => [
+                            'alias' => 'auto_num',
+                            'type' => 'boolean',
+                            // See below for a dynamic default.
+                        ],
+                        /* NOTE - in Qoony sources in 2011 (which inserted KnPerson objects
+                         *   inside KnSalesRelationPer), MatchPer value 3 had the comment
+                         *   "match customer by mail". Qoony used 3 until april 2014, when
+                         *   suddenly updates broke, giving "organisation vs person objects"
+                         *   and "multiple person objects found for these search criteria"
+                         *   errors. So apparently the official description (below) was not
+                         *   accurate until 2014, and maybe the "match customer by mail"
+                         *   was implemented until then?
+                         *   While fixing the breakage, AFAS introduced an extra value for
+                         *   us which we used from april 2014 until Qoony EOL:
+                         * 9: always update embedded knPerson objects with the given data.
+                         *    (We know which knPerson object to update because they already
+                         *    have a reference from the embedding KnSalesRelationPer.
+                         *    When inserting instead of updating data, I guess this falls
+                         *    back to behavior '7', given our usage at Qoony.)
+                         */
+                        // Persoon vergelijken op
+                        // Values:  0:Zoek op BcCo (Persoons-ID)   1:Burgerservicenummer   2:Naam + voorvoegsel + initialen + geslacht   3:Naam + voorvoegsel + initialen + geslacht + e-mail werk   4:Naam + voorvoegsel + initialen + geslacht + mobiel werk   5:Naam + voorvoegsel + initialen + geslacht + telefoon werk   6:Naam + voorvoegsel + initialen + geslacht + geboortedatum   7:Altijd nieuw toevoegen
+                        // If MatchPer is specified and if the corresponding
+                        // fields have values, the difference between action
+                        // "update" and "insert" falls away: if there is a match
+                        // (but only one) the existing record is updated; if
+                        // there isn't, a new one is inserted. If there are
+                        // multiple matches, or a wrong match method is
+                        // specified, AFAS throws an error. 7 should always
+                        // insert, regardless of action. For more details see
+                        // "Automatic matching" in documentation in this dir.
+                        'MatchPer' => [
+                            'alias' => 'match_method',
+                            'type' => 'integer',
+                            // A 'safe' default is set below. We make it so
+                            // that the default makes sense in situations
+                            // where we can assume we know what the user wants,
+                            // and will cause an error to be thrown otherwise
+                            // (meaning that the user is forced to pass a
+                            // MatchPer value in those cases).
+                        ],
+                        // Organisatie/persoon (intern)
+                        // From "Organisaties toevoegen en wijzigen (UpdateConnector KnOrganisation)":
+                        // "Do not deliver the 'BcId' field."
+                        // (Because it really is internal. So why should we define it?)
+                        //'BcId' => [
+                        //  'type' => 'integer',
+                        //),
+                        // Nummer, 1-15 chars
+                        'BcCo' => [
+                            // This is called "Nummer" here by AFAS but the
+                            // field name itself obviously refers to 'code',
+                            // and also a reference field in KnContact is
+                            // called "Code organisatie" by AFAS. Let's be
+                            // consistent and call it "code" here too.
+                            // ('ID' would be more confusing because it's
+                            // not the internal ID.)
+                            'alias' => 'code',
+                        ],
+                        'SeNm' => [
+                            'alias' => 'search_name',
+                        ],
+                        // Roepnaam
+                        'CaNm' => [
+                            'alias' => 'name',
+                        ],
+                        // Voornaam
+                        'FiNm' => [
+                            'alias' => 'first_name',
+                            // Requiredness is sometimes unset below.
+                            'required' => true,
+                        ],
+                        // Initialen
+                        'In' => [
+                            'alias' => 'initials',
+                        ],
+                        // Prefix has mostly Dutch, like "van"
+                        'Is' => [
+                            'alias' => 'prefix',
+                        ],
+                        'LaNm' => [
+                            'alias' => 'last_name',
+                            'required' => true,
+                        ],
+                        // Geboortenaam apart vastleggen
+                        'SpNm' => [
+                            'type' => 'boolean',
+                            'default' => false,
+                        ],
+                        // Voorv. geb.naam
+                        'IsBi' => [],
+                        // Geboortenaam
+                        'NmBi' => [],
+                        // Voorvoegsel partner
+                        'IsPa' => [],
+                        // Geb.naam partner
+                        'NmPa' => [],
+                        // Naamgebruik (verwijzing naar: Tabelwaarde,Naamgebruik (meisjesnaam etc.) => AfasKnCodeTableValue)
+                        // Values:  0:Geboortenaam   1:Geb. naam partner + Geboortenaam   2:Geboortenaam partner   3:Geboortenaam + Geb. naam partner
+                        'ViUs' => [],
+                        // Sex (M = Man, V = Vrouw, O = Onbekend)
+                        'ViGe' => [
+                            'alias' => 'gender',
+                            'default' => 'O',
+                        ],
+                        // Nationaliteit (verwijzing naar: Tabelwaarde,Nationaliteit (NEN1888) => AfasKnCodeTableValue)
+                        // Values:  000:Onbekend   NL:Nederlandse   DZ:Algerijnse   AN:Angolese   RU:Burundische   RB:Botswaanse   BU:Burger van Burkina Faso   RCA:Centrafrikaanse   KM:Comorese   RCB:Kongolese   DY:Beninse   ET:Egyptische   EQ:Equatoriaalguinese   ETH:Etiopische   DJI:Djiboutiaanse   GA:Gabonese   WAG:Gambiaanse   GH:Ghanese   GN:Guinese   CI:Ivoriaanse   CV:Kaapverdische   TC:Kameroense   EAK:Kenyaanse   CD:ZaÃ¯rese   LS:Lesothaanse   LB:Liberiaanse   LAR:Libische   RM:Malagassische   MW:Malawische   RMM:Malinese   MA:Marokkaanse   RIM:Burger van Mauritanië   MS:Burger van Mauritius   MOC:Mozambiquaanse   SD:Swazische   RN:Burger van Niger   WAN:Burger van Nigeria   EAU:Ugandese   GW:Guineebissause   ZA:Zuidafrikaanse   ZW:Zimbabwaanse   RWA:Rwandese   ST:Burger van SÃ£o TomÃ© en Principe   SN:Senegalese   WAL:Sierraleoonse   SUD:Soedanese   SP:Somalische   EAT:Tanzaniaanse   TG:Togolese   TS:Tsjadische   TN:Tunesische   Z:Zambiaanse   ZSUD:Zuid-Soedanese   BS:Bahamaanse   BH:Belizaanse   CDN:Canadese   CR:Costaricaanse   C:Cubaanse   DOM:Burger van Dominicaanse Republiek   EL:Salvadoraanse   GCA:Guatemalteekse   RH:HaÃ¯tiaanse   HON:Hondurese   JA:Jamaicaanse   MEX:Mexicaanse   NIC:Nicaraguaanse   PA:Panamese   TT:Burger van Trinidad en Tobago   USA:Amerikaans burger   RA:Argentijnse   BDS:Barbadaanse   BOL:Boliviaanse   BR:Braziliaanse   RCH:Chileense   CO:Colombiaanse   EC:Ecuadoraanse   GUY:Guyaanse   PY:Paraguayaanse   PE:Peruaanse   SME:Surinaamse   ROU:Uruguayaanse   YV:Venezolaanse   WG:Grenadaanse   KN:Burger van Saint Kitts-Nevis   SK:Slowaakse   CZ:Tsjechische   BA:Burger van Bosnië-Herzegovina   GE:Burger van Georgië   AFG:Afgaanse   BRN:Bahreinse   BT:Bhutaanse   BM:Burmaanse   BRU:Bruneise   K:Kambodjaanse   CL:Srilankaanse   CN:Chinese   CY:Cyprische   RP:Filipijnse   TMN:Burger van Toerkmenistan   RC:Taiwanese   IND:Burger van India   RI:Indonesische   IRQ:Iraakse   IR:Iraanse   IL:Israëlische   J:Japanse   HKJ:Jordaanse   TAD:Burger van Tadzjikistan   KWT:Koeweitse   LAO:Laotiaanse   RL:Libanese   MV:Maldivische   MAL:Maleisische   MON:Mongolische   OMA:Omanitische   NPL:Nepalese   KO:Noordkoreaanse   OEZ:Burger van Oezbekistan   PK:Pakistaanse   KG:Katarese   AS:Saoediarabische   SGP:Singaporaanse   SYR:Syrische   T:Thaise   AE:Burger van de Ver. Arabische Emiraten   TR:Turkse   UA:Burger van Oekraine   ROK:Zuidkoreaanse   VN:Viëtnamese   BD:Burger van Bangladesh   KYR:Burger van Kyrgyzstan   MD:Burger van Moldavië   KZ:Burger van Kazachstan   BY:Burger van Belarus (Wit-Rusland)   AZ:Burger van Azerbajdsjan   AM:Burger van Armenië   AUS:Australische   PNG:Burger van Papua-Nieuwguinea   NZ:Nieuwzeelandse   WSM:Westsamoaanse   RUS:Burger van Rusland   SLO:Burger van Slovenië   AG:Burger van Antigua en Barbuda   VU:Vanuatuse   FJI:Fijische   GB4:Burger van Britse afhankelijke gebieden   HR:Burger van Kroatië   TO:Tongaanse   NR:Nauruaanse   USA2:Amerikaans onderdaan   LV:Letse   SB:Solomoneilandse   SY:Seychelse   KIR:Kiribatische   TV:Tuvaluaanse   WL:Sintluciaanse   WD:Burger van Dominica   WV:Burger van Sint Vincent en de Grenadinen   EW:Estnische   IOT:British National (overseas)   ZRE:ZaÃ¯rese (Congolese)   TLS:Burger van Timor Leste   SCG:Burger van Servië en Montenegro   SRB:Burger van Servië   MNE:Burger van Montenegro   LT:Litouwse   MAR:Burger van de Marshalleilanden   BUR:Myanmarese   SWA:Namibische   499:Staatloos   AL:Albanese   AND:Andorrese   B:Belgische   BG:Bulgaarse   DK:Deense   D:Duitse   FIN:Finse   F:Franse   YMN:Jemenitische   GR:Griekse   GB:Brits burger   H:Hongaarse   IRL:Ierse   IS:IJslandse   I:Italiaanse   YU:Joegoslavische   FL:Liechtensteinse   L:Luxemburgse   M:Maltese   MC:Monegaskische   N:Noorse   A:Oostenrijkse   PL:Poolse   P:Portugese   RO:Roemeense   RSM:Sanmarinese   E:Spaanse   VAT:Vaticaanse   S:Zweedse   CH:Zwitserse   GB2:Brits onderdaan   ERI:Eritrese   GB3:Brits overzees burger   MK:Macedonische   XK:Kosovaar
+                        'PsNa' => [],
+                        // Geboortedatum
+                        'DaBi' => [],
+                        // Geboorteland (verwijzing naar: Land => AfasKnCountry)
+                        'CoBi' => [],
+                        // Fake ISO field for CoBi:
+                        'birth_country_iso' => [],
+                        // Geboorteplaats (verwijzing naar: Woonplaats => AfasKnResidence)
+                        'RsBi' => [],
+                        // BSN
+                        'SoSe' => [
+                            'alias' => 'bsn',
+                        ],
+                        // Burgerlijke staat (verwijzing naar: Tabelwaarde,Burgerlijke staat => AfasKnCodeTableValue)
+                        'ViCs' => [],
+                        // Huwelijksdatum
+                        'DaMa' => [],
+                        // Datum scheiding
+                        'DaDi' => [],
+                        // Overlijdensdatum
+                        'DaDe' => [],
+                        // Titel/aanhef (verwijzing naar: Titel => AfasKnTitle)
+                        'TtId' => [
+                            // [ comment 2014: ]
+                            // ALG was given in Qoony (where person was inside knSalesRelationPer).
+                            // in newer environment where it's inside knOrganisation > knContact,
+                            // I don't even see this one in an entry screen.
+                            //'default' => 'ALG',
+                        ],
+                        // Tweede titel (verwijzing naar: Titel => AfasKnTitle)
+                        'TtEx' => [],
+                        // Briefaanhef
+                        'LeHe' => [],
+                        // Postadres is adres
+                        'PadAdr' => [
+                            'alias' => 'postal_address_is_address',
+                            'type' => 'boolean',
+                            // Default of true is set below, dependent on
+                            // presence of KnAddress objects.
+                        ],
+                        // Telefoonnr. werk
+                        'TeNr' => [
+                            // Note aliases are reassigned if this object is
+                            // embedded in KnSalesRelationPer; see below.
+                            'alias' => 'phone',
+                        ],
+                        // Telefoonnr. privé
+                        'TeN2' => [],
+                        // Fax werk
+                        'FaNr' => [
+                            'alias' => 'fax',
+                        ],
+                        // Mobiel werk
+                        'MbNr' => [
+                            'alias' => 'mobile',
+                        ],
+                        // Mobiel privé
+                        'MbN2' => [],
+                        // E-mail werk
+                        'EmAd' => [
+                            'alias' => 'email',
+                        ],
+                        'EmA2' => [],
+                        // Homepage
+                        'HoPa' => [
+                            'alias' => 'homepage',
+                        ],
+                        // Correspondentie
+                        'Corr' => [
+                            'type' => 'boolean',
+                            'default' => false,
+                        ],
+                        // Voorkeursmedium (verwijzing naar: Tabelwaarde,Medium voor correspondentie => AfasKnCodeTableValue)
+                        'ViMd' => [],
+                        // Opmerking
+                        'Re' => [
+                            'alias' => 'comment',
+                        ],
+                        // Status (verwijzing naar: Tabelwaarde,Status verkooprelatie => AfasKnCodeTableValue)
+                        'StId' => [],
+                        // Sociale netwerken
+                        'SocN' => [],
+                        // Facebook
+                        'Face' => [
+                            'alias' => 'facebook',
+                        ],
+                        // LinkedIn
+                        'Link' => [
+                            'alias' => 'linkedin',
+                        ],
+                        // Twitter
+                        'Twtr' => [
+                            'alias' => 'twitter',
+                        ],
+                        // Naam bestand
+                        'FileName' => [],
+                        // Afbeelding (base64Binary field)
+                        'FileStream' => [],
+                        // Persoon toegang geven tot afgeschermde deel van de portal(s)
+                        'AddToPortal' => [
+                            'type' => 'boolean',
+                        ],
+                        // E-mail toegang
+                        'EmailPortal' => [],
+                    ],
+                ];
+
+                if ($this->parentType === 'KnContact' || $this->parentType === 'KnSalesRelationPer') {
+                    // Note that a 'standalone' KnContact cannot contain a
+                    // knPerson. We know only of the situation where this
+                    // parent knContact is embedded in a knOrganisation.
+                    $this->propertyDefinitions['fields'] += [
+                        // Land wetgeving (verwijzing naar: Land => AfasKnCountry)
+                        'CoLw' => [],
+                        // Fake ISO field for CoLw:
+                        'regul_country_iso' => [],
+                    ];
+                    $this->propertyDefinitions['iso_country_fields']['regul_country_iso'] = 'CoLw';
+
+                    if ($this->parentType === 'KnSalesRelationPer') {
+                        // [ Tested in 2012: ]
+                        // Usually, phone/mobile/e-mail aliases are set to the
+                        // business ones, and these are the ones shown in the
+                        // AFAS UI. If this KnPerson object is embedded in
+                        // KnSalesRelationPer, the AFAS UI shows the private
+                        // equivalents instead. (At least that was the case for
+                        // Qoony.) So it's those you want to fill by default.
+                        // Reassign aliases from business to private fields.
+                        $this->propertyDefinitions['fields']['TeN2']['alias'] = $this->propertyDefinitions['fields']['TeNr']['alias'];
+                        unset($this->propertyDefinitions['fields']['TeNr']['alias']);
+                        $this->propertyDefinitions['fields']['MbN2']['alias'] = $this->propertyDefinitions['fields']['MbNr']['alias'];
+                        unset($this->propertyDefinitions['fields']['MbNr']['alias']);
+                        $this->propertyDefinitions['fields']['EmA2']['alias'] = $this->propertyDefinitions['fields']['EmAd']['alias'];
+                        unset($this->propertyDefinitions['fields']['EmAd']['alias']);
+                    }
+                }
+                break;
+
+            case 'KnOrganisation':
+                $this->propertyDefinitions = [
+                    // As we are extending ObjectWithCountry (for KnPerson), we
+                    // have to define this even though we don't use it.
+                    'iso_country_fields' => [],
+                    'objects' => [
+                        //'KnBankAccount' => 'bank_account',
+                        'KnBasicAddressAdr' => [
+                            'type' => 'KnBasicAddress',
+                            'alias' => 'address',
+                        ],
+                        'KnBasicAddressPad' => [
+                            'type' => 'KnBasicAddress',
+                            'alias' => 'postal_address',
+                        ],
+                        'KnContact' => [
+                            'alias' => 'contact',
+                        ],
+                    ],
+                    'fields' => [
+                        'AutoNum' => [
+                            'alias' => 'auto_num',
+                            'type' => 'boolean',
+                            // See below for a dynamic default.
+                        ],
+                        // Organisatie vergelijken op
+                        // Values:  0:Zoek op BcCo   1:KvK-nummer   2:Fiscaal nummer   3:Naam   4:Adres   5:Postadres   6:Altijd nieuw toevoegen
+                        // If MatchOga is specified and if the corresponding
+                        // fields have values, the difference between action
+                        // "update" and "insert" falls away: if there is a match
+                        // (but only one) the existing record is updated; if
+                        // there isn't, a new one is inserted. If there are
+                        // multiple matches, or a wrong match method is
+                        // specified, AFAS throws an error. 6 should always
+                        // insert, regardless of action. For more details see
+                        // "Automatic matching" in documentation in this dir.
+                        'MatchOga' => [
+                            'alias' => 'match_method',
+                            'type' => 'integer',
+                            // A 'safe' default is set below. We make it so
+                            // that the default makes sense in situations where
+                            // we can assume we know what the user wants, and
+                            // will cause an error to be thrown otherwise
+                            // (meaning that the user is forced  to pass a
+                            // MatchOga value in those cases).
+                        ],
+                        // Organisatie/persoon (intern)
+                        // From docs "Organisaties toevoegen en wijzigen (UpdateConnector KnOrganisation)":
+                        // "Do not deliver the 'BcId' field."
+                        // (Because it really is internal. So why should we define it?)
+                        //'BcId' => [
+                        //),
+                        // Nummer, 1-15 chars
+                        'BcCo' => [
+                            // This is called "Nummer" here by AFAS but the
+                            // field name itself obviously refers to 'code',
+                            // and also a reference field in KnContact is
+                            // called "Code organisatie" by AFAS. Let's be
+                            // consistent and call it "code" here too.
+                            // ('ID' would be more confusing because it's
+                            // not the internal ID.)
+                            'alias' => 'code',
+                        ],
+                        'SeNm' => [
+                            'alias' => 'search_name',
+                        ],
+                        // Name. Is not required officially, but I guess we
+                        // must fill in either BcCo, SeNm or Nm to be able to
+                        // find the record back. (Or maybe you get an error if
+                        // you don't specify any.)
+                        'Nm' => [
+                            'alias' => 'name',
+                        ],
+                        // Rechtsvorm (verwijzing naar: Tabelwaarde,Rechtsvorm => AfasKnCodeTableValue)
+                        'ViLe' => [
+                            'alias' => 'org_type',
+                        ],
+                        // Branche (verwijzing naar: Tabelwaarde,Branche => AfasKnCodeTableValue)
+                        'ViLb' => [
+                            'alias' => 'branche',
+                        ],
+                        // KvK-nummer
+                        'CcNr' => [
+                            'alias' => 'coc_number',
+                        ],
+                        // Datum KvK
+                        'CcDa' => [
+                            'type' => 'date',
+                        ],
+                        // Naam (statutair)
+                        'NmRg' => [],
+                        // Vestiging (statutair)
+                        'RsRg' => [],
+                        // Titel/aanhef (verwijzing naar: Titel => AfasKnTitle)
+                        'TtId' => [],
+                        // Briefaanhef
+                        'LeHe' => [],
+                        // Organisatorische eenheid (verwijzing naar: Organisatorische eenheid => AfasKnOrgUnit)
+                        'OuId' => [],
+                        // Postadres is adres
+                        // The name is equal to KnBasicAddress.PbAd but the
+                        // meaning is equal to KnContact/KnPerson.PadAdr.
+                        // Was that a mistake on AFAS' part or mine? I did add
+                        // the same alias as to the PadAdr's.
+                        'PbAd' => [
+                            'alias' => 'postal_address_is_address',
+                            'type' => 'boolean',
+                            // Default of true is set below, dependent on
+                            // presence of KnAddress objects.
+                        ],
+                        // Telefoonnr. werk
+                        'TeNr' => [
+                            'alias' => 'phone',
+                        ],
+                        // Fax werk
+                        'FaNr' => [
+                            'alias' => 'fax',
+                        ],
+                        // Mobiel werk
+                        'MbNr' => [
+                            'alias' => 'mobile',
+                        ],
+                        // E-mail werk
+                        'EmAd' => [
+                            'alias' => 'email',
+                        ],
+                        // Homepage
+                        'HoPa' => [
+                            'alias' => 'homepage',
+                        ],
+                        // Correspondentie
+                        'Corr' => [
+                            'type' => 'boolean',
+                        ],
+                        // Voorkeursmedium (verwijzing naar: Tabelwaarde,Medium voor correspondentie => AfasKnCodeTableValue)
+                        'ViMd' => [],
+                        // Opmerking
+                        'Re' => [
+                            'alias' => 'comment',
+                        ],
+                        // Fiscaalnummer
+                        'FiNr' => [
+                            'alias' => 'fiscal_number',
+                        ],
+                        // Status (verwijzing naar: Tabelwaarde,Status verkooprelatie => AfasKnCodeTableValue)
+                        'StId' => [],
+                        // Sociale netwerken
+                        'SocN' => [],
+                        // Facebook
+                        'Face' => [
+                            'alias' => 'facebook',
+                        ],
+                        // LinkedIn
+                        'Link' => [
+                            'alias' => 'linkedin',
+                        ],
+                        // Twitter
+                        'Twtr' => [
+                            'alias' => 'twitter',
+                        ],
+                        // Onderdeel van organisatie (verwijzing naar: Organisatie/persoon => AfasKnBasicContact)
+                        'BcPa' => [],
+                    ],
+                ];
+                break;
+        }
+        if ($this->propertyDefinitions) {
+            // An object cannot contain its parent type. (Example: knPerson can
+            // have knContact as a parent, and it can also contain knContact...
+            // except when its parent is knContact. Note this implies the
+            // 'reference field name' is the same as the type.
+            if (isset($this->propertyDefinitions['objects'][$this->parentType])) {
+                unset($this->propertyDefinitions['objects'][$this->parentType]);
             }
         }
-
-        parent::__construct($elements, $action, $type, $validation_behavior, $parent_type);
     }
 
     /**
