@@ -196,7 +196,7 @@ class Connection
             ? ['openssl', 'simplexml', 'soap'] : ['curl', 'json', 'openssl'];
         $missing_extensions = [];
         foreach ($required_extensions as $extension) {
-            if (extension_loaded($extension)) {
+            if (!extension_loaded($extension)) {
                 $missing_extensions[] = $extension;
             }
         }
@@ -484,7 +484,7 @@ class Connection
         // We're going to let AFAS report an error for wrong/empty scalar values
         // of data_id (e.g. connector), but at least throw here for any
         // non-scalar.
-        if ((!is_string($data_id) || $data_id === '') && !is_int($data_id)) {
+        if ((!is_string($data_id) || $data_id === '') && !is_int($data_id) && $data_type !== self::DATA_TYPE_VERSION_INFO) {
             throw new InvalidArgumentException("Invalid 'data_id' argument: " . var_export($data_id, true), 32);
         }
         // Just in case the user specified something other than a constant:

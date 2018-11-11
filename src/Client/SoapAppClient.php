@@ -90,19 +90,21 @@ class SoapAppClient
             }
         }
 
+        $options += [
+            'soapClientClass' => '\SoapClient',
+        ];
         // Add defaults for the SOAP client. (Some more defaults which are only
         // set if the client does not use WSDL, are in getSoapClient().)
         $soap_client_options += [
             'encoding' => 'utf-8',
-            'soapClientClass' => '\SoapClient',
         ];
         // From ~november 2018, AFAS has a new endpoint that forces TLS 1.2 as
         // a minimum. We know how to force a specific TLS version but
         // apparently cannot specify '1.2 or higher'. If people want TLS 1.3 or
         // higher, they will have to pass their own stream_context option.
-        if ($soap_client_options['soapClientClass'] === '\SoapClient'
+        if ($options['soapClientClass'] === '\SoapClient'
             && !isset($soap_client_options['stream_context'])) {
-            if (!defined(CURL_SSLVERSION_TLSv1_2)) {
+            if (!defined('CURL_SSLVERSION_TLSv1_2')) {
                 throw new RuntimeException("PHP's OpenSSL extension does not support TLS v1.2, which AFAS requires.");
             }
             $soap_client_options['stream_context'] = stream_context_create(
@@ -139,7 +141,7 @@ class SoapAppClient
             } else {
                 $connector_path = 'appconnector' . strtolower($type);
             }
-            $env = empty($this->options['environment']) ? $this->options['environment'] : '';
+            $env = !empty($this->options['environment']) ? $this->options['environment'] : '';
             $endpoint = 'https://' . $this->options['customerId'] . ".soap$env.afas.online/profitservices/$connector_path.asmx";
         }
 

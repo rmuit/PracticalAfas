@@ -120,7 +120,7 @@ class RestCurlClient
         // apparently cannot specify '1.2 or higher'. If people want TLS 1.3 or
         // higher, they will have to pass CURLOPT_SSLVERSION in curlOptions.
         if (!isset($this->curlOptions[CURLOPT_SSLVERSION])) {
-            if (!defined(CURL_SSLVERSION_TLSv1_2)) {
+            if (!defined('CURL_SSLVERSION_TLSv1_2')) {
                 throw new RuntimeException("PHP's Curl extension does not support TLS v1.2, which AFAS requires.");
             }
             $this->curlOptions[CURLOPT_SSLVERSION] = CURL_SSLVERSION_TLSv1_2;
@@ -276,10 +276,10 @@ class RestCurlClient
 
         $arguments = $this->validateArguments($arguments, $function, $type, $request_body);
 
-        $env = empty($this->options['environment']) ? $this->options['environment'] : '';
+        $env = !empty($this->options['environment']) ? $this->options['environment'] : '';
         // Unlike other input, we don't escape $function (we assume it is safe)
         // because otherwise we can't have slashes in there.
-        $endpoint = 'https://' . rawurlencode($this->options['customerId']) . ".rest$env.afas.online.nl/profitrestservices/$function";
+        $endpoint = 'https://' . rawurlencode($this->options['customerId']) . ".rest$env.afas.online/profitrestservices/$function";
         if ($arguments) {
             $params = [];
             foreach ($arguments as $key => $value) {
@@ -319,7 +319,9 @@ class RestCurlClient
         $ch = curl_init();
         curl_setopt_array($ch, $forced_options + $this->curlOptions);
         $response = curl_exec($ch);
-        list($response_headers, $response) = explode("\r\n\r\n", $response);
+        if ($response !== false) {
+            list($response_headers, $response) = explode("\r\n\r\n", $response);
+        }
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curl_errno = curl_errno($ch);
         $curl_error = curl_error($ch);
@@ -328,7 +330,7 @@ class RestCurlClient
             // Body is likely empty but we'll still log it. Since our Connection
             // uses low error codes, add 800 to the thrown code, in case the
             // caller cares about distinguishing them.
-            throw new RuntimeException("CURL returned code: $curl_errno / error: \"$curl_error\" / response body: \"$response\"", $curl_error + 800);
+            throw new RuntimeException("CURL returned code: $curl_errno / error: \"$curl_error\" / response body: \"$response\"", $curl_errno + 800);
         }
         // We'll start out strict, and cancel on all unexpected return codes.
         if ($http_code != 200 && ($http_code != 201 || !in_array($type, ['POST', 'PUT'], true))) {
