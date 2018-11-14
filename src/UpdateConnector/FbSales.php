@@ -64,6 +64,7 @@ class FbSales extends UpdateObject
             ],
             // Backorder
             'BkOr' => [
+                'alias' => 'backorder',
                 'type' => 'boolean',
             ],
             // Verkoopkanaal (verwijzing naar: Tabelwaarde,Verkoopkanaal => AfasKnCodeTableValue)

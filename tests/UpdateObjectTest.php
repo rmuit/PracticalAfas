@@ -210,15 +210,6 @@ class UpdateObjectTest extends TestCase
     }
 
     /**
-     * Test setting invalid object throws OutOfBoundsException.
-     */
-    public function testSetInvalidElementData()
-    {
-        $this->expectException(OutOfBoundsException::class);
-        UpdateObject::create('KnPerson', ['unknown' => 'value']);
-    }
-
-    /**
      * Test setting invalid field throws OutOfBoundsException.
      */
     public function testSetInvalidField()
@@ -242,64 +233,83 @@ class UpdateObjectTest extends TestCase
     }
 
     /**
-     * Cause an exception message that reports on a non-'first' element.
-     *
-     * This serves as at least a cursory a test that the $element_index
-     * parameter is being passed through correctly.
+     * Test that multiple errors on input are all logged.
      */
-    public function testNonFirstErrorMessage1()
-    {
-        $properties = [
-            'line_items' => [
-                [],
-                // This does not need a separate test for it, but: below is an
-                // array so is interpreted as having field name '0'.
-                ['quantity'],
-            ]
-        ];
-        $this->expectException(OutOfBoundsException::class);
-        $this->expectExceptionMessage("Unknown element properties provided for 'FbSalesLines' element which will get index 1: names are '0'.");
-        UpdateObject::create('FbSales', $properties, 'update');
-    }
-
-    /**
-     * Same as testNonFirstErrorMessage1 but an error in validateFieldValue().
-     *
-     * Also: test that decimal fields cannot contain strings.
-     */
-    public function testNonFirstErrorMessage2()
+    public function testMultipleMessages()
     {
         $properties = [
             [
+                // 3 errors in the same object, of which 1 in an embedded one.
+                'unit' => 2.2,
+                'backorder' => '',
+                'line_items' => [
+                    [],
+                    // Below is an array so is interpreted as having field '0'.
+                    ['quantity'],
+                ],
+            ],
+            [
+                // This one should be fine.
+                'backorder' => 'False',
                 'line_items' => [
                     [],
                     [],
-                    ['quantity' => '1'],
+                    ['quantity' => '3'],
                 ]
             ],
             [
+                // This again contains 4 errors, 3 of which embedded. One
+                // possible deficiency: it does not mention _which_ of the
+                // elements has the error. Not sure if that's fatal.
+                'backorder' => 2,
                 'line_items' => [
                     [],
                     [],
-                    ['quantity' => 'x'],
+                    [
+                        // Both are the same field. Despite having the same
+                        // value, that's seen as an (additional) error.
+                        'quantity' => 'three',
+                        'QuUn' => 'three',
+                    ],
                 ]
             ],
         ];
         $this->expectException(InvalidArgumentException::class);
         // The message is confined within one object (i.e. 'line_items' and
         // does not indicate any parent element it would be embedded in.
-        $this->expectExceptionMessage("'QuUn' (quantity) field value of 'FbSalesLines' element which has (or will get) index 2 must be numeric.");
+        $this->expectExceptionMessage("Unknown element properties provided for 'FbSalesLines' element which will get index 1: names are '0'.
+'BkOr' (backorder) field value of 'FbSales' element is not a valid boolean value.
+'Unit' (unit) field value of 'FbSales' element is not a valid integer value.
+'FbSalesLines' element which will get index 2 has a value provided by both its field name QuUn and alias quantity.
+'QuUn' (quantity) field value of 'FbSalesLines' element which has (or will get) index 2 is not numeric.
+'QuUn' (quantity) field value of 'FbSalesLines' element which has (or will get) index 2 is not numeric.
+'BkOr' (backorder) field value of 'FbSales' element which has (or will get) index 2 is not a valid boolean value.");
         UpdateObject::create('FbSales', $properties, 'update');
     }
 
     /**
-     * Test that non-integer fields throw an exception.
+     * Tests that if one element fails, none of the elements get set.
      */
-    public function testNonIntegerException()
+    public function testErrorInOneBlocksAll()
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage("'Unit' (unit) field value of 'FbSales' element must be an integer value.");
-        UpdateObject::create('FbSales', ['unit' => 1.2], 'update');
+        $properties = [
+            [
+                'backorder' => 'False',
+                'line_items' => [
+                    ['quantity' => '3'],
+                ]
+            ],
+            [
+                'backorder' => 'TRU',
+            ],
+        ];
+        $object = UpdateObject::create('FbSales', $properties[0], 'update');
+        $object->addElements([$properties[0]]);
+        try {
+            $object->addElements($properties);
+        } catch (InvalidArgumentException $exception) {
+        }
+        $this->assertEquals(2, count($object->getElements()));
     }
 
     /**
@@ -409,7 +419,7 @@ class UpdateObjectTest extends TestCase
      */
     public function testContactNoEmbeddedPerson()
     {
-        $this->expectException(OutOfBoundsException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("Unknown element properties provided for 'KnContact' element: names are 'person'.");
         $properties = [
             'email' => 'rm@wyz.biz',

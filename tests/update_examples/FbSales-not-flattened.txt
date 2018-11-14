@@ -5,7 +5,8 @@
 FbSales::22
 [
   'sales_relation' => 'xxxxxxxxxxx',
-  'Unit' => '1',
+; We've just made "unit" an alias for "Unit", to prevent confusion...
+  'unit' => '1',
   'warehouse' => '*****',
   'line_items' => [
     [
