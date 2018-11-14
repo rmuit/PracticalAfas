@@ -17,6 +17,7 @@ use RuntimeException;
  * A collection of standalone helper methods for AFAS data manipulation.
  *
  * At the moment:
+ * - Deduce whether an exception is 'temporary';
  * - Fetch a large data set in batches;
  * - (The others are moved into various UpdateObjects as of v2.0.)
  *
@@ -24,6 +25,76 @@ use RuntimeException;
  */
 class Helper
 {
+    protected static $temporaryErrorSubstrings = [
+        'Operation timed out',
+        'connection timeout',
+        'error parsing WSDL',
+        'System.OutOfMemoryException',
+        // MS SQL Server errors:
+        'insufficient disk space',
+        'tempdb is probably out of space',
+        // We've observed (intermittent) 403s (access denied) on AFAS server/
+        // load problems. 403s should not normally be encountered, so marking
+        // 'temporary' should be safe.
+        'HTTP response status 403',
+    ];
+
+    /**
+     * Adds an error substring that should be classified as temporary.
+     *
+     * Experience from 2012-2014 has shown that the following two strings may
+     * have to be added because they occur in errors which are temporary. (I
+     * had them added on my system, in order not to flood the owners with
+     * unnecessary error e-mails --RM). It is however not unlikely that there
+     * are also permanent errors which have these as part of their messages,
+     * in which case we run the risk of classifying permanent errors as
+     * temporary and (depending on what your system does with these) wrongly
+     * never informing a human about this, which is dangerous.
+     * - 'Response not of type text/xml'
+     * - '[ANTA WARNING]'
+     *
+     * @see IsTemporaryError()
+     */
+    public static function addTemporaryErrorSubstring($substring)
+    {
+        static::$temporaryErrorSubstrings[] = $substring;
+    }
+
+    /**
+     * Tries to deduce whether an error from AFAS is temporary.
+     *
+     * This method does not claim to be perfect but will at least provide a
+     * starting point.
+     *
+     * Use case: say your system is a webshop and are trying to send in new
+     * orders into AFAS. If AFAS returns an error, your system needs to know
+     * whether it's temporary (e.g. because of a connection error) or permanent,
+     * so it can decide whether to try again later, or inform a human.
+     *
+     * Other suggested call argument might be the client object and the call
+     * plus arguments.
+     *
+     * @param \Exception $exception
+     *   The exception thrown by a client class.
+     * @param \PracticalAfas\Client\RestCurlClient|object $client
+     *   (Optional) The client. May be more useful if the client class
+     *   uses RememberCallDataTrait, so we can access last call data.
+     *
+     * @return bool
+     *   True if the error is temporary.
+     */
+    public static function IsTemporaryError(\Exception $exception, $client)
+    {
+        $message = $exception->getMessage();
+        foreach (static::$temporaryErrorSubstrings as $error_substring) {
+            if (strpos($message, $error_substring) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Calls a GetConnector to get one batch of a large data set.
      *
