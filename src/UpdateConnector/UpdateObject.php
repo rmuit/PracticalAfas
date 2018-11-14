@@ -552,7 +552,7 @@ class UpdateObject
             }
         }
         if (!is_string($action) || ($action && !in_array($action, $actions, true))) {
-            throw new InvalidArgumentException('Unknown action value' . var_export($action, true) . '.');
+            throw new InvalidArgumentException('Unknown action value ' . var_export($action, true) . '.');
         }
 
         if (isset($element_index)) {
@@ -1962,12 +1962,37 @@ class UpdateObject
                             case 'integer':
                             case 'decimal':
                                 if (!is_numeric($value)) {
-                                    throw new InvalidArgumentException("%NAME field value of %ELEMENT must be numeric.");
+                                    throw new InvalidArgumentException("%NAME field value of %ELEMENT is not numeric.");
                                 }
                                 if ($this->propertyDefinitions['fields'][$field_name]['type'] === 'integer' && strpos((string)$value, '.') !== false) {
-                                    throw new InvalidArgumentException("%NAME field value of %ELEMENT must be an integer value.");
+                                    throw new InvalidArgumentException("%NAME field value of %ELEMENT is not a valid integer value.");
                                 }
                                 // @todo check digits for decimal, if/when we know that's necessary.
+                                break;
+
+                            case 'boolean':
+                                // In this general class we'll be a bit lenient
+                                // about what we accept as boolean, but we
+                                // won't accept and silently convert just any
+                                // string/number. Let's accept 0 / 1 / -1 too.
+                                if (!is_bool($value)) {
+                                    $valid = false;
+                                    if (is_string($value) && in_array(strtolower($value), ['true', 'false'], true)) {
+                                        $valid = true;
+                                    }
+                                    if (is_numeric($value) && in_array($value, [0, 1, -1])) {
+                                        $valid = true;
+                                    }
+                                    if (!$valid) {
+                                        throw new InvalidArgumentException("%NAME field value of %ELEMENT is not a valid boolean value.");
+                                    }
+                                }
+                                break;
+
+                            case 'email':
+                                if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                                  throw new InvalidArgumentException("%NAME field value of %ELEMENT is not a valid e-mail address.");
+                                }
                                 break;
                         }
                     }

@@ -165,6 +165,7 @@ class OrgPersonContact extends UpdateObject
                         // E-mail werk
                         'EmAd' => [
                             'alias' => 'email',
+                            'type' => 'email',
                         ],
                         // Homepage
                         'HoPa' => [
@@ -442,6 +443,7 @@ class OrgPersonContact extends UpdateObject
                         // E-mail werk
                         'EmAd' => [
                             'alias' => 'email',
+                            'type' => 'email',
                         ],
                         'EmA2' => [],
                         // Homepage
@@ -644,6 +646,7 @@ class OrgPersonContact extends UpdateObject
                         // E-mail werk
                         'EmAd' => [
                             'alias' => 'email',
+                            'type' => 'email',
                         ],
                         // Homepage
                         'HoPa' => [
