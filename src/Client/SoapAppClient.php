@@ -17,11 +17,16 @@ use RuntimeException;
 use UnexpectedValueException;
 
 /**
- * Wrapper around client specific details of making a remote AFAS call.
+ * Client for getting/sending data from/to AFAS, using SOAP API & php-soap ext.
  *
- * This class contains one public method: callAfas(), and uses
- * - the SOAP library bundled with PHP5;
- * - An 'app connector' for authentication.
+ * This class takes care of authentication / connection details but has no
+ * logic around interpreting any results. On any error, an exception is thrown.
+ *
+ * It has no official interface. It contains two public methods:
+ * - getClientType(): a static method which may be needed when not using this
+ *   class standalone.
+ * - callAfas(): the only method needed in order to make calls to AFAS. The
+ *   arguments and return value may differ depending on the client type.
  */
 class SoapAppClient
 {
@@ -264,10 +269,10 @@ class SoapAppClient
      *
      * @param string $type
      *   Type of connector: get / update / report / subject / data.
-     * @param string $function
+     * @param string $endpoint
      *   Function name to call.
      * @param array $arguments
-     *   Named function arguments. All values must be scalars. (Case of argument
+     *   Named arguments. All values must be scalars. (Case of argument
      *   names gets changed; if there are multiple arguments whose names only
      *   differ in case, then the value that is later in the array will override
      *   earlier arguments.)
@@ -284,7 +289,7 @@ class SoapAppClient
      * @throws \Exception
      *   For anything else that went wrong, e.g. initializing the SoapClient.
      */
-    public function callAfas($type, $function, array $arguments)
+    public function callAfas($type, $endpoint, array $arguments)
     {
         $type = strtolower($type);
         // Unify case of arguments, so we don't miss any mis-cased ones. (For
@@ -303,7 +308,7 @@ class SoapAppClient
 
         $client = $this->getSoapClient($type);
 
-        $arguments = $this->validateArguments($arguments, $function);
+        $arguments = $this->validateArguments($arguments, $endpoint);
 
         // The SOAP argument names are case sensitive so we need to turn them
         // back to valid ones.
@@ -324,23 +329,23 @@ class SoapAppClient
             }
             $params[] = new SoapVar($value, XSD_STRING, null, null, $name, 'urn:Afas.Profit.Services');
         }
-        $function_wrapper = new SoapVar($params, SOAP_ENC_OBJECT, null, null, $function, 'urn:Afas.Profit.Services');
-        $function_param = new SoapParam($function_wrapper, $function);
+        $function_wrapper = new SoapVar($params, SOAP_ENC_OBJECT, null, null, $endpoint, 'urn:Afas.Profit.Services');
+        $function_param = new SoapParam($function_wrapper, $endpoint);
 
         if (!empty($this->options['useWSDL'])) {
-            $response = $client->$function($function_param);
+            $response = $client->$endpoint($function_param);
         } else {
             // The above call would set the SOAPAction HTTP header to
             // "urn:Afas.Profit.Services#GetDataWithOptions". Call __soapCall()
             // directly (rather than indirectly through a 'magic function' as
             // above) so that we can modify arguments.
-            $response = $client->__soapCall($function, [$function_param], ['soapaction' => 'urn:Afas.Profit.Services/' . $function]);
+            $response = $client->__soapCall($endpoint, [$function_param], ['soapaction' => 'urn:Afas.Profit.Services/' . $endpoint]);
         }
 
         // See the WSDL definition: Every AFAS call returns a single-value
         // response with the single value always a string named XXXResult.
-        if (is_object($response) && isset($response->{"{$function}Result"})) {
-            return $response->{"{$function}Result"};
+        if (is_object($response) && isset($response->{"{$endpoint}Result"})) {
+            return $response->{"{$endpoint}Result"};
         } elseif (is_string($response)) {
             // WSDL-less call returns a string.
             return $response;

@@ -2313,11 +2313,12 @@ class UpdateObject
     /**
      * Sets property definitions.
      *
-     * This method exists for subclassing. Setting the property definitions is
-     * only supposed to be done in the constructor, but if we had this code in
-     * the constructor (directly followed by adding the element values into the
-     * object based on these properties), child classes would not be able to
-     * add their own customizations to these definitions in time.
+     * This method exists for subclassing (but not necessarily in every child
+     * class; it's only called where it's needed). Setting the definitions
+     * should only be done in the constructor, but if this code was in there
+     * (directly followed by adding the element values into the object based on
+     * these properties), child classes would not be able to add their own
+     * customizations to these definitions in time.
      */
     protected function setPropertyDefinitions() {
         // Below definitions are based on what AFAS calls the 'XSD Schema' for

@@ -14,10 +14,16 @@ use InvalidArgumentException;
 use RuntimeException;
 
 /**
- * Wrapper around client specific details of making a remote AFAS call.
+ * Client for getting/sending data from/to AFAS, using REST API through CURL.
  *
- * This class contains one public method: callAfas(), and uses CURL to connect
- * to the REST API.
+ * This class takes care of authentication / connection details but has no
+ * logic around interpreting any results. On any error, an exception is thrown.
+ *
+ * It has no official interface. It contains two public methods:
+ * - getClientType(): a static method which may be needed when not using this
+ *   class standalone.
+ * - callAfas(): the only method needed in order to make calls to AFAS. The
+ *   arguments and return value may differ depending on the client type.
  */
 class RestCurlClient
 {
@@ -196,7 +202,7 @@ class RestCurlClient
      *   Named URL arguments. All argument names must be lower case; all values
      *   must be scalars.
      * @param string $function
-     *   The REST API 'function' (URL) to call.
+     *   The REST API endpoint URL.
      * @param string $type
      *   HTTP verb: GET, PUT, POST, DELETE. Must be upper case.
      * @param string $request_body
@@ -208,7 +214,7 @@ class RestCurlClient
      * @throws \InvalidArgumentException
      *   For invalid function arguments.
      */
-    protected function validateArguments($arguments, $function, $type, $request_body)
+    protected function validateArguments($arguments, $endpoint, $type, $request_body)
     {
         if (!in_array($type, ['GET', 'PUT', 'POST', 'DELETE'], true)) {
             throw new InvalidArgumentException("Invalid HTTP verb '$type''", 40);
@@ -244,11 +250,10 @@ class RestCurlClient
      *
      * @param string $type
      *   HTTP verb: GET, PUT, POST, DELETE.
-     * @param string $function
-     *   The REST API 'function' (URL) to call. The caller is expected to ensure
-     *   its validity.
+     * @param string $endpoint
+     *   The REST API endpoint URL.
      * @param array $arguments
-     *   Named URL arguments. All values must be scalars. Unlike $function, all
+     *   Named URL arguments. All values must be scalars. Unlike $endpoint, all
      *   names/values will be escaped. (Case of the argument names gets changed;
      *   if there are multiple arguments whose names only differ in case, then
      *   the value that is later in the array will override earlier arguments.)
@@ -262,12 +267,11 @@ class RestCurlClient
      *
      * @throws \InvalidArgumentException
      *   For invalid function arguments or unknown connector type.
-     * @throws \UnexpectedValueException
-     *   If the SoapClient returned a response in an unknown format.
-     * @throws \Exception
-     *   For anything else that went wrong, e.g. initializing the SoapClient.
+     * @throws \RuntimeException
+     *   If an error was returned by the endpoint, or was encountered while
+     *   connecting to the endpoint.
      */
-    public function callAfas($type, $function, array $arguments, $request_body = '')
+    public function callAfas($type, $endpoint, array $arguments, $request_body = '')
     {
         $type = strtoupper($type);
         // Unify case of arguments, so we don't skip any validation. (If two
@@ -275,12 +279,12 @@ class RestCurlClient
         // later in the array will override other indices.)
         $arguments = array_change_key_case($arguments);
 
-        $arguments = $this->validateArguments($arguments, $function, $type, $request_body);
+        $arguments = $this->validateArguments($arguments, $endpoint, $type, $request_body);
 
         $env = !empty($this->options['environment']) ? $this->options['environment'] : '';
-        // Unlike other input, we don't escape $function (we assume it is safe)
+        // Unlike other input, we don't escape $endpoint (we assume it is safe)
         // because otherwise we can't have slashes in there.
-        $endpoint = 'https://' . rawurlencode($this->options['customerId']) . ".rest$env.afas.online/profitrestservices/$function";
+        $endpoint = 'https://' . rawurlencode($this->options['customerId']) . ".rest$env.afas.online/profitrestservices/$endpoint";
         if ($arguments) {
             $params = [];
             foreach ($arguments as $key => $value) {
@@ -320,6 +324,7 @@ class RestCurlClient
         $ch = curl_init();
         curl_setopt_array($ch, $forced_options + $this->curlOptions);
         $response = curl_exec($ch);
+        $response_headers = '';
         if ($response !== false) {
             list($response_headers, $response) = explode("\r\n\r\n", $response);
         }

@@ -10,9 +10,6 @@
 
 namespace PracticalAfas\UpdateConnector;
 
-use InvalidArgumentException;
-use UnexpectedValueException;
-
 /**
  * FbSales is in its own class because it's the only object type that needs to
  * implement IsoCountryTrait and has no other custom functionality.

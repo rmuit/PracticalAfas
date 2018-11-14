@@ -99,7 +99,7 @@ class Connection
     /**
      * The PracticalAfas client we use to execute actual AFAS calls.
      *
-     * @var object
+     * @var \PracticalAfas\Client\RestCurlClient|object
      */
     protected $client;
 
@@ -141,7 +141,7 @@ class Connection
     /**
      * Returns the PracticalAfas client object.
      *
-     * @return object
+     * @return \PracticalAfas\Client\RestCurlClient|object
      */
     public function getClient()
     {
@@ -158,9 +158,10 @@ class Connection
      *
      * The object type for a client is not strictly defined. (It does not have
      * an interface.) This is on purpose; as long as the 'interface' is as
-     * simple as it is (i.e. one method 'callAfas()') and testing is not
-     * impaired, we can enable anyone to use those client classes standalone
-     * in their PHP experiments, without even using an autoloader.
+     * simple as it is (i.e. two methods callAfas() and getClientType()) and
+     * testing is not impaired, we can enable anyone to use those client
+     * classes standalone in their PHP experiments, without even using an
+     * autoloader.
      *
      * @param object $client
      *   An AFAS client object.
@@ -320,10 +321,10 @@ class Connection
     /**
      * Sends data to an AFAS Update Connector.
      *
-     * @param $connector_name
-     *   Name of the Update Connector.
+     * @param string $connector_name
+     *   The name of the Update Connector.
      * @param string|array|\PracticalAfas\UpdateConnector\UpdateObject $data
-     *   Data to send in to the Update Connector; can be:
+     *   The data to send in to the Update Connector; can be:
      *   - a string, which will be sent into the connector as-is. Must be JSON
      *     or XML depending on the client type.
      *   - an UpdateObject instance containing the data to send.
@@ -398,7 +399,7 @@ class Connection
                 }
                 $data = $data->output('json');
             }
-            $response = $this->client->callAfas($rest_verbs[$action], "connectors/$connector_name", [], $data);
+            $response = $this->client->callAfas($rest_verbs[$action], 'connectors/' . rawurlencode($connector_name), [], $data);
         }
 
         return $response;
@@ -480,10 +481,16 @@ class Connection
         // of data_id (e.g. connector), but at least throw here for any
         // non-scalar.
         if ((!is_string($data_id) || $data_id === '') && !is_int($data_id) && $data_type !== self::DATA_TYPE_VERSION_INFO) {
+            if (!is_scalar($data_id)) {
+                $data_id = is_array($data_id) ? '[object]' : '[array]';
+            }
             throw new InvalidArgumentException("Invalid 'data_id' argument: " . var_export($data_id, true), 32);
         }
         // Just in case the user specified something other than a constant:
         if (!is_string($data_type)) {
+            if (!is_scalar($data_type)) {
+                $data_type = is_array($data_type) ? '[object]' : '[array]';
+            }
             throw new InvalidArgumentException("Invalid 'data_type' argument: " . var_export($data_type, true), 32);
         }
         $data_type = strtolower($data_type);
@@ -533,6 +540,9 @@ class Connection
                 $supported = $output_format === self::GET_OUTPUTMODE_ARRAY;
             }
             if (!$supported) {
+                if (!is_scalar($output_format)) {
+                    $output_format = is_array($output_format) ? '[object]' : '[array]';
+                }
                 throw new InvalidArgumentException("AfasSoapConnection::getData() cannot handle handle output mode $output_format.", 30);
             }
         }
@@ -763,7 +773,7 @@ class Connection
                 break;
 
             case self::DATA_TYPE_METAINFO_UPDATE:
-                // All metainfo can be retrieved by specifying empty  $data_id.
+                // All metainfo can be retrieved by specifying empty $data_id.
                 $function = 'metainfo' . (empty($data_id) ? '' : '/update/' . rawurlencode($data_id));
                 break;
 
@@ -972,7 +982,10 @@ class Connection
         if ($filters) {
             $operator = !empty($filters['#op']) ? $filters['#op'] : self::OP_EQUAL;
             if (!is_numeric($operator) || $operator < 1 || $operator > 14) {
-                throw new InvalidArgumentException('Unknown filter operator: ' . var_export($operator, true), 33);
+                if (!is_scalar($operator)) {
+                    $operator = is_array($operator) ? '[object]' : '[array]';
+                }
+                throw new InvalidArgumentException("Unknown filter operator: $operator.", 33);
             }
             foreach ($filters as $outerfield => $filter) {
                 if ($outerfield !== '#op') {
@@ -981,19 +994,27 @@ class Connection
                         // Process all fields on an inner layer.
                         $op = !empty($filter['#op']) ? $filter['#op'] : self::OP_EQUAL;
                         if (!is_numeric($op) || $op < 1 || $op > 14) {
-                            throw new InvalidArgumentException('Unknown filter operator: ' . var_export($operator, true), 33);
+                            if (!is_scalar($op)) {
+                              $op = is_array($op) ? '[object]' : '[array]';
+                            }
+                            throw new InvalidArgumentException("Unknown filter operator: $op (for key: $outerfield).", 33);
                         }
                         foreach ($filter as $key => $value) {
                             if ($key !== '#op') {
 
                                 if (is_array($value)) {
-                                    throw new InvalidArgumentException('Filter has more than two array dimensions: ' . var_export($filters, true), 33);
+                                    throw new InvalidArgumentException("Filter has more than two array dimensions (for key: $outerfield; field: $key).", 33);
+                                }
+                                if (!is_scalar($value)) {
+                                  throw new InvalidArgumentException("Filter contains a non-scalar value (for key: $outerfield; field: $key).", 33);
                                 }
                                 $fields[] = $key;
                                 $values[] = $value;
                                 $operators[] = $op;
                             }
                         }
+                    } elseif (!is_scalar($filter)) {
+                        throw new InvalidArgumentException("Filter contains a non-scalar value (for field: $outerfield).", 33);
                     } else {
                         // Process 1 field on the outer layer.
                         $fields[] = $outerfield;
@@ -1057,7 +1078,10 @@ class Connection
         if ($filters) {
             $operator = !empty($filters['#op']) ? $filters['#op'] : self::OP_EQUAL;
             if (!is_numeric($operator) || $operator < 1 || $operator > 14) {
-                throw new InvalidArgumentException('Unknown filter operator: ' . var_export($operator, true), 33);
+                if (!is_scalar($operator)) {
+                    $operator = is_array($operator) ? '[object]' : '[array]';
+                }
+                throw new InvalidArgumentException("Unknown filter operator: $operator.", 33);
             }
             foreach ($filters as $outerfield => $filter) {
                 if ($outerfield !== '#op') {
@@ -1066,17 +1090,25 @@ class Connection
                         // Process all fields on an inner layer.
                         $op = !empty($filter['#op']) ? $filter['#op'] : self::OP_EQUAL;
                         if (!is_numeric($op) || $op < 1 || $op > 14) {
-                            throw new InvalidArgumentException('Unknown filter operator: ' . var_export($operator, true), 33);
+                            if (!is_scalar($op)) {
+                              $op = is_array($op) ? '[object]' : '[array]';
+                            }
+                            throw new InvalidArgumentException("Unknown filter operator: $op (for key: $outerfield).", 33);
                         }
                         foreach ($filter as $key => $value) {
                             if ($key !== '#op') {
 
                                 if (is_array($value)) {
-                                    throw new InvalidArgumentException('Filter has more than two array dimensions: ' . var_export($filters, true), 33);
+                                    throw new InvalidArgumentException("Filter has more than two array dimensions (for key: $outerfield; field: $key).", 33);
+                                }
+                                if (!is_scalar($value)) {
+                                  throw new InvalidArgumentException("Filter contains a non-scalar value (for key: $outerfield; field: $key).", 33);
                                 }
                                 $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . static::xmlValue($value) . '</Field>';
                             }
                         }
+                    } elseif (!is_scalar($filter)) {
+                        throw new InvalidArgumentException("Filter contains a non-scalar value (for field: $outerfield).", 33);
                     } else {
                         // Process 1 field on the outer layer.
                         $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . static::xmlValue($filter) . '</Field>';
