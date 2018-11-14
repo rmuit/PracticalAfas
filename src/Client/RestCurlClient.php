@@ -21,10 +21,11 @@ use RuntimeException;
  */
 class RestCurlClient
 {
-    /**
-     * CLIENT_TYPE is necessary for the Connection class to work with it.
-     */
-    const CLIENT_TYPE = 'REST';
+
+    public static function getClientType()
+    {
+        return 'REST';
+    }
 
     /**
      * Configuration options.

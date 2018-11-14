@@ -18,20 +18,15 @@ use wsdl;
 use wsdlcache;
 
 /**
- * Wrapper around client specific details of making a remote AFAS call.
+ * Old client using SOAP API & nusoap library; currently not operational.
  *
  * This class is really old. It is still here as a reminder that anyone who
  * cannot or does not want to use the php-soap extension, could convert this
  * into a client working with NuSoap (which is still around) and the
  * 'app connector'.
  *
- * This class contains one public method: callAfas(), and uses:
- * - the external (older) NuSOAP library. It can be used if the (preferred) PHP
- *   SOAP extension is not compiled/enabled on your server.
- * - NTLM authentication, as opposed to a more modern "app connector". (NTLM
- *   authentication is supposedly phased out by AFAS on 2017-01-01. This code
- *   will stay around in case someone wants to port it to a Nusoap + App
- *   connector client.)
+ * It currently uses NTLM authentication instead of an 'app connector'. (NTLM
+ * authentication is supposedly phased out by AFAS on 2017-01-01.)
  *
  * $this->soapClient and $this->connectorType are not used. That is, we do not
  * cache the actual soapclient across calls but reinitialize it with each call
@@ -59,6 +54,7 @@ class NusoapNtlmClient
      */
     public function __construct(array $options)
     {
+        // NOTE - all these can be scrapped. As with the other clients, urlBase can be hardcoded.
         foreach (['urlBase', 'environmentId', 'domain', 'userId', 'password'] as $required_key) {
             if (empty($options[$required_key])) {
                 $classname = get_class($this);
@@ -66,7 +62,7 @@ class NusoapNtlmClient
             }
         }
 
-        // Add defaults for the SOAP client.
+        // Add defaults for the SOAP client. NOTE - may be well of being split into separate 2nd arg $soap_client_options.
         $options += [
             'soap_defencoding' => 'utf-8',
             'xml_encoding' => 'utf-8',

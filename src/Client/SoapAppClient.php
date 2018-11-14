@@ -25,6 +25,11 @@ use UnexpectedValueException;
  */
 class SoapAppClient
 {
+    public static function getClientType()
+    {
+      return 'SOAP';
+    }
+
     /**
      * Configuration options.
      *

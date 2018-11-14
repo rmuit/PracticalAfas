@@ -104,13 +104,6 @@ class Connection
     protected $client;
 
     /**
-     * The 'type of client': "REST" or "SOAP".
-     *
-     * @var string
-     */
-    protected $clientType;
-
-    /**
      * Default output format by getData() calls. See setDataOutputFormat().
      *
      * @var int|string
@@ -179,20 +172,17 @@ class Connection
      */
     public function setClient($client)
     {
-        if (!is_callable([$client, 'callAfas'])) {
+        if (!is_callable([$client, 'callAfas']) || !is_callable([$client, 'getClientType'])) {
             throw new InvalidArgumentException('Object is not a PracticalAfas client class.', 2);
         }
         $this->client = $client;
 
-        $class = get_class($client);
-        // Set the type so the rest of our code can decide on logic to follow.
-        // Historically, SOAP classes have not had a type defined.
-        $this->clientType = defined("$class::CLIENT_TYPE") ? $class::CLIENT_TYPE : 'SOAP';
-        if (!in_array($this->clientType, ['REST', 'SOAP'], true)) {
-            throw new InvalidArgumentException("Unrecognized client type {$this->clientType}.", 1);
+        $type = $this->getClientType();
+        if (!in_array($type, ['REST', 'SOAP'], true)) {
+            throw new InvalidArgumentException("Unrecognized client type $type.", 1);
         }
 
-        $required_extensions = $this->clientType === 'SOAP'
+        $required_extensions = $type === 'SOAP'
             ? ['openssl', 'simplexml', 'soap'] : ['curl', 'json', 'openssl'];
         $missing_extensions = [];
         foreach ($required_extensions as $extension) {
@@ -208,11 +198,16 @@ class Connection
     /**
      * Returns the 'type' of client set for this connection: "REST" or "SOAP".
      *
+     * This is not exactly necessary to exist in the Connection class, but
+     * getting it from the client type is not a one liner / may be confusing
+     * for some people, since it's a static method.
+     *
      * @return string
      */
     public function getClientType()
     {
-        return $this->clientType;
+        $client =  $this->client;
+        return $client::getClientType();
     }
 
     /**
@@ -275,7 +270,7 @@ class Connection
         if (isset($this->includeMetadata)) {
             $ret = $this->includeMetadata;
         } else {
-            $ret = $this->clientType !== 'SOAP' && $this->getDataOutputFormat() == self::GET_OUTPUTMODE_LITERAL;
+            $ret = $this->getClientType() !== 'SOAP' && $this->getDataOutputFormat() == self::GET_OUTPUTMODE_LITERAL;
         }
         return $ret;
     }
@@ -305,7 +300,7 @@ class Connection
      */
     public function getDataIncludeEmptyFields()
     {
-        return isset($this->includeEmptyFields) ? $this->includeEmptyFields : $this->clientType !== 'SOAP';
+        return isset($this->includeEmptyFields) ? $this->includeEmptyFields : $this->getClientType() !== 'SOAP';
     }
 
     /**
@@ -371,7 +366,7 @@ class Connection
             throw new InvalidArgumentException('Data is of invalid type.');
         }
 
-        if ($this->clientType === 'SOAP') {
+        if ($this->getClientType() === 'SOAP') {
             // $action is ignored, except (earlier) if an array was passed. We
             // should not check it against the UpdateObject because in theory
             // multiple actions can be defined for multiple elements present in
@@ -517,7 +512,7 @@ class Connection
         // 'Outputmode' was never a thing) and for REST clients (because
         // supposedly all output is JSON, therefore can be converted to an
         // array? @todo doublecheck this... This will get clear when more PRs are sent in.)
-        if ($this->clientType === 'SOAP' && $data_type !== self::DATA_TYPE_GET) {
+        if ($this->getClientType() === 'SOAP' && $data_type !== self::DATA_TYPE_GET) {
             // We want to return the literal return value from the endpoint.
             $output_format = self::GET_OUTPUTMODE_LITERAL;
         } else {
@@ -532,7 +527,7 @@ class Connection
             // only supported for SOAP.
             if (is_numeric($output_format)) {
                 $supported = $output_format == self::GET_OUTPUTMODE_LITERAL;
-            } elseif ($this->clientType === 'SOAP') {
+            } elseif ($this->getClientType() === 'SOAP') {
                 $supported = in_array($output_format, [self::GET_OUTPUTMODE_ARRAY, self::GET_OUTPUTMODE_SIMPLEXML], true);
             } else {
                 $supported = $output_format === self::GET_OUTPUTMODE_ARRAY;
@@ -545,10 +540,10 @@ class Connection
         // 'Metadata' only makes sense for SOAP GetConnectors (where it
         // influences API return value) but may make sense for all REST API
         // calls (because we process the return value ourselves).
-        if ($this->clientType !== 'SOAP' || $data_type === self::DATA_TYPE_GET) {
+        if ($this->getClientType() !== 'SOAP' || $data_type === self::DATA_TYPE_GET) {
             if (isset($extra_arguments['options']['metadata'])) {
                 $include_metadata = !empty($extra_arguments['options']['metadata']);
-            } elseif ($this->clientType !== 'SOAP' && $output_format == self::GET_OUTPUTMODE_LITERAL) {
+            } elseif ($this->getClientType() !== 'SOAP' && $output_format == self::GET_OUTPUTMODE_LITERAL) {
                 // If the output format comes from $extra_arguments['options']['outputmode'],
                 // this overrides the value to true even though
                 // $this->getDataIncludeMetadata() will return false (because it
@@ -557,7 +552,7 @@ class Connection
             } else {
                 $include_metadata = $this->getDataIncludeMetadata();
             }
-            if (!$include_metadata && $this->clientType !== 'SOAP' && $output_format !== self::GET_OUTPUTMODE_ARRAY) {
+            if (!$include_metadata && $this->getClientType() !== 'SOAP' && $output_format !== self::GET_OUTPUTMODE_ARRAY) {
                 // For SOAP, this is implemented at the server side. For REST we
                 // have to process the output, which we only do for ARRAY.
                 throw new InvalidArgumentException("The getData() call is set to not return metadata. This is not supported by REST clients unless they have 'ARRAY' output format set.", 35);
@@ -589,7 +584,7 @@ class Connection
             $include_empty_fields = isset($extra_arguments['options']['outputoptions']) ?
                 $extra_arguments['options']['outputoptions'] == self::GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY
                 : $this->getDataIncludeEmptyFields();
-            if (!$include_empty_fields && $this->clientType !== 'SOAP') {
+            if (!$include_empty_fields && $this->getClientType() !== 'SOAP') {
                 // We could support this for REST too, at least for
                 // OUTPUTMODE_ARRAY which would mean processing output below.
                 throw new InvalidArgumentException("The getData() call is set to not return empty fields. This is not supported by REST clients.", 36);
@@ -641,7 +636,7 @@ class Connection
 
         // We split up the parsing of further arguments into methods per client
         // type because it's so different.
-        if ($this->clientType === 'SOAP') {
+        if ($this->getClientType() === 'SOAP') {
             if ($data_type === self::DATA_TYPE_GET) {
                 // Always add the 'options' parameters which we just validated.
                 if (isset($extra_arguments['options']) && !is_array($extra_arguments['options'])) {
@@ -681,7 +676,7 @@ class Connection
         // Now, numeric format == GET_OUTPUTMODE_LITERAL. Others need to be
         // processed.
         if (!is_numeric($output_format)) {
-            if ($this->clientType === 'SOAP') {
+            if ($this->getClientType() === 'SOAP') {
                 $doc_element = new SimpleXMLElement($data);
                 if ($output_format === self::GET_OUTPUTMODE_SIMPLEXML) {
                     $data = $doc_element;
