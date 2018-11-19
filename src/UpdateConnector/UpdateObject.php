@@ -17,8 +17,7 @@ use UnexpectedValueException;
 /**
  * Base class for generating output to send to AFAS Update Connectors.
  *
- * For any object type which has known property definitions (either in this
- * class or in a class that is present in the static $classMap variable),
+ * For any object type which has known property definitions,
  * - An UpdateObject can be create()'d from array of data having a format that
  *   is a little easier to grasp than the JSON structure (and a lot easier than
  *   XML);
@@ -32,8 +31,12 @@ use UnexpectedValueException;
  *   fields and embedded objects, additional full elements, action values) so
  *   an object can be constructed gradually / manipulated.
  *
+ * Classes and field definitions can be overridden using static methods, to
+ * support e.g. custom fields, new object types or modified behavior for
+ * existing object types.
+ *
  * See create() for more information; see the tests/update_examples directory
- * for example array inputs.
+ * for some example array inputs.
  *
  * An UpdateObject can hold data for several elements to send through an
  * Update Connector at once; create() can be called with either the input data
@@ -52,7 +55,9 @@ use UnexpectedValueException;
  * embedded object (again represented by an UpdateObject instance) which can
  * again (depending on the key/object type) contain one or multiple elements.
  *
- * About subclassing: see the comments at $classMap.
+ * About subclassing: see the comments at overrideClass(). Custom fields to
+ * extend standard AFAS objects don't necessarily need subclasssing; see
+ * overridePropertyDefinitions().
  */
 class UpdateObject
 {
@@ -140,44 +145,33 @@ class UpdateObject
     /**
      * A mapping from object type to the class name implementing the type.
      *
-     * Any object types not mentioned here are implemented by this class, or
-     * not implemented.
-     *
-     * Please note that names of object types (the keys in this variable) are
-     * not necessarily equal to the names of 'object reference fields' in
-     * property definitions. See $propertyDefinitions docs for the difference.
-     *
-     * A project which wants to implement custom behavior for specific object
-     * types, or define new object types, can do several things. As an example,
-     * say you want to add a custom field/behavior to KnPerson objects. You can:
-     * - Create a MyPerson class to extend OrgPersonContact (or to extend
-     *   UpdateObject, but the current KnPerson is implemented in
-     *   OrgPersonContact); define the extra field/behavior in
-     *   $propertyDefinitions etc and call 'new MyPerson($values, $action)' to
-     *   get an object representing this type.
-     * - The same but implement multiple overridden objects in the same class
-     *   named e.g. MyUpdateObject, and call
-     *   'new MyUpdateObject($values, $action, "KnPerson")' to get an object.
-     * - The same but set
-     *   UpdateObject::$classMap['KnPerson'] = '\MyProject\MyPerson', and call
-     *   UpdateObject::create('KnPerson, $values, $action) to get an object.
-     * The latter way enables creating custom embedded objects, e.g.
-     * creating a KnContact containing an embedded KnPerson object with the
-     * custom field/behavior. If $classMap is not modified, the embedded object
-     * will be created using the standard class.
-     *
-     * @todo before releasing 2.0, see if we should make this protected and
-     *   add a method to set (change/add) one key + to get the whole thing.
+     * Any object types not in here are implemented by this class, or
+     * not implemented. Extra types can be set using static overrideClass().
      *
      * @var string[]
      */
-    public static $classMap = [
+    protected static $classMap = [
         'FbSales' => '\PracticalAfas\UpdateConnector\FbSales',
         'KnBasicAddress' => '\PracticalAfas\UpdateConnector\KnBasicAddress',
         'KnContact' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
         'KnOrganisation' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
         'KnPerson' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
     ];
+
+    /**
+     * Properties to override per specific setting.
+     *
+     * Most methods are not supposed to reference this variable; (for speed
+     * reasons) it is the responsibility of a class constructor to merge these
+     * definitions into the propertyDefinitions variable, after which the
+     * variable does not need to be touched anymore.
+     *
+     * It's supposed to be set through overridePropertyDefinitions().
+     * Keys/values in this variable are that method's first/second arguments.
+     *
+     * @var array[]
+     */
+    protected static $definitionOverrides = [];
 
     /**
      * The type of object (and the name of the corresponding Update Connector).
@@ -256,7 +250,12 @@ class UpdateObject
      *                 value must be an array of element(s) values.
      *   - 'required': See 'fields' above.
      *
-     * Child classes may define extra properties and handle those at will.
+     * For examples, see setPropertyDefinitions().
+     *
+     * Child classes may define extra properties and handle those at will. They
+     * should take into account that their properties could contain any value,
+     * or alternatively implement strict checking in their constructor, because
+     * values can be overridden using overridePropertyDefinitions(),
      *
      * About 'object reference fields': these are the names as found in e.g.
      * XSD schemas for a certain Update Connector. These are not necessarily
@@ -295,6 +294,122 @@ class UpdateObject
     protected $elements = [];
 
     /**
+     * Sets a custom class to use for a specific object type.
+     *
+     * This is necessary if you want to use the static create() method for
+     * creating customized objects. This is recommended, though not required.
+     *
+     * A project which wants to implement custom behavior for specific object
+     * types, or define new object types, can do several things. As an example,
+     * adding a custom field/behavior to KnContact objects can be done by:
+     * - Creating a MyPerson class to extend OrgPersonContact (or to extend
+     *   UpdateObject, but the current KnContact is implemented in
+     *   OrgPersonContact); define the extra field/behavior in
+     *   setPropertyDefinitions() etc and call 'new MyContact($values, $action)'
+     *   to get an object representing this type.
+     * - The same but implement multiple overridden objects in the same class
+     *   named e.g. MyUpdateObject, and call
+     *   'new MyUpdateObject($values, $action, "KnContact")' to get an object.
+     * - The same but call
+     *   UpdateObject::overrideClass('KnContact', '\...\MyPerson'); then call
+     *   UpdateObject::create('KnContact, $values, $action) to get an object.
+     *
+     * The latter way enables creating custom embedded objects, e.g.
+     * creating a KnPerson containing an embedded KnContact object with the
+     * custom field/behavior. If overrideClass() is not called, the embedded
+     * object will be created using the standard OrgPersonContact class.
+     *
+     * Note that for only adding/overriding field definitions (to e.g. support
+     * custom fields), it is not necessary to implement a custom class. This
+     * can be done by calling overridePropertyDefinitions() instead.
+     *
+     * @param string $object_type
+     *   The object type. Please note that names of object types are not always
+     *   (although often) equal to the names of 'object reference fields' in
+     *   property definitions. See $propertyDefinitions for the difference.
+     * @param string|null $class
+     *   The class which should implement this object type, starting with '\'.
+     *   Null to remove the override for this object type, falling back to the
+     *   standard definition inside whichever class' create() method is called.
+     *
+     * @throws \InvalidArgumentException
+     *   If any of the arguments are not a string or the class does not exist /
+     *   cannot be autoloaded.
+     *
+     * @see overridePropertyDefinitions()
+     * @see $classMap
+     * @see $propertyDefinitions
+     */
+    public static function overrideClass($object_type, $class)
+    {
+        if (!is_string($object_type)) {
+            throw new InvalidArgumentException('$object_type argument is not a string.');
+        }
+        if (!is_string($class) && isset($class)) {
+            throw new InvalidArgumentException('$class argument is not a string.');
+        }
+        if (!class_exists($class)) {
+            throw new InvalidArgumentException("$class class does not exist.");
+        }
+
+        if (isset($class)) {
+            self::$classMap[$object_type] = $class;
+        } else {
+            unset(self::$classMap[$object_type]);
+        }
+    }
+
+    /**
+     * Overrides property definitions for a specific object type.
+     *
+     * The anticipated use of this is defining custom fields for existing
+     * types. Whether calling this method has effect, relies on (constructor)
+     * code in the class which implements the object type. Definitions in
+     * classes which are already instantiated are not affected (with the
+     * possible exception of custom child classes referencing these overrides
+     * in a non-standard way).
+     *
+     * @param string $object_type
+     *   The object type. Please note that names of object types are not always
+     *   (although often) equal to the names of 'object reference fields' in
+     *   property definitions. See $propertyDefinitions for the difference.
+     * @param array $definitions
+     *   The definitions that will override any standard definitions set by
+     *   the constructor. The structure is the same as property definitions:
+     *   field definitions must be keyed by 'fields' and then the AFAS field
+     *   name; object reference field definitions, must be keyed by 'objects'
+     *   and then the reference field name. The individual (reference) field
+     *   definitions must be arrays or null. Arrays must be complete
+     *   definitions: if a field definition already exists, it will be
+     *   completely overwritten by this override definition, not merged. A null
+     *   value will remove the original field definition. Other custom values
+     *   on the first level of this array (i.e. on the same level as 'fields'
+     *   and 'objects') are seen as individual property definitions that will
+     *   also completely replace a property if that exists already; these
+     *   property definitions don't have to be arrays. A null value will also
+     *   remove any original property definition (rather than set it to null).
+     *
+     * @throws \InvalidArgumentException
+     *   If any of the arguments are invalid.
+     *
+     * @see $propertyDefinitions
+     */
+    public static function overridePropertyDefinitions($object_type, array $definitions)
+    {
+        if (!is_string($object_type)) {
+            throw new InvalidArgumentException('$object_type argument is not a string.');
+        }
+        if ($definitions) {
+            // Validate definitions. (We will also do this in the constructor
+            // but it seems best to throw exceptions as early as possible.)
+            static::handleDefinitionOverride($definitions);
+            self::$definitionOverrides[$object_type] = $definitions;
+        } else {
+            unset(self::$definitionOverrides[$object_type]);
+        }
+    }
+
+    /**
      * Instantiates a new UpdateObject, or a class defined in our map.
      *
      * One thing to remember for the $action argument: when wanting to use this
@@ -304,9 +419,20 @@ class UpdateObject
      * to passing nothing. (Yes this is a messy argument; @see setAction() if
      * you really want to know reasons.)
      *
+     * Valid names and aliases for fields (and 'object reference fields') for
+     * each object type are set in the protected $propertyDefinitions variable
+     * of the appropriate class. In this base class, these are set in
+     * setPropertyDefinitions() so can be found there. Other classes may do the
+     * same, define them in __construct() or in $propertyDefinitions directly.
+     * Definitions can however also be overridden and/or extra ones can be
+     * added, in child classes or through static overridePropertyDefinitions().
+     *
      * @param string $type
      *   The type of object, i.e. the 'Update Connector' name to send this data
-     *   into. Possible values can be found in $classMap and __construct().
+     *   into. Possible values can be found in the property definitions (i.e.
+     *   in setPropertyDefinitions() of this base class) or in the $classMap
+     *   variable. Extra ones can however also be added through static
+     *   overrideClass().
      * @param array $elements
      *   (Optional) Data to set in the UpdateObject, representing one or more
      *   elements of this type; see the definitions in __construct() or child
@@ -314,17 +440,19 @@ class UpdateObject
      *   elements if all keys are numeric and all values are arrays (or if the
      *   value is a single empty array, meaning zero elements); it's processed
      *   as a single element otherwise. Keys inside a single element can be:
-     *   - field names or aliases (as defined in __construct() / child classes);
-     *   - names or aliases of the 'object reference fields' (see
-     *     $propertyDefinitions)  which can be embedded into this object
-     *     type; the values must be an array of data (one or multiple elements)
-     *     to set in that object, or an UpdateObject;
+     *   - field names or aliases;
+     *   - names or aliases of the 'object reference fields' (see comments at
+     *     $propertyDefinitions)  which can be embedded into this object type;
+     *     the values must be an array of data (one or multiple elements) to
+     *     set in that object;
      *   - '@xxId' (where xx is a type-specific two letter code) or '@id', which
      *     holds the 'ID value' for an element. (In the output, this ID value is
      *     located in the Element structure the same level as the Fields, rather
      *     than inside Fields. Or in XML: it's an attribute in the Element tag.)
-     *   The names for fields and objects can either all be on the same level,
-     *   or nested in a 'Fields' and 'Objects' array.
+     *   The fields and objects can either all be present in the first dimension
+     *   of the array, or be present in a 'Fields' and/or 'Objects' array. In
+     *   the latter case, the first dimension of the array must not contain any
+     *   keys other than 'Fields', 'Objects' and the ID property.
      * @param string $action
      *   (Optional) The action to perform on the data: "insert", "update" or
      *   "delete". @see setAction() or the comments above.
@@ -354,18 +482,85 @@ class UpdateObject
      * @throws \UnexpectedValueException
      *   If this object's defined properties are invalid.
      *
-     * @see $propertyDefinitions
+     * @see $classMap
      * @see __construct()
      * @see output()
      */
-    public static function create($type, array $elements = [], $action = '', $validation_behavior = self::VALIDATE_ESSENTIAL, $parent_type = '') {
+    public static function create($type, array $elements = [], $action = '', $validation_behavior = self::VALIDATE_ESSENTIAL, $parent_type = '')
+    {
         // If a custom class is defined for this type, instantiate that one.
-        if (isset(static::$classMap[$type])) {
-            return new static::$classMap[$type]($elements, $action, $type, $validation_behavior, $parent_type);
+        // (Note to self: self::$classMap and static::$classMap are exactly the
+        // same here, because the variable is defined as static.)
+        if (isset(self::$classMap[$type])) {
+            return new self::$classMap[$type]($elements, $action, $type, $validation_behavior, $parent_type);
         }
-        // Use self(); static() yields errors when a child class creates a new
-        // embedded object which is defined in this base class.
+        // Otherwise instantiate this class. (self(), not static(); if a
+        // child class creates a new embedded object of a type not defined in
+        // self::$classMap, it should create an instance of UpdateObject, not
+        // of itself.)
         return new self($elements, $action, $type, $validation_behavior, $parent_type);
+    }
+
+    /**
+     * Validates and/or merges a 'property definitions override'.
+     *
+     * @param array $definition_overrides
+     *   The definitions for one type, as it is / should be stored in
+     *   $definitionOverrides.
+     * @param array $definitions
+     *   (Optional) The original definitions to override. (We could have split
+     *   the overriding into a separate better named function, but this way the
+     *   number of protected static methods stays small, and validating before
+     *   merging cannot be forgotten.)
+     *
+     * @return array
+     *   If $definitions was nonempty: the overridden definitions.
+     *
+     * @throws \InvalidArgumentException
+     *   If the definition overrides are invalid.
+     */
+    protected static function handleDefinitionOverride(array $definition_overrides, array $definitions = [])
+    {
+        $errors = [];
+        foreach (['fields', 'objects'] as $subtype) {
+            if (isset($definition_overrides[$subtype])) {
+                // The array itself may only be an array (of objects/fields).
+                // Empty is OK; that will fall through without doing anything.
+                if (!is_array($definition_overrides[$subtype])) {
+                    $errors[] = "'$subtype' definition override is not an array.";
+                } else {
+                    // Each field definition must be an array or null. Merge or
+                    // unset depending on the value.
+                    foreach ($definition_overrides[$subtype] as $name => $value) {
+                        if (isset($value)) {
+                            if (!is_array($value)) {
+                                $errors[] = "'$name' $subtype definition override is not an array.";
+                            }
+                            $definitions[$subtype][$name] = $value;
+                        } else {
+                            unset($definitions[$subtype][$name]);
+                        }
+                    }
+                }
+            }
+        }
+        if ($errors) {
+            throw new InvalidArgumentException(implode("\n", $errors));
+        }
+
+        // Do the outer properties except 'fields' and 'objects'. Value does
+        // not need to be an array.
+        foreach ($definition_overrides as $name => $value) {
+            if ($name !== 'fields' && $name !== 'objects') {
+                if (isset($value)) {
+                    $definitions[$name] = $value;
+                } else {
+                    unset($definitions[$name]);
+                }
+            }
+        }
+
+        return $definitions;
     }
 
     /**
@@ -405,6 +600,19 @@ class UpdateObject
         if (empty($this->propertyDefinitions)) {
             $this->setPropertyDefinitions();
         }
+        // Merge the overrides. (Also for definitions that were already set
+        // in child classes.)
+        if (!empty(self::$definitionOverrides[$type])) {
+            if (!is_array(self::$definitionOverrides[$type])) {
+                throw new UnexpectedValueException("Definition override is not an array.");
+            }
+            try {
+                $this->propertyDefinitions = static::handleDefinitionOverride(self::$definitionOverrides[$type], $this->propertyDefinitions);
+            } catch (InvalidArgumentException $e) {
+                throw new UnexpectedValueException($e->getMessage());
+            }
+        }
+
         $this->addElements($elements, $validation_behavior);
     }
 
@@ -687,7 +895,8 @@ class UpdateObject
         // the default.
         if (array_key_exists($field_name, $element['Fields'])) {
             $return = $wrap_array ? [$element['Fields'][$field_name]] : $element['Fields'][$field_name];
-        } elseif ($return_default && array_key_exists('default', $this->propertyDefinitions['fields'][$field_name])) {
+        } elseif ($return_default && isset($this->propertyDefinitions['fields'][$field_name])
+            && array_key_exists('default', $this->propertyDefinitions['fields'][$field_name])) {
             $return = $wrap_array ? [$this->propertyDefinitions['fields'][$field_name]['default']] : $this->propertyDefinitions['fields'][$field_name]['default'];
         } else {
             $return = $wrap_array ? [] : null;
@@ -2040,7 +2249,7 @@ class UpdateObject
             if ($validation_behavior & self::VALIDATE_ESSENTIAL) {
                 try {
                     if (!is_scalar($value)) {
-                        throw new InvalidArgumentException("%NAME field value of %ELEMENT must be scalar.");
+                        throw new InvalidArgumentException("%NAME field value must be scalar.");
                     }
 
                     if (!empty($this->propertyDefinitions['fields'][$field_name]['type'])) {
@@ -2398,12 +2607,17 @@ class UpdateObject
     /**
      * Sets property definitions.
      *
-     * This method exists for subclassing (but not necessarily in every child
-     * class; it's only called where it's needed). Setting the definitions
-     * should only be done in the constructor, but if this code was in there
-     * (directly followed by adding the element values into the object based on
-     * these properties), child classes would not be able to add their own
-     * customizations to these definitions in time.
+     * This method is called from the constructor only. It exists to enable
+     * a child class to override existing property definitions (which must be
+     * done during construction) inside the child class' code. It is not called
+     * by every class; only by classes where overriding properties would not be
+     * possible easily by overriding the constructor directly, so now it can be
+     * done by overriding this method instead.
+     *
+     * There is however another, recommended, method for overriding property
+     * definitions: calling the static method overridePropertyDefinitions().
+     * Using that method, there's no need for subclassing just to e.g. add a
+     * custom field to an existing object.
      */
     protected function setPropertyDefinitions() {
         // Below definitions are based on what AFAS calls the 'XSD Schema' for

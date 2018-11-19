@@ -34,10 +34,12 @@ class FbSales extends UpdateObject
         ],
         'fields' => [
             // Nummer
-            'OrNu' => [],
+            'OrNu' => [
+                'alias' => 'order_number',
+            ],
             // Datum
             'OrDa' => [
-                'alias' => 'date',
+                'alias' => 'order_date',
                 'type' => 'date',
             ],
             // Verkooprelatie (verwijzing naar: Verkooprelatie => AfasKnSalRelation)
@@ -100,14 +102,18 @@ class FbSales extends UpdateObject
             ],
             // Incasseren
             'Coll' => [
+                'alias' => 'collect',
                 'type' => 'boolean',
             ],
             // Creditorder
             'CrOr' => [
+                'alias' => 'credit_order',
                 'type' => 'boolean',
             ],
             // Code route (verwijzing naar: Tabelwaarde,Routes => AfasKnCodeTableValue)
-            'Rout' => [],
+            'Rout' => [
+                'alias' => 'route_code',
+            ],
             // Magazijn (verwijzing naar: Magazijn => AfasFbWarehouse)
             'War' => [
                 'alias' => 'warehouse',

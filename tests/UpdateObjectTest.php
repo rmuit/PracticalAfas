@@ -115,7 +115,7 @@ class UpdateObjectTest extends TestCase
         $this->assertEquals([], $object1->getElements());
 
         // See whether setting empty elements works OK.
-        $object2 = UpdateObject::create('KnPerson', [ [], [] ], 'update');
+        $object2 = UpdateObject::create('KnPerson', [[], []], 'update');
         // This adds nothing.
         $object2->addElements([]);
         // This adds a single empty element.
@@ -286,6 +286,49 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
     }
 
     /**
+     * Tests that overriding definition generally works.
+     */
+    public function testDefinitionOverrides()
+    {
+        $properties = [
+            'order_number' => '1',
+        ];
+        $object1 = UpdateObject::create('FbSales', $properties, 'insert');
+
+        // Override field definitions: we must use complete definitions, keyed
+        // by 'fields'.
+        $definitions = [
+            'fields' => [
+                'OrDa' => [
+                    'alias' => 'order_date',
+                    'type' => 'date',
+                    'required' => true,
+                ],
+                'U1234567890' => [
+                    'alias' => 'custom_field_1',
+                ],
+            ],
+        ];
+        UpdateObject::overridePropertyDefinitions('FbSales', $definitions);
+
+        // The definition for custom_field_1 would have made above create()
+        // error out (which we are assuming without testing it explicitly) but
+        // is fine here.
+        $properties = [
+            'order_number' => '1',
+            'custom_field_1' => '2',
+        ];
+        $object2 = UpdateObject::create('FbSales', $properties, 'insert');
+
+        // The order_date field is now required in $object2, but still not
+        // required in $object1.
+        $object1->output();
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage("No value provided for required 'OrDa' (order_date) field.");
+        $object2->output();
+    }
+
+    /**
      * Tests that if one element fails, none of the elements get set.
      */
     public function testErrorInOneBlocksAll()
@@ -370,6 +413,8 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
     /**
      * Test a class which can contain 'metadata' for fields.
      *
+     * This also implicitly tests that UpdateObject::overrideClass() works.
+     *
      * This theoretical example is mostly meant to provide some extra testing
      * for validation; to see if nothing goes wrong if we pass array values
      * through all those functions, and only validateFieldValue() needs to be
@@ -383,7 +428,8 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
             // also do non-array value
         ];
         // This should store things as arrays...
-        $object = ArraysObject::create('KnSubject', $properties, 'insert');
+        UpdateObject::overrideClass('KnSubject', '\PracticalAfas\TestHelpers\ArraysObject');
+        $object = UpdateObject::create('KnSubject', $properties, 'insert');
         // ...and getFields() should still get those arrays returned, because
         // it does not do any kind of validation/change...
         $this->assertEquals([1, 'meta'], $object->getField('type'));
@@ -465,7 +511,7 @@ No value provided for required 'BcCoPer' (person_code) field.");
             'phone' => '+3162251721',
             'contact' => [
                 'address' => [
-                  'country_iso' => 'NL',
+                    'country_iso' => 'NL',
                 ],
             ],
         ];
@@ -477,6 +523,10 @@ No value provided for required 'BcCoPer' (person_code) field.");
      */
     public function testValidateDutchPhoneNr1a()
     {
+        UpdateObject::overrideClass('KnBasicAddress', '\PracticalAfas\TestHelpers\ArraysAddress');
+        UpdateObject::overrideClass('KnContact', '\PracticalAfas\TestHelpers\ArraysOPC');
+        UpdateObject::overrideClass('KnPerson', '\PracticalAfas\TestHelpers\ArraysOPC');
+
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("Phone number 'TeNr' has invalid format.");
         $properties = [
@@ -489,7 +539,7 @@ No value provided for required 'BcCoPer' (person_code) field.");
                 ],
             ],
         ];
-        ArraysObject::create('KnPerson', $properties, 'update', UpdateObject::DEFAULT_VALIDATION | OrgPersonContact::VALIDATE_FORMAT);
+        UpdateObject::create('KnPerson', $properties, 'update', UpdateObject::DEFAULT_VALIDATION | OrgPersonContact::VALIDATE_FORMAT);
     }
 
     /**
@@ -521,6 +571,10 @@ No value provided for required 'BcCoPer' (person_code) field.");
      */
     public function testValidateDutchPhoneNr2a()
     {
+        UpdateObject::overrideClass('KnBasicAddress', '\PracticalAfas\TestHelpers\ArraysAddress');
+        UpdateObject::overrideClass('KnContact', '\PracticalAfas\TestHelpers\ArraysOPC');
+        UpdateObject::overrideClass('KnOrganisation', '\PracticalAfas\TestHelpers\ArraysOPC');
+
         $properties = [
             'name' => ['Wyz', 7],
             'address' => [
