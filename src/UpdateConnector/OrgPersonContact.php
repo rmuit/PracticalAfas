@@ -719,12 +719,10 @@ class OrgPersonContact extends UpdateObject
                 // cases it's also impossible to embed a KnPerson into this
                 // object. (Or a KnOrganisation; that's never possible.)
                 if (isset($this->propertyDefinitions['fields']['BcCoOga']) && empty($element['Fields']['BcCoOga'])) {
-                    $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
-                    $element['*errors']["Fields:BcCoOga"] = "No value provided for required 'BcCoOga' (organisation_code) field of $element_descr.";
+                    $element['*errors']["Fields:BcCoOga"] = "No value provided for required 'BcCoOga' (organisation_code) field.";
                 }
                 if (isset($this->propertyDefinitions['fields']['BcCoPer']) && empty($element['Fields']['BcCoPer'])) {
-                    $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
-                    $element['*errors']["Fields:BcCoPer"] = "No value provided for required 'BcCoPer' (person_code) field of $element_descr.";
+                    $element['*errors']["Fields:BcCoPer"] = "No value provided for required 'BcCoPer' (person_code) field.";
                 }
                 break;
 
@@ -955,7 +953,7 @@ class OrgPersonContact extends UpdateObject
             $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad']);
             if ($address && (!isset($address['CoId']) || strtoupper($address['CoId']) === 'NL')) {
                 // This uses an extension of validateFieldValue() logic:
-                $type2 = '';
+                $ref_name2 = '';
                 switch ($this->getType()) {
                     case 'KnOrganisation':
                         // Validate business numbers in embedded
@@ -963,14 +961,14 @@ class OrgPersonContact extends UpdateObject
                         // the KnContact (because then that address has already
                         // been used for validating all numbers in both itself
                         // and its embedded KnPerson, as per below.)
-                        $type = 'KnContact';
-                        $type2 = 'KnPerson';
+                        $ref_name = 'KnContact';
+                        $ref_name2 = 'KnPerson';
                         $number_fields = ['TeNr', 'MbNr', 'FaNr'];
                         break;
 
                     case 'KnPerson':
                         // Validate personal numbers in our own object only.
-                        $type = '';
+                        $ref_name = '';
                         $number_fields = ['TeN2', 'MbN2'];
                         break;
 
@@ -979,40 +977,45 @@ class OrgPersonContact extends UpdateObject
                         // business numbers. Validate business numbers in our
                         // own object, and in KnPerson except if there's an
                         // address in there.
-                        $type = 'KnPerson';
+                        $ref_name = 'KnPerson';
                         $number_fields = ['TeNr', 'MbNr', 'FaNr'];
                         break;
                 }
                 // Each embedded type has only one element, keyed by 'Element'.
                 // (It's all arrays, not objects, because the structure was
                 // validated already.)
-                if (!empty($element['Objects'][$type]['Element']['Fields'])
-                    && !static::getAddressFields($element['Objects'][$type]['Element'], ['KnBasicAddressAdr', 'KnBasicAddressPad'])) {
+                if (!empty($element['Objects'][$ref_name]['Element']['Fields'])
+                    && !static::getAddressFields($element['Objects'][$ref_name]['Element'], ['KnBasicAddressAdr', 'KnBasicAddressPad'])) {
                     foreach ($number_fields as $field_name) {
-                        if (!empty($element['Objects'][$type]['Element']['Fields'][$field_name])) {
-                            $parts = static::validateDutchPhoneNr($element['Objects'][$type]['Element']['Fields'][$field_name]);
+                        if (!empty($element['Objects'][$ref_name]['Element']['Fields'][$field_name])) {
+                            $parts = static::validateDutchPhoneNr($element['Objects'][$ref_name]['Element']['Fields'][$field_name]);
                             if (!$parts && $validation_behavior & self::VALIDATE_FORMAT) {
-                                throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
+                                // If we had known this was an error when
+                                // validating the address, we'd have set an
+                                // error, which would be seen in getElements()
+                                // and end up like.... this key, maybe? (Not
+                                // that keys are really important.)
+                                $element['*errors']["Objects:$ref_name:0:Fields:$field_name"] = "Phone number '$field_name' has invalid format.";
                             }
                             if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
                                 // Only replace area code and local part
                                 // into here; country code is lost.
-                                $element['Objects'][$type]['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
+                                $element['Objects'][$ref_name]['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
                             }
                         }
                     }
-                    if ($type2 && !empty($element['Objects'][$type]['Element']['Objects'][$type2]['Element']['Fields'])
-                        && !static::getAddressFields($element['Objects'][$type]['Element']['Objects'][$type2]['Element'], ['KnBasicAddressAdr', 'KnBasicAddressPad'])) {
+                    if ($ref_name2 && !empty($element['Objects'][$ref_name]['Element']['Objects'][$ref_name2]['Element']['Fields'])
+                        && !static::getAddressFields($element['Objects'][$ref_name]['Element']['Objects'][$ref_name2]['Element'], ['KnBasicAddressAdr', 'KnBasicAddressPad'])) {
                         foreach ($number_fields as $field_name) {
-                            if (!empty($element['Objects'][$type]['Element']['Objects'][$type2]['Element']['Fields'][$field_name])) {
-                                $parts = static::validateDutchPhoneNr($element['Objects'][$type]['Element']['Objects'][$type2]['Element']['Fields'][$field_name]);
+                            if (!empty($element['Objects'][$ref_name]['Element']['Objects'][$ref_name2]['Element']['Fields'][$field_name])) {
+                                $parts = static::validateDutchPhoneNr($element['Objects'][$ref_name]['Element']['Objects'][$ref_name2]['Element']['Fields'][$field_name]);
                                 if (!$parts && $validation_behavior & self::VALIDATE_FORMAT) {
-                                    throw new UnexpectedValueException("Phone number '$field_name' has invalid format.");
+                                    $element['*errors']["Objects:$ref_name:0:Objects:$ref_name2:0:Fields:$field_name"] = "Phone number '$field_name' has invalid format.";
                                 }
                                 if ($parts && $change_behavior & self::ALLOW_REFORMAT_PHONE_NR) {
                                     // Only replace area code and local part
                                     //  into here; country code is lost.
-                                    $element['Objects'][$type]['Element']['Objects'][$type2]['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
+                                    $element['Objects'][$ref_name]['Element']['Objects'][$ref_name2]['Element']['Fields'][$field_name] = str_replace('%L', $parts[1], str_replace('%A', $parts[0], static::getPhoneNumberFormat()));
                                 }
                             }
                         }
@@ -1046,7 +1049,8 @@ class OrgPersonContact extends UpdateObject
      *   object embedded in the contact. All types are checked on all layers.)
      *
      * @throws \UnexpectedValueException
-     *   If the address object (is still an object and) does not validate.
+     *   If the address object (is still an object and) does not validate,
+     *   which is highly unlikely because we call getElements(,VALIDATE_NONE).
      *
      * @return array|mixed
      */

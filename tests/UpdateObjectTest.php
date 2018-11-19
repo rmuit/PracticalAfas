@@ -149,7 +149,7 @@ class UpdateObjectTest extends TestCase
 
         // Check that output() on en empty object throws an exception.
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessage("'KnPerson' object holds no elements.");
+        $this->expectExceptionMessage("Object holds no elements.");
         // We want an empty object without default values, so ALLOW_NO_CHANGES.
         // For KnPerson, if we don't set VALIDATE_NOTHING, we still get the
         // special MatchPer field.
@@ -205,7 +205,7 @@ class UpdateObjectTest extends TestCase
 
         // An update action should not work without an ID.
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessage("'@SbId' property in 'KnSubject' element must have a value, or Action 'update' must be set to 'insert'.");
+        $this->expectExceptionMessage("'@SbId' property must have a value, or Action 'update' must be set to 'insert'.");
         $object2->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
     }
 
@@ -275,15 +275,13 @@ class UpdateObjectTest extends TestCase
             ],
         ];
         $this->expectException(InvalidArgumentException::class);
-        // The message is confined within one object (i.e. 'line_items' and
-        // does not indicate any parent element it would be embedded in.
-        $this->expectExceptionMessage("Unknown element properties provided for 'FbSalesLines' element which will get index 1: names are '0'.
-'BkOr' (backorder) field value of 'FbSales' element is not a valid boolean value.
-'Unit' (unit) field value of 'FbSales' element is not a valid integer value.
-'FbSalesLines' element which will get index 2 has a value provided by both its field name QuUn and alias quantity.
-'QuUn' (quantity) field value of 'FbSalesLines' element which has (or will get) index 2 is not numeric.
-'QuUn' (quantity) field value of 'FbSalesLines' element which has (or will get) index 2 is not numeric.
-'BkOr' (backorder) field value of 'FbSales' element which has (or will get) index 2 is not a valid boolean value.");
+        $this->expectExceptionMessage("element-key 0: object-ref FbSalesLines: element-key 1: Unknown element properties provided: names are '0'.
+element-key 0: 'BkOr' (backorder) field value is not a valid boolean value.
+element-key 0: 'Unit' (unit) field value is not a valid integer value.
+element-key 2: object-ref FbSalesLines: element-key 2: Field value is provided by both its field name QuUn and alias quantity.
+element-key 2: object-ref FbSalesLines: element-key 2: 'QuUn' (quantity) field value is not numeric.
+element-key 2: object-ref FbSalesLines: element-key 2: 'QuUn' (quantity) field value is not numeric.
+element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
         UpdateObject::create('FbSales', $properties, 'update');
     }
 
@@ -323,7 +321,7 @@ class UpdateObjectTest extends TestCase
             'address' => [[], []],
         ];
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage("'KnBasicAddressAdr' (address) object embedded in 'KnOrganisation' element contains 2 elements but can only contain a single element.");
+        $this->expectExceptionMessage("Embedded object 'KnBasicAddressAdr' (address) contains 2 elements but can only contain a single element.");
         UpdateObject::create('KnOrganisation', $properties, 'update');
     }
 
@@ -338,7 +336,7 @@ class UpdateObjectTest extends TestCase
         $object = UpdateObject::create('KnOrganisation', $properties, 'update', UpdateObject::VALIDATE_NOTHING);
         $object->getElements();
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessage("'KnBasicAddressAdr' (address) object embedded in 'KnOrganisation' element contains 2 elements but can only contain a single element.");
+        $this->expectExceptionMessage("Embedded object 'KnBasicAddressAdr' (address) contains 2 elements but can only contain a single element.");
         $object->output();
     }
 
@@ -352,7 +350,7 @@ class UpdateObjectTest extends TestCase
         $this->expectException(UnexpectedValueException::class);
         // Org/Contact/Person objects contain no required values that are not
         // populated. Only the address field contains one.
-        $this->expectExceptionMessage("No value provided for required 'PbAd' (is_po_box) field of 'KnBasicAddress' element.");
+        $this->expectExceptionMessage("No value provided for required 'PbAd' (is_po_box) field.");
         $object->getElements(UpdateObject::ALLOW_NO_CHANGES, UpdateObject::DEFAULT_VALIDATION);
     }
 
@@ -420,7 +418,7 @@ class UpdateObjectTest extends TestCase
     public function testContactNoEmbeddedPerson()
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage("Unknown element properties provided for 'KnContact' element: names are 'person'.");
+        $this->expectExceptionMessage("Unknown element properties provided: names are 'person'.");
         $properties = [
             'email' => 'rm@wyz.biz',
             'phone' => '+31622517218',
@@ -446,8 +444,8 @@ class UpdateObjectTest extends TestCase
         $object = UpdateObject::create('KnContact', $properties, 'update');
 
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessage("No value provided for required 'BcCoOga' (organisation_code) field of 'KnContact' element.
-No value provided for required 'BcCoPer' (person_code) field of 'KnContact' element.");
+        $this->expectExceptionMessage("No value provided for required 'BcCoOga' (organisation_code) field.
+No value provided for required 'BcCoPer' (person_code) field.");
         $object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
     }
 

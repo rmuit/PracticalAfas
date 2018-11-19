@@ -134,11 +134,9 @@ trait IsoCountryTrait
             // is to call validateFieldValue() (which may be repeated later).
             $iso_value = $this->validateFieldValue($element['Fields'][$iso_field_name], $iso_field_name, UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION, $element_index, $element);
 
-            $element_descr = "'{$this->getType()}' element" . ($element_index ? " with index $element_index" : '');
-
             $afas_code = static::convertIsoCountryCode($iso_value);
             if (!$afas_code) {
-                throw new InvalidArgumentException("Unknown ISO country code '{$element['Fields'][$iso_field_name]}' in $element_descr.");
+                throw new InvalidArgumentException("Unknown ISO country code '{$element['Fields'][$iso_field_name]}'.");
             }
             // We expect the CoId field to not be populated, but if it's the
             // same as the converted ISO code, we allow that. (But uppercase it
@@ -146,7 +144,7 @@ trait IsoCountryTrait
             if (!empty($element['Fields'][$afas_field_name])) {
                 $afas_value = $this->validateFieldValue($element['Fields'][$afas_field_name], $afas_field_name, UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION, $element_index, $element);
                 if (strtoupper($afas_value) !== $afas_code) {
-                    throw new InvalidArgumentException("Inconsistent ISO country code '$iso_value' and AFAS code '$afas_value'' found in $element_descr.");
+                    throw new InvalidArgumentException("Inconsistent ISO country code '$iso_value' and AFAS code '$afas_value'' found.");
                 }
             }
             $element['Fields'][$afas_field_name] = $afas_code;
