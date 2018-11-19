@@ -53,6 +53,9 @@ class Helper
      * - 'Response not of type text/xml'
      * - '[ANTA WARNING]'
      *
+     * @param string $substring
+     *   the substring to add to the 'classified as temporary' substrings.
+     *
      * @see IsTemporaryError()
      */
     public static function addTemporaryErrorSubstring($substring)
@@ -71,19 +74,18 @@ class Helper
      * whether it's temporary (e.g. because of a connection error) or permanent,
      * so it can decide whether to try again later, or inform a human.
      *
-     * Other suggested call argument might be the client object and the call
-     * plus arguments.
+     * Other suggested call argument for e.g. an overridden method might be:
+     * - the client object (especially if the class uses RememberCallDataTrait
+     *   so we can access last call data);
+     * - the call plus arguments.
      *
      * @param \Exception $exception
      *   The exception thrown by a client class.
-     * @param \PracticalAfas\Client\RestCurlClient|object $client
-     *   (Optional) The client. May be more useful if the client class
-     *   uses RememberCallDataTrait, so we can access last call data.
      *
      * @return bool
      *   True if the error is temporary.
      */
-    public static function IsTemporaryError(\Exception $exception, $client)
+    public static function IsTemporaryError(\Exception $exception)
     {
         $message = $exception->getMessage();
         foreach (static::$temporaryErrorSubstrings as $error_substring) {

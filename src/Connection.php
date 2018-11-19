@@ -607,7 +607,7 @@ class Connection
         // The SOAP GetDataWithOptions function's 'options' argument supports
         // more options than just above three. We have not seen these documented
         // in AFAS' online docs; they were probably added later (when AFAS added
-        // a REST API) and this class did support them before v1.2. They are
+        // a REST API) and this class did not support them before v1.2. They are
         // - 'Index', which is equivalent to REST's 'orderbyfieldids' except the
         //   value is XML. (We are now supporting this for SOAP but _not_ for
         //   REST clients. for writing portable getData() calls, use

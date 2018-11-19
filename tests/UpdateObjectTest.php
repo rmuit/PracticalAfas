@@ -258,9 +258,7 @@ class UpdateObjectTest extends TestCase
                 ]
             ],
             [
-                // This again contains 4 errors, 3 of which embedded. One
-                // possible deficiency: it does not mention _which_ of the
-                // elements has the error. Not sure if that's fatal.
+                // This again contains 4 errors, 3 of which embedded.
                 'backorder' => 2,
                 'line_items' => [
                     [],
@@ -344,8 +342,10 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
                 'backorder' => 'TRU',
             ],
         ];
+        // Add the first (correct) element twice, proving we can do this.
         $object = UpdateObject::create('FbSales', $properties[0], 'update');
         $object->addElements([$properties[0]]);
+        // Add both elements again; see that neither of them is added.
         try {
             $object->addElements($properties);
         } catch (InvalidArgumentException $exception) {

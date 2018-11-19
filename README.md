@@ -1,7 +1,14 @@
 # PracticalAFAS
 
 A PHP library for communicating with AFAS Profit in a practical way, using
-either SOAP or the REST API.
+either SOAP or REST.
+
+# WARNING
+
+This README is for version 1 of the library. It is 99% correct for the 'get data'
+part but the 'update data' part has been completely rewritten. Updated README will
+follow soonish.
+
 
 ## Introduction
 
@@ -42,6 +49,16 @@ That said, two things:
   if you care about the validation of various forms of strangeness - or the
   compatibility between SOAP and REST clients for e.g. the 'orderbyfieldids'
   argument).
+
+## Compatibility
+
+Version 2 of the library works with PHP5 (5.4 and up), though the unit tests for
+the UpdateConnector part are written in PHPUnit v7 (which supports PHP7 only).
+
+Client classes for REST and SOAP use PHP's standard Curl + JSON and SOAP XML
+extensions; if these do not work for you, PRs with new / modified clients are
+welcome.
+
 
 ## Using the classes
 
@@ -92,7 +109,7 @@ SOAPClient. The required configuration options are in the example below; see the
 code for others.
 ```php
 // Note you will likely not call callAfas() directly but use Connection instead.
-use PracticalAfas\SoapAppClient;
+use PracticalAfas\Client\SoapAppClient;
 $client = new SoapAppClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
 
 $result_as_json_string = $client->callAfas(
@@ -122,7 +139,7 @@ The below is (almost) equivalent to the above SOAP example (except it returns a
 JSON string instead of an XML string):
 ```php
 // Note you will likely not call callAfas() directly but use Connection instead.
-use PracticalAfas\RestCurlClient;
+use PracticalAfas\Client\RestCurlClient;
 $client = new RestCurlClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
 
 $result_as_xml_string = $client->callAfas(
@@ -150,7 +167,7 @@ the above example is:
 
 ```php
 use PracticalAfas\Connection;
-use PracticalAfas\RestCurlClient;
+use PracticalAfas\Client\RestCurlClient;
 $client = new RestCurlClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
 $connection = new Connection($client);
 
