@@ -360,6 +360,17 @@ class UpdateObject
     }
 
     /**
+     * Returns the almost-full mapping from object type to implementing class.
+     *
+     * Any object types not in here are supposedly implemented by UpdateObject.
+     *
+     * @return string[]
+     */
+    public static function getClassMap() {
+        return self::$classMap;
+    }
+
+    /**
      * Overrides property definitions for a specific object type.
      *
      * The anticipated use of this is defining custom fields for existing
@@ -375,12 +386,13 @@ class UpdateObject
      *   property definitions. See $propertyDefinitions for the difference.
      * @param array $definitions
      *   The definitions that will override any standard definitions set by
-     *   the constructor. The structure is the same as property definitions:
-     *   field definitions must be keyed by 'fields' and then the AFAS field
-     *   name; object reference field definitions, must be keyed by 'objects'
-     *   and then the reference field name. The individual (reference) field
-     *   definitions must be arrays or null. Arrays must be complete
-     *   definitions: if a field definition already exists, it will be
+     *   the constructor. If any earlier overrides were already set for this
+     *   type, they will be overwritten. The structure is the same as property
+     *   definitions: field definitions must be keyed by 'fields' and then the
+     *   AFAS field name; object reference field definitions, must be keyed by
+     *   'objects' and then the reference field name. The individual
+     *   (reference) field definitions must be arrays or null. Arrays must be
+     *   complete definitions: if a field definition already exists, it will be
      *   completely overwritten by this override definition, not merged. A null
      *   value will remove the original field definition. Other custom values
      *   on the first level of this array (i.e. on the same level as 'fields'
@@ -407,6 +419,15 @@ class UpdateObject
         } else {
             unset(self::$definitionOverrides[$object_type]);
         }
+    }
+
+    /**
+     * Returns the property definition overrides per object type.
+     *
+     * @return array[]
+     */
+    public static function getPropertyDefinitionOverrides() {
+        return self::$definitionOverrides;
     }
 
     /**
