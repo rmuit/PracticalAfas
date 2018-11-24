@@ -114,7 +114,7 @@ class SoapAppClient
         // higher, they will have to pass their own stream_context option.
         if ($options['soapClientClass'] === '\SoapClient'
             && !isset($soap_client_options['stream_context'])) {
-            if (!defined('CURL_SSLVERSION_TLSv1_2')) {
+            if (!defined('STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT')) {
                 throw new RuntimeException("PHP's OpenSSL extension does not support TLS v1.2, which AFAS requires.");
             }
             $soap_client_options['stream_context'] = stream_context_create(
