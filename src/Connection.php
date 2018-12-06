@@ -431,7 +431,10 @@ class Connection
      * @param array $extra_arguments
      *   (optional) Other arguments to pass to the API call, besides the ones
      *   in $filters / hardcoded for convenience. For GetConnectors these are:
-     *   - 'Skip' and 'Take' (see other documentation);
+     *   - 'Skip' and 'Take': at least one of these needs to be passed if the
+     *     data set is not known to be small (see return value docs): pass
+     *     'Skip' = -1 to return the full data set (at the risk of timeouts)
+     *     or pass the maximum number of rows to return in 'Take'.
      *   - 'OrderByFieldIds', to apply sorting, Syntax is
      *     "Fieldname1,-Fieldname2,..." (hyphen for descending order). This also
      *     works with SOAP clients. (It will be converted to an 'Index' option.)
@@ -451,19 +454,16 @@ class Connection
      * @return mixed
      *   Output; format is dependent on data type and extra arguments. The
      *   default output format is a two-dimensional array of rows/columns of
-     *   data from the GetConnector. The array structure is not exactly the same
-     *   for SOAP vs. REST clients:
-     *   - If the 'take' argument is not specified, the REST API will (always?)
-     *     return 100 rows maximum, and the SOAP client will return 1000 rows.
-     *     (This is a default passed by the code, because if no 'take' argument
-     *     is specified, the SOAP API will return no data. We do not want to
-     *     lower the value to be the same default of 100, since that has a
-     *     bigger chance of causing backward compatibility problems because
-     *     pre-2017, the 'take' argument was unnecessary.
-     *   - Empty fields will either not be returned by the SOAP endpoint or (if
-     *     specified through 'Outputoptions'/ setDataIncludeEmptyFields())
-     *     contain an empty string. Empty fields returned by the REST API will
-     *     contain null.
+     *   data from the GetConnector. The array structure is not exactly the
+     *   same for SOAP vs. REST clients:
+     *   - If the 'take' argument is not specified (and 'skip' is not -1), the
+     *     REST API endpoint will return 100 rows maximum; this is 1000 for the
+     *     SOAP API endpoint (for (backward compatibility; see comments at
+     *     parseGetDataArguments()).
+     *   - Empty fields will either not be returned by the SOAP API endpoint or
+     *     (if specified through 'Outputoptions'/ setDataIncludeEmptyFields())
+     *     contain an empty string. Empty fields returned by the REST API
+     *     endpoint will contain null.
      *
      * @throws \InvalidArgumentException
      *   If input arguments have an illegal value / unrecognized structure.
@@ -881,21 +881,22 @@ class Connection
                         . '</' . ucfirst($option) . '>';
                 }
                 $extra_arguments['options'] = "<options>$options_str</options>";
-                // For get connectors that are called through App Connectors,
-                // there are 'skip/take' arguments, and we provide a default
-                // 'take' because if it is not specified, the output will be
-                // empty. (Further general validation is done in the Client
-                // class, but the job of hard coding a capped value does not
-                // belong in there.)
+                // We provide a default 'take' value because if it is not
+                // specified, the output will be empty. (Further general
+                // validation is done in the Client class, but it throws an
+                // exception if no value is specified. We don't want that here,
+                // so we stay at least a bit in sync with the REST endpoint
+                // which does return rows when no 'take' is specified.)
                 if (!isset($extra_arguments['take'])) {
-                    // 1000 happens to be the default/maximum number of records
+                    // 1000 happens to be the default/maximum number of rows
                     // returned if 'take' was specified as an 'options' argument
                     // (which we disallow) and was > 1000. A lower value seems
-                    // too big a compatibility break with pre-App Connectors. It
-                    // is different from the default for REST clients though,
-                    // which is 100. (And we don't raise the REST default to
-                    // 1000 because we prefer keeping the behavior close to the
-                    // AFAS REST API, rather than close to the SOAP client.)
+                    // too big a compatibility break with pre-App Connectors
+                    // (i.e. the SOAP endpoint before 2017). It is different
+                    // from the default for REST clients though, which is 100.
+                    // (And we don't raise the REST default to 1000 because we
+                    // prefer keeping the behavior close to the default REST
+                    // endpoint behavior, rather than close to the SOAP client.)
                     $extra_arguments['take'] = 1000;
                 }
                 break;

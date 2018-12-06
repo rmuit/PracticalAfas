@@ -193,15 +193,12 @@ class RestCurlClient
      *
      * This class is not meant to make decisions about any actual data sent.
      * (That kind of code would belong in Connection.) So while we can
-     * _validate_ many arguments here, _setting_ them is discouraged. (SOAP
-     * clients need this to set authentication/connection related arguments here
-     * rather than query related arguments... but for REST, such an application
-     * is not know yet. Still, we kept the possibility.)
+     * validate many arguments here, setting/changing them is discouraged.
      *
      * @param array $arguments
      *   Named URL arguments. All argument names must be lower case; all values
      *   must be scalars.
-     * @param string $function
+     * @param string $endpoint
      *   The REST API endpoint URL.
      * @param string $type
      *   HTTP verb: GET, PUT, POST, DELETE. Must be upper case.
@@ -231,14 +228,19 @@ class RestCurlClient
             if ($request_body) {
                 throw new InvalidArgumentException('Request body must not be provided for GET requests.', 40);
             }
-
-            if (isset($arguments['take']) && (!is_numeric($arguments['take']) || $arguments['take'] <= 0)) {
-                // A value of 0 would return 1 record (at least at the time we
-                // last tested). We disallow that to prevent possible confusion.
-                throw new InvalidArgumentException("'take' argument must be a positive number.", 42);
-            }
-            if (isset($arguments['skip']) && (!is_numeric($arguments['skip']) || $arguments['skip'] < 0)) {
-                throw new InvalidArgumentException("'skip' argument must be a positive number or 0.", 43);
+            // If 'skip' is -1, 'take' isn't validated at all and the full data
+            // set is returned (which can obviously lead to timeouts). A
+            // 'skip' that is smaller than -1 or non-numeric is apparently
+            // equivalent to 0.
+            if (empty($arguments['skip']) || $arguments['skip'] != -1) {
+                // A value of 0 would return 1 row (tested May 2017). We
+                // disallow that to prevent possible confusion. We also
+                // validate other disallowed values rather than have AFAS
+                // return an error, because we can do a better job at the error
+                // message.
+                if (isset($arguments['take']) && (!is_numeric($arguments['take']) || $arguments['take'] <= 0)) {
+                    throw new InvalidArgumentException("'take' argument must be a positive number.", 42);
+                }
             }
         }
 
