@@ -421,7 +421,19 @@ class Connection
      *   DATA_TYPE_TOKEN              : the user ID to request the token for.
      *   DATA_TYPE_VERSION_INFO       : this argument is ignored.
      * @param array $filters
-     *   (optional) Filters to apply before returning data.
+     *   (optional) Filters in our own custom format; one (or a combination) of:
+     *   1) [ FIELD1 => VALUE1, FIELD2 => VALUE2, ...,  '#op' => operator ],
+     *   2) [
+     *        [ FIELD1 => VALUE1, ..., '#op' => operator1 ],
+     *        [ FIELD2 => VALUE2, FIELD3 => VALUE3, ..., '#op' => operator2 ],
+     *      ]
+     *   FIELD2/VALUE2 and '#op' are optional; '#op' defaults to
+     *   Connection::OP_EQUAL. Both formats can represent one or more filters
+     *   on several fields (and formats can be mixed up); the second format
+     *   enables filtering on different operators. (For REST clients, all
+     *   operations can be either AND'ed or OR'ed together; this depends on the
+     *   $data_type parameter. For SOAP clients, only AND works.)
+     *   For the operator values, see the OP_* constants defined in this class.
      * @param string $data_type
      *   (optional) Type of data to retrieve / connector to call, and/or filter
      *   type. Defaults to GET_FILTER_AND / DATA_TYPE_GET (which is the same).
@@ -473,7 +485,7 @@ class Connection
      *   If anything else went wrong. (a remote error could throw e.g. a
      *   SoapFault depending on the client class used.)
      *
-     * @see parseGetDataArguments()
+     * @see parseFilters()
      */
     public function getData($data_id, array $filters = [], $data_type = self::DATA_TYPE_GET, array $extra_arguments = [])
     {
@@ -961,10 +973,10 @@ class Connection
      * Constructs filter options, usable by AFAS REST call.
      *
      * @param array $filters
-     *   Filters in our own custom format; see parseFilters().
+     *   Filters in our own custom format; see getData().
      * @param bool $or
-     *   True if individual field-value pairs should be joined with OR instead
-     *   of AND.
+     *   (optional) True if individual field-value pairs should be joined with
+     *   OR instead of AND.
      *
      * @return array
      *   The query arguments that make up a filter. (These are always query
@@ -975,7 +987,7 @@ class Connection
      * @throws \InvalidArgumentException
      *   If the input argument has an unrecognized structure.
      *
-     * @see parseFilters()
+     * @see getData()
      */
     protected static function parseRestFilters(array $filters, $or = false)
     {
@@ -988,6 +1000,13 @@ class Connection
                 }
                 throw new InvalidArgumentException("Unknown filter operator: $operator.", 33);
             }
+            // Mixing filter formats (that is: having array values in the outer
+            // array which are both scalars and arrays) is allowed. If the
+            // values are arrays, keys are ignored; if they are scalars, keys
+            // are the field values. The end result is the same, regardless
+            // whether a field-value pair is inside an inner array. If an
+            // (outer or inner) array only contains one single '#op' value,
+            // it's  silently ignored.
             foreach ($filters as $outerfield => $filter) {
                 if ($outerfield !== '#op') {
 
@@ -1030,9 +1049,9 @@ class Connection
             // The glue is the same in all 3 arguments. Why? That's why.
             $glue = $or ? ';' : ',';
             $arguments = [
-                'filterfieldids' => join($glue, $fields),
-                'filtervalues' => join($glue, $values),
-                'operatortypes' => join($glue, $operators),
+                'filterfieldids' => implode($glue, $fields),
+                'filtervalues' => implode($glue, $values),
+                'operatortypes' => implode($glue, $operators),
             ];
         }
 
@@ -1043,81 +1062,35 @@ class Connection
      * Constructs a 'FiltersXML' argument, usable by AFAS SOAP call.
      *
      * @param array $filters
-     *   Filters in our own custom format:
-     *   1) [ FIELD1 => VALUE1, ...,  '#op' => operator ], to filter on one or
-     *      several values. The '#op' key is optional and defaults to OP_EQUAL.
-     *   2) [
-     *        [ FIELD1 => VALUE1, ..., '#op' => operator1 ],
-     *        [ FIELD2 => VALUE2, ..., '#op' => operator2 ],
-     *      ]
-     *     This supports different operators but is harder to write/read. All
-     *     sub-arrays are AND'ed together; AFAS GetConnectors do not support the
-     *     'OR' operator here.
-     *
-     *   Mixing the formats up (that is: having array values in the _outer_
-     *   array which are both scalars and arrays) is allowed. If the values are
-     *   arrays, keys are ignored; if they are scalars, keys are the field
-     *   values. The end result is the same, regardless whether a field-value
-     *   pair is inside an inner array; the returned result is a one-dimensional
-     *   list of field-value-operator combinations.
-     *   If an (outer or inner) array only contains one single '#op' value, it's
-     *   silently ignored.
-     *   For the operator values, see the OP_* constants defined in this class.
-     *
+     *   Filters in our own custom format; see getData().
      * @return string
      *   The filters formatted as 'FiltersXML' argument. (If the input is empty
-     *   or only contains an '#op',  then the XML will contain a few tags with
+     *   or only contains an '#op', then the XML will contain a few tags with
      *   no content; the effect of this is untested. It seems nothing will go
      *   wrong then, but it's better to just not call this with empty input.)
      *
      * @throws \InvalidArgumentException
      *   If the input argument has an unrecognized structure.
+     *
+     * @see getData()
      */
     protected static function parseFilters(array $filters)
     {
         $filters_str = '';
-        if ($filters) {
-            $operator = !empty($filters['#op']) ? $filters['#op'] : self::OP_EQUAL;
-            if (!is_numeric($operator) || $operator < 1 || $operator > 14) {
-                if (!is_scalar($operator)) {
-                    $operator = is_array($operator) ? '[object]' : '[array]';
-                }
-                throw new InvalidArgumentException("Unknown filter operator: $operator.", 33);
-            }
-            foreach ($filters as $outerfield => $filter) {
-                if ($outerfield !== '#op') {
-
-                    if (is_array($filter)) {
-                        // Process all fields on an inner layer.
-                        $op = !empty($filter['#op']) ? $filter['#op'] : self::OP_EQUAL;
-                        if (!is_numeric($op) || $op < 1 || $op > 14) {
-                            if (!is_scalar($op)) {
-                              $op = is_array($op) ? '[object]' : '[array]';
-                            }
-                            throw new InvalidArgumentException("Unknown filter operator: $op (for key: $outerfield).", 33);
-                        }
-                        foreach ($filter as $key => $value) {
-                            if ($key !== '#op') {
-
-                                if (is_array($value)) {
-                                    throw new InvalidArgumentException("Filter has more than two array dimensions (for key: $outerfield; field: $key).", 33);
-                                }
-                                if (!is_scalar($value)) {
-                                  throw new InvalidArgumentException("Filter contains a non-scalar value (for key: $outerfield; field: $key).", 33);
-                                }
-                                $filters_str .= '<Field FieldId="' . $key . '" OperatorType="' . $op . '">' . static::xmlValue($value) . '</Field>';
-                            }
-                        }
-                    } elseif (!is_scalar($filter)) {
-                        throw new InvalidArgumentException("Filter contains a non-scalar value (for field: $outerfield).", 33);
-                    } else {
-                        // Process 1 field on the outer layer.
-                        $filters_str .= '<Field FieldId="' . $outerfield . '" OperatorType="' . $operator . '">' . static::xmlValue($filter) . '</Field>';
-                    }
-                }
+        // Prevent code duplication. That means we have to explode the
+        // just-imploded strings again, but we can live with that. (An
+        // alternative is to provide an extra internal-type argument...)
+        $args = static::parseRestFilters($filters);
+        if ($args) {
+            // We know all 3 will yield equally long arrays.
+            $fields = explode(',', $args['filterfieldids']);
+            $values = explode(',', $args['filtervalues']);
+            $operators = explode(',', $args['operatortypes']);
+            foreach ($fields as $key => $field) {
+                $filters_str .= '<Field FieldId="' . $field . '" OperatorType="' . $operators[$key] . '">'
+                    . static::xmlValue($values[$key]) . '</Field>';
             }
         }
-
         // There can be multiple 'Filter' tags with multiple FilterIds. We only
         // need to use one, it can contain all our filtered fields.
         return '<Filters><Filter FilterId="Filter1">' . $filters_str . '</Filter></Filters>';
