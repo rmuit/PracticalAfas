@@ -473,7 +473,11 @@ class UpdateObject
      *   The fields and objects can either all be present in the first dimension
      *   of the array, or be present in a 'Fields' and/or 'Objects' array. In
      *   the latter case, the first dimension of the array must not contain any
-     *   keys other than 'Fields', 'Objects' and the ID property.
+     *   keys other than 'Fields', 'Objects' and the ID property. In addition,
+     *   this latter standalone structure can also be wrapped in a one-element
+     *   array with key 'Element' - and also, this again wrapped into a
+     *   one-element array being the object type. (Reason: this is equal to the
+     *   structure of the REST API's JSON messages, so we also accept that.)
      * @param string $action
      *   (Optional) The action to perform on the data: "insert", "update" or
      *   "delete". @see setAction() or the comments above.
@@ -1328,14 +1332,16 @@ class UpdateObject
     protected function normalizeElements(array $elements)
     {
         // If the caller passed the element(s) inside an 'Element' wrapper
-        // array (because they are handling e.g. some external json-decoded
-        // string from another source, or embedded objects inside the
-        // getElements() return value), accept that. Strip the wrapper off.
-        if (count($elements) == 1 && key($elements) === 'Element') {
+        // array and/or that again wrapped inside a '<type> wrapper' (because
+        // they are handling e.g. some json-decoded string from another source,
+        // or embedded objects inside the getElements() return value), accept
+        // that. Strip the wrappers off - except if what would be left is not
+        // an array. (In that case we regard the key to be a field name.)
+        if (count($elements) == 1 && key($elements) === $this->getType() && is_array(reset($elements))) {
             $elements = reset($elements);
-            if (!is_array($elements)) {
-                throw new InvalidArgumentException("Element data inside 'Element' wrapper is not an array.");
-            }
+        }
+        if (count($elements) == 1 && key($elements) === 'Element' && is_array(reset($elements))) {
+            $elements = reset($elements);
         }
         // Determine if we have a single element or an array of elements.
         foreach ($elements as $key => $element) {

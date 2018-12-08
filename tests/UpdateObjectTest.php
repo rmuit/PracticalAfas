@@ -13,12 +13,22 @@ use PracticalAfas\UpdateConnector\UpdateObject;
 use PracticalAfas\UpdateConnector\OrgPersonContact;
 use PracticalAfas\TestHelpers\ArraysObject;
 
+/**
+ * Tests for UpdateObject and child classes.
+ *
+ * There's so much to test that this does not try to adhere to any structure
+ * like tests for each method. Also a lot of things are tested implicitly in
+ * tests for other things. I just stopped writing tests when I stopped thinking
+ * of functionality that could break.
+ */
 class UpdateObjectTest extends TestCase
 {
     /**
      * Runs through example payloads; verifies UpdateObject output matches them.
      *
-     * This implicitly tests a lot of things; among others, whether embedded
+     * Also tests whether we can set JSON output back into the object.
+     *
+     * This implicitly tests a lot more things; among others, whether embedded
      * objects are properly formatted.
      */
     public function testOutput()
@@ -28,12 +38,14 @@ class UpdateObjectTest extends TestCase
                 $filename = __DIR__ . "/update_examples/$dir_entry";
                 /** @var \PracticalAfas\UpdateConnector\UpdateObject $object */
                 list($object, $change_behavior, $expected_json, $expected_xml) = $this->readUpdateExample($filename);
-
                 $clone = clone $object;
-                $test = $object->output('json', ['pretty' => true], $change_behavior);
-                $this->assertSame($expected_json, $test, "JSON output does not match the contents of $filename.");
-                $test = $object->output('xml', ['pretty' => true], $change_behavior);
-                $this->assertSame($expected_xml, $test, "XML output does not match the contents of $filename.");
+
+                // Test that for the array structure in a file as input, the
+                // output matches the JSON/XML contents in the same file.
+                $output = $object->output('xml', ['pretty' => true], $change_behavior);
+                $this->assertSame($expected_xml, $output, "XML output does not match the contents of $filename.");
+                $output = $object->output('json', ['pretty' => true], $change_behavior);
+                $this->assertSame($expected_json, $output, "JSON output does not match the contents of $filename.");
 
                 // Test that the object is still the same after validation /
                 // output, so validation did not change any properties of the
@@ -65,9 +77,40 @@ class UpdateObjectTest extends TestCase
                         }
                         $this->assertEquals($clone, $object);
                     }
+
+                    // Check if we can set the full JSON output (if converted
+                    // back to the array). Difference with above: this has
+                    // 'Element' wrapper(s) and an outer wrapper containing the
+                    // object type; setElements() should be able to deal with
+                    // that format too.
+                    $test = json_decode($output, true);
+                    $object->setElements($test);
+                    // Now we can't compare to $clone because we will have
+                    // explicitly set all the defaults as object values. But we
+                    // hope the output of both is still equal. (Except for the
+                    // order of fields, which can e.g. be added on later by
+                    // child classes in one case and not the other.)
+                    $output = $object->output('json', ['pretty' => true], $change_behavior);
+                    $test2 = json_decode($output, true);
+                    self::sortRecursiveKeys($test);
+                    self::sortRecursiveKeys($test2);
+                    $this->assertEquals($test2, $test);
                 }
             }
         }
+    }
+
+    /**
+     * Sort an array's keys recursively.
+     *
+     * @param array $array
+     *   The array to sort
+     */
+    private static function sortRecursiveKeys(array &$array) {
+       foreach ($array as &$value) {
+          if (is_array($value)) self::sortRecursiveKeys($value);
+       }
+       ksort($array);
     }
 
     /**
