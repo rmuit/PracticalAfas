@@ -113,6 +113,8 @@ class OrgPersonContact extends UpdateObject
                             'alias' => 'postal_address',
                         ],
                     ],
+                    // TO INCLUDE: what is 'CdId' (contact ID)? Is it the ID
+                    // field? is it a regular field?
                     'fields' => [
                         // The 2 code fields are only defined if KnContact
                         // isn't embedded in another object; see below. They're
@@ -136,7 +138,9 @@ class OrgPersonContact extends UpdateObject
                             // KnAddress objects.
                         ],
                         // Afdeling contact
-                        'ExAd' => [],
+                        'ExAd' => [
+                            'alias' => 'department',
+                        ],
                         // Functie (verwijzing naar: Tabelwaarde,Functie contact => AfasKnCodeTableValue)
                         'ViFu' => [],
                         // Functie op visitekaart
@@ -264,6 +268,7 @@ class OrgPersonContact extends UpdateObject
                         'KnBasicAddressAdr' => [
                             'type' => 'KnBasicAddress',
                             'alias' => 'address',
+                            'required' => empty($this->parentType),
                         ],
                         'KnBasicAddressPad' => [
                             'type' => 'KnBasicAddress',
@@ -405,6 +410,7 @@ class OrgPersonContact extends UpdateObject
                         'DaDe' => [],
                         // Titel/aanhef (verwijzing naar: Titel => AfasKnTitle)
                         'TtId' => [
+                            'alias' => 'title1',
                             // [ comment 2014: ]
                             // ALG was given in Qoony (where person was inside knSalesRelationPer).
                             // in newer environment where it's inside knOrganisation > knContact,
@@ -412,7 +418,9 @@ class OrgPersonContact extends UpdateObject
                             //'default' => 'ALG',
                         ],
                         // Tweede titel (verwijzing naar: Titel => AfasKnTitle)
-                        'TtEx' => [],
+                        'TtEx' => [
+                            'alias' => 'title2',
+                        ],
                         // Briefaanhef
                         'LeHe' => [],
                         // Postadres is adres
@@ -531,6 +539,7 @@ class OrgPersonContact extends UpdateObject
                         'KnBasicAddressAdr' => [
                             'type' => 'KnBasicAddress',
                             'alias' => 'address',
+                            'required' => true,
                         ],
                         'KnBasicAddressPad' => [
                             'type' => 'KnBasicAddress',

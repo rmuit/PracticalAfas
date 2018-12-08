@@ -1,25 +1,23 @@
 ; As a comparison to FbSales.txt (and a test for the argument), we specify
 ; DEFAULT_CHANGE & ^FLATTEN_SINGLE_ELEMENT which has effect on JSON output.
 ; The non-flattened version (with "Element" being an array) is also how output
-; always looks if there is more than a single element; see e.g. FbSales.txt.
-FbSales::22
+; always looks if there is more than a single element; see e.g. KnSubject.txt.
+FbSales:insert:22
 [
-  'sales_relation' => 'xxxxxxxxxxx',
-; We've just made "unit" an alias for "Unit", to prevent confusion...
-  'unit' => '1',
-  'warehouse' => '*****',
+  'reference' => 'Weborder 123',
+  'order_date' => '2018-12-08',
+  'debtor_id' => 25000,
+  'currency_code' => 'EUR',
+  'warehouse' => '*** - ******',
+; We just made "unit" an alias for "Unit", to prevent confusion...
+  'Unit' => '1',
   'line_items' => [
     [
-      'item_type' => 'Art',
       'item_code' => 'xxxxx',
-      'unit_type' => 'stk',
       'quantity' => '5'
     ],
     [
-      'item_type' => 'Art',
       'item_code' => 'xxxxx-xxx',
-      'unit_type' => 'stk',
-      'quantity' => '1'
     ]
   ]
 ]
@@ -29,26 +27,29 @@ FbSales::22
         "Element": [
             {
                 "Fields": {
-                    "DbId": "xxxxxxxxxxx",
+                    "RfCs": "Weborder 123",
+                    "OrDa": "2018-12-08",
+                    "DbId": 25000,
+                    "CuId": "EUR",
                     "Unit": 1,
-                    "War": "*****"
+                    "War": "*** - ******"
                 },
                 "Objects": {
                     "FbSalesLines": {
                         "Element": [
                             {
                                 "Fields": {
-                                    "VaIt": "Art",
                                     "ItCd": "xxxxx",
-                                    "BiUn": "stk",
-                                    "QuUn": 5
+                                    "QuUn": 5,
+                                    "VaIt": 2,
+                                    "BiUn": "Stk"
                                 }
                             },
                             {
                                 "Fields": {
-                                    "VaIt": "Art",
                                     "ItCd": "xxxxx-xxx",
-                                    "BiUn": "stk",
+                                    "VaIt": 2,
+                                    "BiUn": "Stk",
                                     "QuUn": 1
                                 }
                             }
@@ -62,26 +63,29 @@ FbSales::22
 --
 <FbSales xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Element>
-    <Fields>
-      <DbId>xxxxxxxxxxx</DbId>
+    <Fields Action="insert">
+      <RfCs>Weborder 123</RfCs>
+      <OrDa>2018-12-08</OrDa>
+      <DbId>25000</DbId>
+      <CuId>EUR</CuId>
       <Unit>1</Unit>
-      <War>*****</War>
+      <War>*** - ******</War>
     </Fields>
     <Objects>
       <FbSalesLines>
         <Element>
-          <Fields>
-            <VaIt>Art</VaIt>
+          <Fields Action="insert">
             <ItCd>xxxxx</ItCd>
-            <BiUn>stk</BiUn>
             <QuUn>5</QuUn>
+            <VaIt>2</VaIt>
+            <BiUn>Stk</BiUn>
           </Fields>
         </Element>
         <Element>
-          <Fields>
-            <VaIt>Art</VaIt>
+          <Fields Action="insert">
             <ItCd>xxxxx-xxx</ItCd>
-            <BiUn>stk</BiUn>
+            <VaIt>2</VaIt>
+            <BiUn>Stk</BiUn>
             <QuUn>1</QuUn>
           </Fields>
         </Element>

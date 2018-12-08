@@ -43,13 +43,7 @@ class KnBasicAddress extends UpdateObject
         // knowledge base page around 2012 when that was the only form /
         // language of documentation.
 
-        /* Ad, HmNr, ZpCd are required.
-         * A few lines below, the docs say that RS is also
-         *   " 'essential', even if ResZip == true, because if Zip could not be
-         *   resolved, the specified value of Rs is taken."
-         * so we'll make it required too.
-         * 
-         * Note the different format (not 4 letters) for BeginDate & ResZip;
+        /* Note the different format (not 4 letters) for BeginDate & ResZip;
          * AFAS apparently does not consider them 'normal' field names. For
          * ResZip this is clear: this value is not stored in the object. 
          * 
@@ -118,7 +112,7 @@ class KnBasicAddress extends UpdateObject
             // (I think the "AfasKnResidence" reference was outdated docs?)
             'Rs' => [
                 'alias' => 'town',
-                'required' => true,
+                // This is 'conditionally required'; see below.
             ],
             // Adres toevoeging
             'AdAd' => [],
@@ -147,6 +141,9 @@ class KnBasicAddress extends UpdateObject
         }
 
         $element = parent::validateFields($element, $element_index, $change_behavior, $validation_behavior);
+
+        // Rs (town) is required if ResZip is not set.
+        $this->propertyDefinitions['fields']['Rs']['required'] = empty($element['Fields']['ResZip']);
 
         // See comments in $propertyDefinitions: always insert a value for
         // non-inserts (irrespective of ALLOW_DEFAULTS_ON_UPDATE). We can't do

@@ -332,7 +332,10 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
     public function testDefinitionOverrides()
     {
         $properties = [
+            'order_date' => '2018-12-10',
             'order_number' => '1',
+            'debtor_id' => 1,
+            'currency_code' => 'EUR',
         ];
         $object1 = UpdateObject::create('FbSales', $properties, 'insert');
 
@@ -340,9 +343,9 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
         // by 'fields'.
         $definitions = [
             'fields' => [
-                'OrDa' => [
-                    'alias' => 'order_date',
-                    'type' => 'date',
+                // Comment will be reqired.
+                'Re' => [
+                    'alias' => 'comment',
                     'required' => true,
                 ],
                 'U1234567890' => [
@@ -355,8 +358,7 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
         // The definition for custom_field_1 would have made above create()
         // error out (which we are assuming without testing it explicitly) but
         // is fine here.
-        $properties = [
-            'order_number' => '1',
+        $properties += [
             'custom_field_1' => '2',
         ];
         $object2 = UpdateObject::create('FbSales', $properties, 'insert');
@@ -365,7 +367,7 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
         // required in $object1.
         $object1->output();
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessage("No value provided for required 'OrDa' (order_date) field.");
+        $this->expectExceptionMessage("No value provided for required 'Re' (comment) field.");
         $object2->output();
     }
 

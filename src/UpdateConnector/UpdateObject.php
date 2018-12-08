@@ -152,6 +152,7 @@ class UpdateObject
      */
     protected static $classMap = [
         'FbSales' => '\PracticalAfas\UpdateConnector\FbSales',
+        'FbSalesLines' => '\PracticalAfas\UpdateConnector\FbSalesLines',
         'KnBasicAddress' => '\PracticalAfas\UpdateConnector\KnBasicAddress',
         'KnContact' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
         'KnOrganisation' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
@@ -2655,24 +2656,139 @@ class UpdateObject
         // base page around 2012 when that was the only form / language of
         // documentation.
         switch ($this->type) {
-            case 'KnSalesRelationPer':
-                // [ Contains notes from 2014, based on an example XML snippet
-                //   from 2011 which I inherited from a commerce system. Please
-                //   send PRs to fix the fields / comments if you feel inclined. ]
-                // NOTE - not checked against XSD yet, only taken over from Qoony example
-                // Fields:
-                // ??? = Overheids Identificatienummer, which an AFAS expert recommended
-                //       for using as a secondary-unique-id, when we want to insert an
-                //       auto-numbered object and later retrieve it to get the inserted ID.
-                //       I don't know what this is but it's _not_ 'OIN', I tried that.
-                //       (In the end we never used this field.)
+            case 'FbSubscription':
                 $this->propertyDefinitions = [
-                    'id_property' => 'DbId',
                     'objects' => [
-                        'KnPerson' => [
-                            'alias' => 'person',
+                        'FbSubscriptionLines' => [
+                            'alias' => 'line_items',
+                            'multiple' => true,
                         ],
                     ],
+                    'fields' => [
+                        'BcId' => [
+                            'alias' => 'organisation_id',
+                            'required' => true,
+                        ],
+                        'CtPe' => [
+                            'alias' => 'contact_id',
+                            'required' => true,
+                        ],
+                        'DbId' => [
+                            'alias' => 'debtor_id',
+                            'required' => true,
+                        ],
+                        'SuSt' => [
+                            'alias' => 'order_date',
+                            'type' => 'date',
+                            'required' => true,
+                        ],
+                        'VaIn' => [],
+                        'VaRe' => [],
+                        'DaRe' => [],
+                    ],
+                ];
+                break;
+
+            case 'FbSubscriptionLines':
+                $this->propertyDefinitions = [
+                    'fields' => [
+                        'Id' => [
+                            'alias' => 'guid',
+                        ],
+                        'ItCd' => [
+                            'alias' => 'item_code',
+                        ],
+                        'VaIt' => [
+                            'alias' => 'item_type',
+                        ],
+                        'Qu' => [
+                            'alias' => 'quantity',
+                            'type' => 'integer',
+                        ],
+                        'DaSt' => [
+                            'alias' => 'start_date',
+                            'type' => 'date',
+                            'required' => true,
+                        ],
+                        'DaPu' => [
+                            'type' => 'date',
+                        ],
+                    ],
+                ];
+                break;
+
+            case 'KnCourseMember':
+                $this->propertyDefinitions = [
+                    'fields' => [
+                        'BcCo' => [
+                            'alias' => 'organisation_code',
+                            'required' => true,
+                        ],
+                        'DeId' => [
+                            'alias' => 'debtor_id',
+                        ],
+                        'CrId' => [
+                            'alias' => 'event_id',
+                        ],
+                        'CdId' => [
+                            'alias' => 'contact_id',
+                        ],
+                        'SuDa' => [
+                            'alias' => 'subscription_date',
+                            'type' => 'date',
+                            'required' => true,
+                        ],
+                        'DfPr' => [
+                            'alias' => 'price',
+                            'type' => 'decimal',
+                        ],
+                        'DiPc' => [
+                            'alias' => 'discount_perc',
+                        ],
+                        'Invo' => [
+                            'required' => true,
+                        ],
+                        'Rm' => [
+                            'alias' => 'comment',
+                        ],
+                    ],
+                ];
+                break;
+
+            case 'KnProvApplication':
+                $this->propertyDefinitions = [
+                    'fields' => [
+                        'BcCo' => [
+                            'alias' => 'organisation_code',
+                            'required' => true,
+                        ],
+                        'PvCd' => [
+                            'required' => true,
+                        ],
+                        'PvCt' => [
+                            'required' => true,
+                        ],
+                        'VaPt' => [
+                            'required' => true,
+                        ],
+                    ],
+                ];
+                break;
+
+            // This seems to be where the object model breaks down a bit.
+            // KnSalesRelationOrg and KnSalesRelationPer clearly seem to share
+            // the same 'object space'. (I suspect that only one of these can
+            // have the same ID.) The same is the case for KnBasicAddressAdr
+            // and KnBasicAddressPad, so I concluded that there must be one
+            // object type, and named it 'KnBasicAddress'. That works because
+            // addresses cannot be sent to AFAS as separate objects. Sales
+            // relations can, and at least in the SOAP API must have e.g.
+            // 'KnSalesRelationPer' in the header. Which is a bit surprising.
+            // So until further info comes in, we define them as two types.
+            case 'KnSalesRelationOrg':
+            case 'KnSalesRelationPer':
+                $this->propertyDefinitions = [
+                    'id_property' => 'DbId',
                     'fields' => [
                         // 'is debtor'?
                         'IsDb' => [
@@ -2702,7 +2818,7 @@ class UpdateObject
                         // specified by whoever is setting up the AFAS
                         // administration?
                         'ColA' => [
-                            'alias' => 'verzamelreking_debiteur',
+                            'alias' => 'coll_account',
                         ],
                         // [ comment 2014: ]
                         // ?? Doesn't seem to be required, but we're still
@@ -2716,6 +2832,22 @@ class UpdateObject
                         ],
                     ],
                 ];
+                if ($this->getType() === 'KnSalesRelationOrg') {
+                    $this->propertyDefinitions['fields']['VaId'] = [
+                        'alias' => 'vat_number',
+                    ];
+                    $this->propertyDefinitions['objects'] = [
+                        'KnOrganisation' => [
+                            'alias' => 'organisation',
+                        ],
+                    ];
+                } else {
+                    $this->propertyDefinitions['objects'] = [
+                        'KnPerson' => [
+                            'alias' => 'person',
+                        ],
+                    ];
+                }
                 break;
 
             case 'KnSubject':
@@ -2951,6 +3083,8 @@ class UpdateObject
                         ],
                         // Type item (verwijzing naar: Tabelwaarde,Itemtype => AfasKnCodeTableValue)
                         // Values:  Wst:Werksoort   Pid:Productie-indicator   Deg:Deeg   Dim:Artikeldimensietotaal   Art:Artikel   Txt:Tekst   Sub:Subtotaal   Tsl:Toeslag   Kst:Kosten   Sam:Samenstelling   Crs:Cursus-->
+                        // NOTE: are these really 3-letter codes? See
+                        // description for FbSales.VaIt which has integers.
                         'VaIt' => [
                             'alias' => 'item_type',
                         ],
@@ -3037,147 +3171,6 @@ class UpdateObject
                         // Opzegtermijn (verwijzing naar: Tabelwaarde,(Afwijkende) opzegtermijn => AfasKnCodeTableValue)
                         'U007' => [
                             'alias' => 'cancel_term',
-                        ],
-                    ],
-                ];
-                break;
-
-            case 'FbSalesLines':
-                $this->propertyDefinitions = [
-                    'objects' => [
-                        'FbOrderBatchLines' => [
-                            'alias' => 'batch_line_items',
-                            'multiple' => true,
-                        ],
-                        'FbOrderSerialLines' => [
-                            'alias' => 'serial_line_items',
-                            'multiple' => true,
-                        ],
-                    ],
-                    'fields' => [
-                        // Type item (verwijzing naar: Tabelwaarde,Itemtype => AfasKnCodeTableValue)
-                        // Values:  1:Werksoort   10:Productie-indicator   11:Deeg   14:Artikeldimensietotaal   2:Artikel   3:Tekst   4:Subtotaal   5:Toeslag   6:Kosten   7:Samenstelling   8:Cursus
-                        'VaIt' => [
-                            'alias' => 'item_type',
-                        ],
-                        // Itemcode
-                        'ItCd' => [
-                            'alias' => 'item_code',
-                        ],
-                        // Omschrijving
-                        'Ds' => [
-                            'alias' => 'description',
-                        ],
-                        // Btw-tariefgroep (verwijzing naar: Btw-tariefgroep => AfasKnVatTarifGroup)
-                        'VaRc' => [
-                            'alias' => 'vat_type',
-                        ],
-                        // Eenheid (verwijzing naar: Eenheid => AfasFbUnit)
-                        'BiUn' => [
-                            'alias' => 'unit_type',
-                        ],
-                        // Aantal eenheden
-                        'QuUn' => [
-                            'alias' => 'quantity',
-                            'type' => 'decimal',
-                        ],
-                        // Lengte
-                        'QuLe' => [
-                            'alias' => 'length',
-                            'type' => 'decimal',
-                        ],
-                        // Breedte
-                        'QuWi' => [
-                            'alias' => 'width',
-                            'type' => 'decimal',
-                        ],
-                        // Hoogte
-                        'QuHe' => [
-                            'alias' => 'height',
-                            'type' => 'decimal',
-                        ],
-                        // Aantal besteld
-                        'Qu' => [
-                            'alias' => 'quantity_ordered',
-                            'type' => 'decimal',
-                        ],
-                        // Aantal te leveren
-                        'QuDl' => [
-                            'alias' => 'quantity_deliver',
-                            'type' => 'decimal',
-                        ],
-                        // Prijslijst (verwijzing naar: Prijslijst verkoop => AfasFbPriceListSale)
-                        'PrLi' => [
-                            'alias' => 'price_list',
-                        ],
-                        // Magazijn (verwijzing naar: Magazijn => AfasFbWarehouse)
-                        'War' => [
-                            'alias' => 'warehouse',
-                        ],
-                        // Dienstenberekening
-                        'EUSe' => [
-                            'type' => 'boolean',
-                        ],
-                        // Gewichtseenheid (verwijzing naar: Tabelwaarde,Gewichtseenheid => AfasKnCodeTableValue)
-                        // Values:  0:Geen gewicht   1:Microgram (Âµg)   2:Milligram (mg)   3:Gram (g)   4:Kilogram (kg)   5:Ton
-                        'VaWt' => [
-                            'alias' => 'weight_unit',
-                        ],
-                        // Nettogewicht
-                        'NeWe' => [
-                            'alias' => 'weight_net',
-                            'type' => 'decimal',
-                        ],
-                        //
-                        'GrWe' => [
-                            'alias' => 'weight_gross',
-                            'type' => 'decimal',
-                        ],
-                        // Prijs per eenheid
-                        'Upri' => [
-                            'alias' => 'unit_price',
-                            'type' => 'decimal',
-                        ],
-                        // Kostprijs
-                        'CoPr' => [
-                            'alias' => 'cost_price',
-                            'type' => 'decimal',
-                        ],
-                        // Korting toestaan (verwijzing naar: Tabelwaarde,Toestaan korting => AfasKnCodeTableValue)
-                        // Values:  0:Factuur- en regelkorting   1:Factuurkorting   2:Regelkorting   3:Geen factuur- en regelkorting
-                        'VaAD' => [],
-                        // % Regelkorting
-                        'PRDc' => [
-                            'type' => 'decimal',
-                        ],
-                        // Bedrag regelkorting
-                        'ARDc' => [
-                            'type' => 'decimal',
-                        ],
-                        // Handmatig bedrag regelkorting
-                        'MaAD' => [
-                            'type' => 'boolean',
-                        ],
-                        // Opmerking
-                        'Re' => [
-                            'alias' => 'comment',
-                        ],
-                        // GUID regel
-                        'GuLi' => [
-                            'alias' => 'guid',
-                        ],
-                        // Artikeldimensiecode 1 (verwijzing naar: Artikeldimensiecodes => AfasFbStockDimLines)
-                        'StL1' => [
-                            'alias' => 'dimension_1',
-                        ],
-                        // Artikeldimensiecode 2 (verwijzing naar: Artikeldimensiecodes => AfasFbStockDimLines)
-                        'StL2' => [
-                            'alias' => 'dimension_2',
-                        ],
-                        // Direct leveren vanuit leverancier
-                        'DiDe' => [
-                            'alias' => 'direct_delivery',
-                            'type' => 'boolean',
                         ],
                     ],
                 ];

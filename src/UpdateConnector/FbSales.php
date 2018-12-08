@@ -11,7 +11,9 @@
 namespace PracticalAfas\UpdateConnector;
 
 /**
- * FbSales is in its own class because it's the only object type that needs to
+ * An UpdateObject containing definitions / logic for FbSales objects.
+ *
+ * This has its own class because it's the only object type that needs to
  * implement IsoCountryTrait and has no other custom functionality.
  */
 class FbSales extends UpdateObject
@@ -37,14 +39,19 @@ class FbSales extends UpdateObject
             'OrNu' => [
                 'alias' => 'order_number',
             ],
+            'RfCs' => [
+                'alias' => 'reference',
+            ],
             // Datum
             'OrDa' => [
                 'alias' => 'order_date',
                 'type' => 'date',
+                'required' => true,
             ],
             // Verkooprelatie (verwijzing naar: Verkooprelatie => AfasKnSalRelation)
             'DbId' => [
-                'alias' => 'sales_relation',
+                'alias' => 'debtor_id',
+                'required' => true,
             ],
             // Gewenste leverdatum
             'DaDe' => [
@@ -59,6 +66,7 @@ class FbSales extends UpdateObject
             // Valutacode (verwijzing naar: Valuta => AfasKnCurrency)
             'CuId' => [
                 'alias' => 'currency_code',
+                'required' => true,
             ],
             // Valutakoers
             'Rate' => [
@@ -99,6 +107,7 @@ class FbSales extends UpdateObject
                 // uppercase letter for.
                 'alias' => 'unit',
                 'type' => 'integer',
+                // 'required' => true ?
             ],
             // Incasseren
             'Coll' => [
@@ -117,6 +126,9 @@ class FbSales extends UpdateObject
             // Magazijn (verwijzing naar: Magazijn => AfasFbWarehouse)
             'War' => [
                 'alias' => 'warehouse',
+                // 'required' => true ?
+                // If so, is there some default value in AFAS for every new
+                // AFAS setup that has only one warehouse?
             ],
             // Verzamelpakbon
             'CoDn' => [
