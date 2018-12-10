@@ -205,11 +205,14 @@ class UpdateObject
      * no getter). The constructor is responsible for populating it, if it is
      * not already populated in the class definition.
      *
-     * Code may also manipulate properties to influence the validation process
+     * Code may also modify properties to influence the validation process
      * but must then obviously be very careful to ensure that all validation
-     * works uniformly. (This can be tricky / requires knowledge of exactly
-     * when which types of validation are performed, as it can happen during
-     * validateElementInput() and validateElement() calls.)
+     * works uniformly. (This requires knowledge of exactly when which types of
+     * validation is performed by which method: validation happen during both
+     * validateElementInput() and validateElement() calls, which each have a
+     * slightly different function and each call a number of other methods. to
+     * do the work.) These modifications are not guaranteed to persist after
+     * validation.
      *
      * The format is not related to AFAS but a structure specific to this class.
      * The array has the following keys:
@@ -1765,49 +1768,60 @@ class UpdateObject
             throw new InvalidArgumentException('$validation_behavior argument is not an integer.');
         }
 
+        $original_properties = $this->propertyDefinitions;
         $return = [];
         $errors = [];
-        foreach ($this->elements as $element_index => $element) {
-            // Standard code can never have non-numeric indices and non-array
-            // elements, but check everything, in case a child class messes up.
-            if (!is_array($element)) {
-                // We only expose the index value in error messages, and only
-                // if we have multiple elements.
-                $element_descr = 'element' . ($element_index ? " with index $element_index" : '');
-                throw new UnexpectedValueException("$element_descr is not an array.");
-            }
-            $element = $this->validateElement($element, $element_index, $change_behavior, $validation_behavior);
+        try {
+            foreach ($this->elements as $element_index => $element) {
+                // Standard code can never have non-array elements. Still,
+                // check it, in case a child class messes up.
+                if (!is_array($element)) {
+                    // We only expose the index value in errors if we seem to
+                    // have multiple elements (because non-zero index.)
+                    $element_descr = 'element' . ($element_index ? " with index $element_index" : '');
+                    throw new UnexpectedValueException("$element_descr is not an array.");
+                }
+                $element = $this->validateElement($element, $element_index, $change_behavior, $validation_behavior);
 
-            if (isset($element['*errors'])) {
-                if (!is_array($element['*errors'])) {
-                    throw new UnexpectedValueException('Something unexpected during validation. We got a single value where we expected an array:' . print_r($element['*errors'], TRUE));
-                }
-                if ($element['*errors']) {
-                    // There may be multiple keyed errors; each may have
-                    // multiple errors separated by newlines (if they come from
-                    // an embedded object.) Prefix all of them with the element
-                    // key if we're validating multiple elements. Do not
-                    // mention the object type itself in errors: the caller
-                    // supposedly knows the object it's calling, and for errors
-                    // in embedded objects the object name is almost-duplicate
-                    // with the reference field name which is already included.
-                    $error_prefix = (count($this->elements) > 1 ? "element-key $element_index: " : '');
-                    foreach ($element['*errors'] as $key => $value) {
-                        $errors["$element_index:$key"] = $error_prefix ?
-                            ($error_prefix . implode("\n$error_prefix", explode("\n", $value))) : $value;
+                if (isset($element['*errors'])) {
+                    if (!is_array($element['*errors'])) {
+                        throw new UnexpectedValueException('Something unexpected during validation. We got a single value where we expected an array:' . print_r($element['*errors'], TRUE));
                     }
-                } else {
-                    unset($element['*errors']);
+                    if ($element['*errors']) {
+                        // There may be multiple keyed errors; each may have
+                        // multiple errors separated by newlines (if they come
+                        // from an embedded object.) Prefix all of them with
+                        // the element key if we're validating multiple
+                        // elements. Do not mention the object type itself in
+                        // errors: the caller supposedly knows the object it's
+                        // calling, and for errors in embedded objects the
+                        // object name is almost-duplicate with the reference
+                        // field name which is already included.
+                        $error_prefix = (count($this->elements) > 1 ? "element-key $element_index: " : '');
+                        foreach ($element['*errors'] as $key => $value) {
+                            $errors["$element_index:$key"] = $error_prefix ?
+                                ($error_prefix . implode("\n$error_prefix", explode("\n", $value))) : $value;
+                        }
+                    } else {
+                        unset($element['*errors']);
+                    }
+                }
+                if ($element) {
+                    $return[] = $element;
                 }
             }
-            if ($element) {
-                $return[] = $element;
-            }
+        } finally {
+            // As documented, validation methods are allowed to modify the
+            // property definitions. This should have no effect on behavior
+            // after this method is called, so we could leave it changed, but
+            // unit tests sometimes benefit from being able to test whether
+            // the object as a whole is unchanged after validation.
+            $this->propertyDefinitions = $original_properties;
         }
         if ($errors) {
-            // We expect the error messages are descriptive enough and will
-            // disregard the error keys. (Though who knows some code might find
-            // them useful, or we will get back to this, later.)
+            // We (mostly?) don't need the error keys because they've been
+            // transferred into the error messages already by above implode() &
+            // validateObjectValue().
             throw new UnexpectedValueException(implode("\n", $errors));
         }
 
@@ -1983,12 +1997,8 @@ class UpdateObject
             // a null default value means 'no default available' (instead of
             // 'a default of null', which it does in validateFields().)
             $default_available = $defaults_allowed && isset($object_properties['default']);
-            // Requiredness is only checked for action "insert"; the
-            // VALIDATE_ESSENTIAL bit does not change that. (So far, we've only
-            // seen 'required on update' situations only for fields which are
-            // not proper fields, and those situations are solved in custom
-            // code in child classes.)
             $validate_required_value = !empty($object_properties['required'])
+                && $action === 'insert'
                 && ($validation_behavior & self::VALIDATE_REQUIRED
                     || ($object_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
             // Throw an exception if we have no-or-null ref-field value and no
