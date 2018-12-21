@@ -47,6 +47,8 @@ class FbSales extends UpdateObject
                 'alias' => 'order_date',
                 'type' => 'date',
                 'required' => true,
+                // The default "today" for a date gets converted to yyyy-mm-dd.
+                'default' => 'today',
             ],
             // Verkooprelatie (verwijzing naar: Verkooprelatie => AfasKnSalRelation)
             'DbId' => [

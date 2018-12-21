@@ -14,10 +14,12 @@ FbSales:insert:22
   'line_items' => [
     [
       'item_code' => 'xxxxx',
-      'quantity' => '5'
+      'quantity' => '5',
+      'unit_price' => 25,
     ],
     [
       'item_code' => 'xxxxx-xxx',
+      'unit_price' => 1.20,
     ]
   ]
 ]
@@ -41,6 +43,7 @@ FbSales:insert:22
                                 "Fields": {
                                     "ItCd": "xxxxx",
                                     "QuUn": 5,
+                                    "Upri": 25,
                                     "VaIt": 2,
                                     "BiUn": "Stk"
                                 }
@@ -48,6 +51,7 @@ FbSales:insert:22
                             {
                                 "Fields": {
                                     "ItCd": "xxxxx-xxx",
+                                    "Upri": 1.2,
                                     "VaIt": 2,
                                     "BiUn": "Stk",
                                     "QuUn": 1
@@ -77,6 +81,7 @@ FbSales:insert:22
           <Fields Action="insert">
             <ItCd>xxxxx</ItCd>
             <QuUn>5</QuUn>
+            <Upri>25</Upri>
             <VaIt>2</VaIt>
             <BiUn>Stk</BiUn>
           </Fields>
@@ -84,6 +89,7 @@ FbSales:insert:22
         <Element>
           <Fields Action="insert">
             <ItCd>xxxxx-xxx</ItCd>
+            <Upri>1.2</Upri>
             <VaIt>2</VaIt>
             <BiUn>Stk</BiUn>
             <QuUn>1</QuUn>

@@ -5,7 +5,6 @@
 FbSales:insert
 [
   'reference' => 'Weborder 123',
-  'order_date' => '2018-12-08',
   'debtor_id' => 25000,
   'currency_code' => 'EUR',
   'warehouse' => '*** - ******',
@@ -13,10 +12,15 @@ FbSales:insert
   'line_items' => [
     [
       'item_code' => 'xxxxx',
-      'quantity' => '5'
+      'quantity' => '5',
+      'unit_price' => 25,
     ],
     [
       'item_code' => 'xxxxx-xxx',
+; This is converted to 1.2 in output. If we should change this to 1.20 instead,
+; we should change the field type 'decimal' for this and other fields to be
+; more specific and add formatting in validateFieldValue().
+      'unit_price' => 1.20,
     ]
   ]
 ]
@@ -29,11 +33,11 @@ FbSales:insert
         "Element": {
             "Fields": {
                 "RfCs": "Weborder 123",
-                "OrDa": "2018-12-08",
                 "DbId": 25000,
                 "CuId": "EUR",
                 "Unit": 1,
-                "War": "*** - ******"
+                "War": "*** - ******",
+                "OrDa": {TODAY}
             },
             "Objects": {
 ; By contrast, the FbSalesLines "Element" will always contain an array, even
@@ -46,6 +50,7 @@ FbSales:insert
                             "Fields": {
                                 "ItCd": "xxxxx",
                                 "QuUn": 5,
+                                "Upri": 25,
                                 "VaIt": 2,
                                 "BiUn": "Stk"
                             }
@@ -53,6 +58,7 @@ FbSales:insert
                         {
                             "Fields": {
                                 "ItCd": "xxxxx-xxx",
+                                "Upri": 1.2,
                                 "VaIt": 2,
                                 "BiUn": "Stk",
                                 "QuUn": 1
@@ -69,11 +75,11 @@ FbSales:insert
   <Element>
     <Fields Action="insert">
       <RfCs>Weborder 123</RfCs>
-      <OrDa>2018-12-08</OrDa>
       <DbId>25000</DbId>
       <CuId>EUR</CuId>
       <Unit>1</Unit>
       <War>*** - ******</War>
+      <OrDa>{TODAY}</OrDa>
     </Fields>
     <Objects>
       <FbSalesLines>
@@ -81,6 +87,7 @@ FbSales:insert
           <Fields Action="insert">
             <ItCd>xxxxx</ItCd>
             <QuUn>5</QuUn>
+            <Upri>25</Upri>
             <VaIt>2</VaIt>
             <BiUn>Stk</BiUn>
           </Fields>
@@ -88,6 +95,7 @@ FbSales:insert
         <Element>
           <Fields Action="insert">
             <ItCd>xxxxx-xxx</ItCd>
+            <Upri>1.2</Upri>
             <VaIt>2</VaIt>
             <BiUn>Stk</BiUn>
             <QuUn>1</QuUn>

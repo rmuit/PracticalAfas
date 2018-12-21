@@ -2129,7 +2129,17 @@ class UpdateObject
                 if ($default_available
                     && (!array_key_exists($name, $element['Fields'])
                         || !empty($field_properties['required']) && $element['Fields'][$name] === null)) {
-                    $element['Fields'][$name] = $field_properties['default'];
+                    // Support dynamic default value of "today" for date
+                    // fields; convert it to yyyy-mm-dd today. (We might also
+                    // be able to dynamically convert the value "today" set by
+                    // the user, but let's not do that unless it has a proven
+                    // value.)
+                    if ($field_properties['default'] === 'today'
+                        && isset($field_properties['type']) && $field_properties['type'] === 'date') {
+                        $element['Fields'][$name] = date('Y-m-d');
+                    } else {
+                        $element['Fields'][$name] = $field_properties['default'];
+                    }
                 }
 
                 if (isset($element['Fields'][$name])) {
@@ -2721,13 +2731,22 @@ class UpdateObject
                             'required' => true,
                         ],
                         'DaPu' => [
+                            'alias' => 'start_date',
                             'type' => 'date',
+                            'required' => true,
+                            // The default "today" for a date gets converted to yyyy-mm-dd.
+                            'default' => 'today',
                         ],
                     ],
                 ];
                 break;
 
             case 'KnCourseMember':
+                // I'm  not sure what the exact usage is. It might be that
+                // SuDa needs a default of today, but only if it's the date of
+                // registration and not the date of the course. And in that
+                // case, I'd expect there to be a KnCourseEvent type which has
+                // the course date... but we don't have that defined yet.
                 $this->propertyDefinitions = [
                     'fields' => [
                         'BcCo' => [

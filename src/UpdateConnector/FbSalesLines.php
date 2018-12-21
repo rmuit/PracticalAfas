@@ -167,10 +167,14 @@ class FbSalesLines extends UpdateObject
      */
     protected function validateFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
     {
-        // Only if item type is Article / Combination, Unit and Quantity have
-        // defaults. (For other types, we don't know yet.) We are assuming the
-        // default is Article (so if the field is not set, it's an article).
-        $is_article = !isset($element['Fields']['VaIt']) || $element['Fields']['VaIt'] == 2;
+        // Unit Type and Quantity fields have default values only if item type
+        // is Article / Combination. (For other types, we don't know yet.)
+        if (isset($element['Fields']['VaIt'])) {
+            $is_article = in_array($element['Fields']['VaIt'], [2, 7]);
+        } else {
+            $is_article = isset($this->propertyDefinitions['fields']['VaIt']['default'])
+                && in_array($this->propertyDefinitions['fields']['VaIt']['default'], [2, 7]);
+        }
         if ($is_article) {
             $this->propertyDefinitions['fields']['BiUn']['default'] = 'Stk';
             $this->propertyDefinitions['fields']['QuUn']['default'] = 1;
@@ -182,8 +186,8 @@ class FbSalesLines extends UpdateObject
         // 'required' only for articles, for now.
         $this->propertyDefinitions['fields']['ItCd']['required'] =
         $this->propertyDefinitions['fields']['BiUn']['required'] =
-        $this->propertyDefinitions['fields']['QuUn']['required'] = $is_article;
-
+        $this->propertyDefinitions['fields']['QuUn']['required'] =
+        $this->propertyDefinitions['fields']['Upri']['required'] = $is_article;
 
         return parent::validateFields($element, $element_index, $change_behavior, $validation_behavior);
     }
