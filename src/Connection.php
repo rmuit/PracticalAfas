@@ -321,8 +321,10 @@ class Connection
     /**
      * Sends data to an AFAS Update Connector.
      *
-     * @param string $connector_name
-     *   The name of the Update Connector.
+     * The first and second parameter could also be switched, but that usage
+     * is deprecated. (Note that the connector name is the first argument in
+     * getData(), and the second argument in sendData().)
+     *
      * @param string|array|\PracticalAfas\UpdateConnector\UpdateObject $data
      *   The data to send in to the Update Connector; can be:
      *   - a string, which will be sent into the connector as-is. Must be JSON
@@ -330,6 +332,9 @@ class Connection
      *   - an UpdateObject instance containing the data to send.
      *   - an array, which will be passed into an UpdateObject to generate
      *     the data to send.
+     * @param string $connector_name
+     *   (Optional) The name of the Update Connector. It is required if the
+     *   data is an array or a string.
      * @param string $action
      *   (Optional) The action to take on the data: "insert", "update" or
      *   "delete". It is required if the data is an array, or if it's a string
@@ -344,8 +349,18 @@ class Connection
      *   If any of the arguments are invalid (which includes invalid keys/
      *   values in the array).
      */
-    function sendData($connector_name, $data, $action = '')
+    function sendData($data, $connector_name = '', $action = '')
     {
+        // If $data is a simple string and $connector_name is not, then
+        // they are switched. We support this for backward compatibility;
+        // it was defined that way in v2.0.
+        if (is_string($data) && (!is_string($connector_name) || !preg_match('/^\w+$/', $connector_name))
+            && preg_match('/^\w+$/', $data)) {
+            $temp = $connector_name;
+            $connector_name = $data;
+            $data = $temp;
+        }
+
         $action = strtolower($action);
         // We accept REST verbs POST/PUT/DELETE too, since this was the
         // argument in v1 of this method. Implicitly convert by array_search.
@@ -354,7 +369,9 @@ class Connection
             throw new InvalidArgumentException('Invalid action ' . var_export($action, true) . '.');
         }
 
-        if (is_array($data)) {
+        if ($data instanceof UpdateObject && $connector_name !== $data->getType()) {
+            throw new InvalidArgumentException("Provided connector name argument ($connector_name) differs from the type of UpdateObject ({$data->getType()}).");
+        } elseif (is_array($data)) {
             // We'll require the action also for SOAP/XML. (The UpdateObject
             // in practice will treat an empty string the same as "update" but
             // it wants you to specify a nonempty string.)
@@ -388,14 +405,14 @@ class Connection
                 // the verb - so if getAction() throws an exception, we want
                 // that to happen.
                 try {
-                    $object_action = $data->getAction();
+                    $temp = $data->getAction();
                 } catch (UnexpectedValueException $e) {
                     throw new InvalidArgumentException('Data argument is an UpdateObject with several different actions set. This is not supported by REST clients.');
                 }
-                if ($action && $object_action !== $action) {
+                if ($action && $temp !== $action) {
                     // We could just ignore $action but this seems like a
                     // potentially dangerous mistake.
-                    throw new InvalidArgumentException("Provided action argument ($action) differs from action specified in the UpdateObject ($object_action).");
+                    throw new InvalidArgumentException("Provided action argument ($action) differs from action specified in the UpdateObject ($temp).");
                 }
                 $data = $data->output('json');
             }
