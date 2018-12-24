@@ -208,7 +208,18 @@ class Connection
     public function getClientType()
     {
         $client =  $this->client;
-        return $client::getClientType();
+        // We shouldn't need the strtoupper() but just for security's sake...
+        return strtoupper($client::getClientType());
+    }
+
+    /**
+     * Indicates the data format accepted / returned by this client's endpoint.
+     *
+     * @return string
+     */
+    public function getDataFormat()
+    {
+        return $this->getClientType() === 'SOAP' ? 'xml' : 'json';
     }
 
     /**
@@ -390,7 +401,7 @@ class Connection
             // multiple actions can be defined for multiple elements present in
             // the UpdateObject.
             if (!is_string($data)) {
-                $data = $data->output('xml');
+                $data = $data->output($this->getDataFormat());
             }
             $response = $this->client->callAfas('update', 'Execute', ['connectorType' => $connector_name, 'dataXml' => $data]);
         } else {
@@ -414,7 +425,7 @@ class Connection
                     // potentially dangerous mistake.
                     throw new InvalidArgumentException("Provided action argument ($action) differs from action specified in the UpdateObject ($temp).");
                 }
-                $data = $data->output('json');
+                $data = $data->output($this->getDataFormat());
             }
             $response = $this->client->callAfas($rest_verbs[$action], 'connectors/' . rawurlencode($connector_name), [], $data);
         }
