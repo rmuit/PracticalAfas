@@ -71,6 +71,9 @@ FbSales:insert
     }
 }
 --
+; XML notation is older than JSON notation. Since (unlike JSON) it is possible
+; for an object tag to contain multiple 'Element' tags, there is no difference
+; in structure between a single or multiple elements.
 <FbSales xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Element>
     <Fields Action="insert">

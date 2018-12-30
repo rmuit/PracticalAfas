@@ -22,6 +22,9 @@ KnOrganisation:update:55
 ; the embedded contact/organisation data to be an "insert" instead:
 eval: $object->getObject('KnContact')->setAction('insert');
 --
+; Note: I have never tried this insert-inside-an-update in JSON/REST. It may
+; work with the PUT 'endpoint' because of the MatchPer value - but someone will
+; need to test this.
 {
     "KnOrganisation": {
         "Element": {
