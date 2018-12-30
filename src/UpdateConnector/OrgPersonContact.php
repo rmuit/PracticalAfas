@@ -929,7 +929,10 @@ class OrgPersonContact extends UpdateObject
             if (!$address && $search_embedded_types) {
                 $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad'], false, $search_embedded_types);
             }
-            if ($address && (!isset($address['CoId']) || strtoupper($address['CoId']) === 'NL')) {
+            // If fields have a default, they are already populated by
+            // validation code (at least on output validation), so we don't
+            // need to check for a 'CoId' default.
+            if (isset($address['CoId']) && is_string($address['CoId']) && strtoupper($address['CoId']) === 'NL') {
                 $parts = static::validateDutchPhoneNr($value);
                 if (!$parts && $validation_behavior & self::VALIDATE_FORMAT) {
                     throw new InvalidArgumentException("Phone number '$field_name' has invalid format.");
@@ -960,7 +963,13 @@ class OrgPersonContact extends UpdateObject
         // validate numbers in the current object; we've done that already.
         if (empty($element['*errors']) && ($change_behavior & self::ALLOW_REFORMAT_PHONE_NR || $validation_behavior & self::VALIDATE_FORMAT)) {
             $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad']);
-            if ($address && (!isset($address['CoId']) || strtoupper($address['CoId']) === 'NL')) {
+            // Defaults are not populated into the field yet.
+            if (isset($address['CoId'])
+                ? is_string($address['CoId']) && strtoupper($address['CoId']) === 'NL'
+                : isset($this->propertyDefinitions['fields']['CoId']['default'])
+                && is_string($this->propertyDefinitions['fields']['CoId']['default'])
+                && $this->propertyDefinitions['fields']['CoId']['default'] === 'NL'
+            ) {
                 // This uses an extension of validateFieldValue() logic:
                 $ref_name2 = '';
                 switch ($this->getType()) {

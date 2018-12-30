@@ -33,6 +33,51 @@ class KnBasicAddress extends UpdateObject
     use IsoCountryTrait;
 
     /**
+     * The countries for which we try to split house numbers off streets.
+     *
+     * This is done (only for certain 'change behavior' flags on validation,
+     * and) only for defined countries where the splitting of house numbers is
+     * common. This is a judgment call, and the list of countries is arbitrary,
+     * but there's slightly less risk of messing up foreign addresses this way.
+     *
+     * @var string[]
+     */
+    protected static $countriesWithSeparateHouseNr = ['B', 'D', 'DK', 'F', 'FIN', 'H', 'NL', 'NO', 'S'];
+
+    /**
+     * Returns countries for which we try to split house numbers off streets.
+     *
+     * Callers can assume the returned strings are uppercased, and are AFAS
+     * codes (not ISO codes).
+     *
+     * @return string[]
+     */
+    public static function getCountriesWithSeparateHouseNr()
+    {
+        return static::$countriesWithSeparateHouseNr;
+    }
+
+    /**
+     * Sets the countries for which we try to split house numbers off streets.
+     *
+     * @param string[]
+     *   The AFAS country codes. (Note not ISO country codes.)
+     *
+     * @throws \InvalidArgumentException
+     *   If some countries are not strings.
+     */
+    public static function setCountriesWithSeparateHouseNr(array $countries)
+    {
+        if (array_filter($countries, function ($c) {
+            return !is_string($c);
+        })) {
+            throw new \InvalidArgumentException('Countries are not all strings');
+        }
+
+        static::$countriesWithSeparateHouseNr = array_map('strtoupper', $countries);
+    }
+
+    /**
      * {@inheritdoc}
      */
     protected $propertyDefinitions = [
@@ -137,7 +182,7 @@ class KnBasicAddress extends UpdateObject
 
         // ALLOW_CHANGES is not set by default.
         if ($change_behavior & self::ALLOW_CHANGES) {
-            $element['Fields'] = static::convertStreetName($element['Fields']);
+            $element['Fields'] = $this->convertStreetName($element['Fields'], $element_index);
         }
 
         $element = parent::validateFields($element, $element_index, $change_behavior, $validation_behavior);
@@ -204,15 +249,16 @@ class KnBasicAddress extends UpdateObject
         $matches = [];
         if (!empty($fields['Ad']) && (!isset($fields['HmNr']) || $fields['HmNr'] === '') && (!isset($fields['HmAd']) || $fields['HmAd'] === '')
             // Split off house number and possible extension from street,
-            // because AFAS has separate fields for those. We do this only for
-            // defined countries where the splitting of house numbers is common.
-            // (This is a judgment call, and the list of countries is arbitrary,
-            // but there's slightly less risk of messing up foreign addresses
-            // that way.) Empty country is assumed to be 'NL' since AFAS is
-            // NL-centric.
-            // This code comes from addressfield_tfnr module and was adjusted
-            // later to conform to AFAS' definition of "extension".
-            && (!isset($fields['CoId']) || in_array($fields['CoId'], ['', 'B', 'D', 'DK', 'F', 'FIN', 'H', 'NL', 'NO', 'S'], true))
+            // because AFAS has separate fields for those. (This code comes
+            // from Drupal's addressfield_tfnr module and was adjusted later to
+            // conform to AFAS' definition of "extension".) Do this only for a
+            // specific set of countries.
+            && (isset($fields['CoId'])
+                ? in_array(strtoupper($fields['CoId']), static::getCountriesWithSeparateHouseNr(), true)
+                : isset($this->propertyDefinitions['fields']['CoId']['default'])
+                && is_string($this->propertyDefinitions['fields']['CoId']['default'])
+                && in_array(strtoupper($this->propertyDefinitions['fields']['CoId']['default']),
+                    static::getCountriesWithSeparateHouseNr(), true))
             && preg_match('/^
           (.*?\S) \s+ (\d+) # normal thoroughfare, followed by spaces and a number;
                             # non-greedy because for STREET NR1 NR2, "nr1" should
@@ -253,9 +299,14 @@ class KnBasicAddress extends UpdateObject
             }
         }
 
-        // Set 'is P.O. box' for NL addresses. Empty country is considered NL.
-        if (empty($fields['PbAd']) && (empty($fields['CoId']) || $fields['CoId'] === 'NL')) {
-            if (!empty($fields['Ad']) && strtolower($fields['Ad']) === 'postbus') {
+        // Set 'is P.O. box' for NL addresses.
+        if (!isset($fields['PbAd']) && (isset($fields['CoId'])
+                ? strtoupper($fields['CoId']) === 'NL'
+                : isset($this->propertyDefinitions['fields']['CoId']['default'])
+                && is_string($this->propertyDefinitions['fields']['CoId']['default'])
+                && $this->propertyDefinitions['fields']['CoId']['default'] === 'NL')
+        ) {
+            if (isset($fields['Ad']) && stripos(ltrim($fields['Ad']), 'postbus ') === 0) {
                 $fields['PbAd'] = true;
             } elseif (!isset($fields['PbAd']) && $this->getAction($element_index) !== 'insert') {
                 $fields['PbAd'] = false;

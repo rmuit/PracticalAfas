@@ -9,6 +9,7 @@
  */
 
 use PHPUnit\Framework\TestCase;
+use PracticalAfas\UpdateConnector\KnBasicAddress;
 use PracticalAfas\UpdateConnector\UpdateObject;
 use PracticalAfas\UpdateConnector\OrgPersonContact;
 use PracticalAfas\TestHelpers\ArraysObject;
@@ -372,9 +373,92 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
     }
 
     /**
+     * Tests that overriding single properties (default, alias) works.
+     *
+     * Also tests that the 'street splitting' only works for certain countries.
+     */
+    public function testPropertyOverridesAndStreetLogic()
+    {
+        // In other places, we use readUpdateExample() to get some sample data.
+        // But here, we'd like to have the input array instead of the object.
+        // We'll just copy the definitions here.
+        $properties = [
+          'name' => 'Wyz',
+          'address' => [
+            'street' => 'Govert Flinckstraat 168A',
+            'postal_code' => '1072EP',
+            'town' => 'Amsterdam',
+          ],
+        ];
+        $expected = [[
+            'Fields' => [
+                'Nm' => 'Wyz',
+                'MatchOga' => 6,
+                'PbAd' => true,
+                'AutoNum' => true,
+            ],
+            'Objects' => [
+                'KnBasicAddressAdr' => [
+                    'Element' => [
+                        'Fields' => [
+                            'Ad' => 'Govert Flinckstraat',
+                            'ZpCd' => '1072EP',
+                            'Rs' => 'Amsterdam',
+                            'CoId' => 'NL',
+                            'HmNr' => 168,
+                            'HmAd' => 'A',
+                            'PbAd' => false,
+                            'ResZip' => false,
+                        ]
+                    ]
+                ],
+            ]
+        ]];
+        // We know the above with country 'NL' and alias 'zip_code' will be
+        // good because we tested that in KnOrg-embedded-update.txt. We'll test
+        // whether the same works when overriding an alias and having 'NL' only
+        // as default.
+        UpdateObject::overrideFieldProperty('KnBasicAddress', 'CoId', 'default', 'NL');
+        UpdateObject::overrideFieldProperty('KnBasicAddress', 'ZpCd', 'alias', 'postal_code');
+        $actual = UpdateObject::create('KnOrganisation', $properties, 'insert')
+            ->getElements(UpdateObject::DEFAULT_CHANGE | UpdateObject::ALLOW_CHANGES, UpdateObject::DEFAULT_VALIDATION);
+        $this->assertEquals($expected, $actual);
+
+        // If we however remove the default, the street does not get split
+        // anymore.
+        UpdateObject::unOverrideFieldProperty('KnBasicAddress', 'CoId', 'default');
+        $actual = UpdateObject::create('KnOrganisation', $properties, 'insert')
+            ->getElements(UpdateObject::DEFAULT_CHANGE | UpdateObject::ALLOW_CHANGES, UpdateObject::DEFAULT_VALIDATION);
+        $this->assertNotEquals(
+            $expected[0]['Objects']['KnBasicAddressAdr']['Element']['Fields']['Ad'],
+            $actual[0]['Objects']['KnBasicAddressAdr']['Element']['Fields']['Ad']
+        );
+
+
+        // Also if we re-add the default but remove 'NL' from the list of
+        // countries, the street does not get split anymore.
+        UpdateObject::overrideFieldProperty('KnBasicAddress', 'CoId', 'default', 'NL');
+        KnBasicAddress::setCountriesWithSeparateHouseNr(array_diff(
+            KnBasicAddress::getCountriesWithSeparateHouseNr(),
+            ['NL']
+        ));
+        $actual = UpdateObject::create('KnOrganisation', $properties, 'insert')
+            ->getElements(UpdateObject::DEFAULT_CHANGE | UpdateObject::ALLOW_CHANGES, UpdateObject::DEFAULT_VALIDATION);
+        $this->assertNotEquals(
+            $expected[0]['Objects']['KnBasicAddressAdr']['Element']['Fields']['Ad'],
+            $actual[0]['Objects']['KnBasicAddressAdr']['Element']['Fields']['Ad']
+        );
+        // ...though the country is still NL, unlike the previous code block.
+        $this->assertEquals('NL', $actual[0]['Objects']['KnBasicAddressAdr']['Element']['Fields']['CoId']);
+
+        // Reset settings for further tests.
+        UpdateObject::unOverrideFieldProperty('KnBasicAddress');
+    }
+
+    /**
      * Tests that if one element fails, none of the elements get set.
      */
-    public function testErrorInOneBlocksAll()
+    public function testErrorInOneElementCancelsAll()
     {
         $properties = [
             [

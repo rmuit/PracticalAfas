@@ -160,7 +160,7 @@ class UpdateObject
     ];
 
     /**
-     * Properties to override per specific setting.
+     * Properties to override per object type.
      *
      * Most methods are not supposed to reference this variable; (for speed
      * reasons) it is the responsibility of a class constructor to merge these
@@ -173,6 +173,17 @@ class UpdateObject
      * @var array[]
      */
     protected static $definitionOverrides = [];
+
+
+    /**
+     * Field properties to override per object type + field.
+     *
+     * It's supposed to be set through overrideFieldProperty(). The caveats for
+     * $definitionOverrides also apply here.
+     *
+     * @var array[]
+     */
+    protected static $fieldOverrides = [];
 
     /**
      * The type of object (and the name of the corresponding Update Connector).
@@ -381,8 +392,13 @@ class UpdateObject
      * types. Whether calling this method has effect, relies on (constructor)
      * code in the class which implements the object type. Definitions in
      * classes which are already instantiated are not affected (with the
-     * possible exception of custom child classes referencing these overrides
-     * in a non-standard way).
+     * possible exception of custom child classes handling these overrides in a
+     * non-standard way).
+     *
+     * Overrides set through this method have no effect on overrides set
+     * through overrideFieldProperty() (which take precedence) or on properties
+     * set dynamically set by custom classes' own code (typically during
+     * validation).
      *
      * @param string $object_type
      *   The object type. Please note that names of object types are not always
@@ -391,24 +407,29 @@ class UpdateObject
      * @param array $definitions
      *   The definitions that will override any standard definitions set by
      *   the constructor. If any earlier overrides were already set for this
-     *   type, they will be overwritten. The structure is the same as property
-     *   definitions: field definitions must be keyed by 'fields' and then the
-     *   AFAS field name; object reference field definitions, must be keyed by
-     *   'objects' and then the reference field name. The individual
-     *   (reference) field definitions must be arrays or null. Arrays must be
-     *   complete definitions: if a field definition already exists, it will be
-     *   completely overwritten by this override definition, not merged. A null
-     *   value will remove the original field definition. Other custom values
-     *   on the first level of this array (i.e. on the same level as 'fields'
-     *   and 'objects') are seen as individual property definitions that will
-     *   also completely replace a property if that exists already; these
-     *   property definitions don't have to be arrays. A null value will also
-     *   remove any original property definition (rather than set it to null).
+     *   type, they will be overwritten. (This means it is not allowed to set
+     *   overrides for one type from multiple sources, because it's not known
+     *   if those overrides will conflict. It also means that all necessary
+     *   overrides for a certain types must be set in one call.) The structure
+     *   is the same as property definitions: field definitions must be keyed
+     *   by 'fields' and then the AFAS field name; object reference field
+     *   definitions must be keyed by 'objects' and then the reference field
+     *   name. The individual (reference) field definitions must be arrays or
+     *   null. Arrays must be complete definitions: if a field definition
+     *   already exists, it will be completely overwritten by this override
+     *   definition, not merged. A null value will remove the original field
+     *   definition. Other custom values on the first level of this array (i.e.
+     *   on the same level as 'fields' and 'objects') are seen as individual
+     *   property definitions that will also completely replace a property if
+     *   that exists already; these property definitions don't have to be
+     *   arrays. A null value will also remove any original property definition
+     *   (rather than set it to null).
      *
      * @throws \InvalidArgumentException
      *   If any of the arguments are invalid.
      *
      * @see $propertyDefinitions
+     * @see overrideFieldProperty()
      */
     public static function overridePropertyDefinitions($object_type, array $definitions)
     {
@@ -418,7 +439,7 @@ class UpdateObject
         if ($definitions) {
             // Validate definitions. (We will also do this in the constructor
             // but it seems best to throw exceptions as early as possible.)
-            static::handleDefinitionOverride($definitions);
+            static::validateDefinitionOverrides($definitions);
             self::$definitionOverrides[$object_type] = $definitions;
         } else {
             unset(self::$definitionOverrides[$object_type]);
@@ -430,8 +451,84 @@ class UpdateObject
      *
      * @return array[]
      */
-    public static function getPropertyDefinitionOverrides() {
+    public static function getPropertyDefinitionOverrides()
+    {
         return self::$definitionOverrides;
+    }
+
+    /**
+     * Overrides a property definition for a specific field in an object type.
+     *
+     * The anticipated use of this is overriding properties like 'alias' or
+     * 'required' for individual fields without caring about other properties.
+     * This also overrides any definitions set through
+     * overridePropertyDefinitions(). The difference with that function is,
+     * this only changes a single field property while leaving the other
+     * properties intact.
+     *
+     * See the caveats outlined in overridePropertyDefinitions() which also
+     * apply here.
+     *
+     * @param string $object_type
+     *   The object type. Please note that names of object types are not always
+     *   (although often) equal to the names of 'object reference fields' in
+     *   property definitions. See $propertyDefinitions for the difference.
+     * @param string $field_name
+     *   The field name within the object type.
+     * @param string $property
+     *   The property name within the field.
+     * @param mixed $value
+     *   The value to set.
+     *
+     * @see overridePropertyDefinitions()
+     * @see unOverrideFieldProperty()
+     */
+    public static function overrideFieldProperty($object_type, $field_name, $property, $value)
+    {
+        self::$fieldOverrides[$object_type][$field_name][$property] = $value;
+    }
+
+    /**
+     * Removes property override(s) for an object type and/or field/property.
+     *
+     * This does not affect definitions set through
+     * overridePropertyDefinitions().
+     *
+     * @param string $object_type
+     *   The object type. Please note that names of object types are not always
+     *   (although often) equal to the names of 'object reference fields' in
+     *   property definitions. See $propertyDefinitions for the difference.
+     * @param string $field_name
+     *   (Optional) The field name within the object type. Leave empty to
+     *   remove all overrides for this object type.
+     * @param string $property
+     *   (Optional) The property name within the field. Leave empty to remove
+     *   all overrides for this object type + field.
+     *
+     * @see overrideFieldProperty()
+     */
+    public static function unOverrideFieldProperty($object_type, $field_name = '', $property = '')
+    {
+        if (empty($field_name)) {
+            if (!empty($property)) {
+                throw new InvalidArgumentException("Field name may not be empty if property name is not empty.");
+            }
+            unset(self::$fieldOverrides[$object_type]);
+        } elseif (empty($property)) {
+            unset(self::$fieldOverrides[$object_type][$field_name]);
+        } else {
+            unset(self::$fieldOverrides[$object_type][$field_name][$property]);
+        }
+    }
+
+    /**
+     * Returns the field property overrides per object type + field + property.
+     *
+     * @return array[]
+     */
+    public static function getFieldPropertyOverrides()
+    {
+        return self::$fieldOverrides;
     }
 
     /**
@@ -511,9 +608,9 @@ class UpdateObject
      * @throws \UnexpectedValueException
      *   If this object's defined properties are invalid.
      *
-     * @see $classMap
      * @see __construct()
      * @see output()
+     * @see overrideClass()
      */
     public static function create($type, array $elements = [], $action = '', $validation_behavior = self::VALIDATE_ESSENTIAL, $parent_type = '')
     {
@@ -531,25 +628,19 @@ class UpdateObject
     }
 
     /**
-     * Validates and/or merges a 'property definitions override'.
+     * Validates and/or merges 'property definitions overrides'.
      *
      * @param array $definition_overrides
      *   The definitions for one type, as it is / should be stored in
      *   $definitionOverrides.
-     * @param array $definitions
-     *   (Optional) The original definitions to override. (We could have split
-     *   the overriding into a separate better named function, but this way the
-     *   number of protected static methods stays small, and validating before
-     *   merging cannot be forgotten.)
-     *
-     * @return array
-     *   If $definitions was nonempty: the overridden definitions.
      *
      * @throws \InvalidArgumentException
      *   If the definition overrides are invalid.
      */
-    protected static function handleDefinitionOverride(array $definition_overrides, array $definitions = [])
+    protected static function validateDefinitionOverrides(array $definition_overrides)
     {
+        // Validate the overrides for 'fields' and 'objects'; change or unset
+        // definitions where necessary.
         $errors = [];
         foreach (['fields', 'objects'] as $subtype) {
             if (isset($definition_overrides[$subtype])) {
@@ -565,9 +656,6 @@ class UpdateObject
                             if (!is_array($value)) {
                                 $errors[] = "'$name' $subtype definition override is not an array.";
                             }
-                            $definitions[$subtype][$name] = $value;
-                        } else {
-                            unset($definitions[$subtype][$name]);
                         }
                     }
                 }
@@ -576,20 +664,6 @@ class UpdateObject
         if ($errors) {
             throw new InvalidArgumentException(implode("\n", $errors));
         }
-
-        // Do the outer properties except 'fields' and 'objects'. Value does
-        // not need to be an array.
-        foreach ($definition_overrides as $name => $value) {
-            if ($name !== 'fields' && $name !== 'objects') {
-                if (isset($value)) {
-                    $definitions[$name] = $value;
-                } else {
-                    unset($definitions[$name]);
-                }
-            }
-        }
-
-        return $definitions;
     }
 
     /**
@@ -631,16 +705,7 @@ class UpdateObject
         }
         // Merge the overrides. (Also for definitions that were already set
         // in child classes.)
-        if (!empty(self::$definitionOverrides[$type])) {
-            if (!is_array(self::$definitionOverrides[$type])) {
-                throw new UnexpectedValueException("Definition override is not an array.");
-            }
-            try {
-                $this->propertyDefinitions = static::handleDefinitionOverride(self::$definitionOverrides[$type], $this->propertyDefinitions);
-            } catch (InvalidArgumentException $e) {
-                throw new UnexpectedValueException($e->getMessage());
-            }
-        }
+        $this->propertyDefinitions = $this->mergeDefinitionOverrides();
 
         $this->addElements($elements, $validation_behavior);
     }
@@ -2650,6 +2715,85 @@ class UpdateObject
         }
 
         return $xml;
+    }
+
+    /**
+     * Produces property definitions with the overrides merged into them.
+     *
+     * Class properties 'propertyDefinitions' and 'type' must already be set.
+     *
+     * @return array
+     *   The overridden definitions.
+     *
+     * @throws \UnexpectedValueException
+     *   If any error is encountered.
+     */
+    protected function mergeDefinitionOverrides()
+    {
+        $definitions = $this->propertyDefinitions;
+        $type = $this->getType();
+        if (!$type) {
+            throw new UnexpectedValueException('Object type is not set.');
+        }
+
+        if (!isset(self::$definitionOverrides[$type])) {
+            $definition_overrides = [];
+        } elseif (!is_array(self::$definitionOverrides[$type])) {
+            throw new UnexpectedValueException("Definition overrides for '$type' is not an array.");
+        } else {
+            $definition_overrides = self::$definitionOverrides[$type];
+        }
+
+        // Validate the overrides for 'fields' and 'objects'; change or unset
+        // definitions where necessary.
+        try {
+            static::validateDefinitionOverrides($definition_overrides);
+        } catch (InvalidArgumentException $e) {
+            throw new UnexpectedValueException($e->getMessage());
+        }
+
+        foreach (['fields', 'objects'] as $subtype) {
+            if (isset($definition_overrides[$subtype])) {
+                // Each field definition must be an array or null. Merge or
+                // unset depending on the value.
+                foreach ($definition_overrides[$subtype] as $name => $value) {
+                    if (isset($value)) {
+                        $definitions[$subtype][$name] = $value;
+                    } else {
+                        unset($definitions[$subtype][$name]);
+                    }
+                }
+            }
+        }
+
+        // Change or unset the outer properties except 'fields' and 'objects'.
+        // Value does not need to be an array.
+        foreach ($definition_overrides as $name => $value) {
+            if ($name !== 'fields' && $name !== 'objects') {
+                if (isset($value)) {
+                    $definitions[$name] = $value;
+                } else {
+                    unset($definitions[$name]);
+                }
+            }
+        }
+
+        // Handle individual field overrides.
+        if (isset(self::$fieldOverrides[$type])) {
+            if (!is_array(self::$fieldOverrides[$type])) {
+                throw new UnexpectedValueException("Field overrides for '$type' is not an array.");
+            }
+            foreach (self::$fieldOverrides[$type] as $field => $override) {
+                if (!is_array($override)) {
+                    throw new UnexpectedValueException("Field overrides for '$type/$field' is not an array.");
+                }
+                foreach ($override as $property => $value) {
+                    $definitions['fields'][$field][$property] = $value;
+                }
+            }
+        }
+
+        return $definitions;
     }
 
     /**
