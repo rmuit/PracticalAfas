@@ -60,6 +60,8 @@ There are a few parts of this library which are not all tightly coupled:
   * do not like the structure of the filter arguments in calls (including the
     fact that there are numeric codes for operators)
   * want array data returned, instead of XML (for SOAP) / JSON (for REST)
+  * want to specify simpler array structures (rather than the JSON/XML strings
+    which AFAS accepts) for sending data to Update connectors
   * want to be able to change between the REST and SOAP APIs, for some reason.
     (They do not provide 100% equal results though; see [README.get.md](README-get.md)
     for details.)
@@ -68,9 +70,9 @@ There are a few parts of this library which are not all tightly coupled:
 
 - UpdateObject (plus child classes) can be used to create XML or JSON payloads
   for Update Connectors, and validate their contents. Their output is strings,
-  which can be used in any way you want (e.g. send the sting data by a client
-  class, or through Connection::sendData(), or use UpdateObjects with your own
-  custom code).
+  which can be used in any way you want (e.g. send the string data through a
+  client class, or through Connection::sendData(), or use UpdateObjects with
+  your own custom code).
 
 - There's also a Helper class with some extra static methods which could be
   useful for some programmers, but which I did not want to overload the
@@ -97,14 +99,15 @@ know the structure of the calls. A client class only deals with:
 The connection and authentication settings get passed into the constructor; not
 to every individual AFAS call.
 
-You will only use one public method: callAfas(). (There is a second static
-getClientType() but this is not necessary for standalone use.) Client classes
-make (almost) no assumptions about the remote API calls; the exact (type of)
-remote method and arguments need to be passed to it, and it will return the
-result body as a string.
+You will only use one public method: callAfas(). (There is a second public
+method: static getClientType() - but this is not necessary for standalone use.)
+Client classes make (almost) no assumptions about the remote API calls; the
+exact (type of) remote method and arguments need to be passed to it, and it
+will return the result body as a string.
 
 #### RestCurlClient examples
-The required options are in the constructor below; see the code for others.
+The required options are in the constructor below; see the code for other
+options.
 ```php
 use PracticalAfas\Client\RestCurlClient;
 $client = new RestCurlClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );

@@ -26,7 +26,7 @@ set all fields in an object separately by first calling ```UpdateObject::create(
 and then setting the fields and the (insert/update) action later, using 
 setField() and setAction() calls - perhaps followed by validating the input.
 
-Some hints for people writing code that uses UpdateObjects:
+Some hints for people writing code that _uses_ UpdateObjects:
 
 Read the UpdateObject class comments: the description of the class, the
 $propertyDefinitions variable, and create(), output(), overrideClass(),
@@ -44,14 +44,29 @@ multiple errors, separated by newlines. On 'output' (e.g. output(),
 getElements()) validation of the same data that was already set will throw an
 UnexpectedValueException.
 
-The protected validateElements(), validateElementInput() methods and the
-protected methods called by them which validate multiple values, do not throw
-exceptions but rather add error messages to an '*error' key of the element data
-being validated. (This is because that's the easier way of collecting multiple
-errors. Public methods cannot change the element data like that, so they throw
-exceptions containing these concatenated errors. Several methods are
-converting exception messages into '*error' keys or vice versa, depending on
-their place in the tree of methods called during validation.
+Some hints for people writing code that _extends_ UpdateObjects:
+
+Code validating full elements 'on input' always calls validateElementInput().
+Code validating the elements 'on output' always calls validateElements().
+validateFieldValue() is called by both these protected methods. Both methods
+have their own call tree which you'll need to get acquainted with if you
+implement custom validation, so you put your code in the right spot.
+
+The most important spots to know when validating field values are:
+* validateFieldValue() validates simple single field values only (kinda; the
+  OrgPersonContact class does more but it comes with a lot of caveats); it
+  needs to be able to handle data both 'on input' and 'on output'.
+* validateFields() validates all fields, only 'on output', and is therefore the
+  place to check requiredness and set default values.
+
+validateElements(), validateElementInput(), and the protected methods called by
+them which validate multiple values, do not throw exceptions but rather add
+error messages to an '*error' key of the element data being validated. (This is
+because that's the easier way of collecting multiple errors.) Public methods
+cannot change the element data like that, so they throw exceptions containing
+these concatenated errors. Several methods are converting exception messages
+into '*error' keys or vice versa, depending on their place in the tree of
+methods called during validation.
 
 _In theory_, validation functions cannot assume anything about the field values
 they are validating; not even that have the right type. (A caller could have

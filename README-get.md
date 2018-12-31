@@ -8,18 +8,18 @@ ways to call this are, admittedly, convoluted and somewhat confusing.
 
 (I personally still prefer doing one call (even with strange arguments) over
 having to set all arguments like filters, ordering, skip, take etc. in separate
-chained commands to execute a single Get call... but if people prefer that:
-they are welcome to contribute that or write their own library that uses
-PracticalAfas. Tip: you might want to wrap the existing Connection class,
-if you care about the validation of various forms of strangeness - or the
-compatibility between SOAP and REST clients for e.g. the 'orderbyfieldids'
-argument).
+chained calls to execute a single Get call... but if people prefer making
+chained calls: they are welcome to contribute a class which does that, or to
+write their own library that uses PracticalAfas. Tip: you might want to wrap
+the existing Connection class, if you care about the validation of various
+forms of strangeness - or the compatibility between SOAP and REST clients for
+e.g. the 'orderbyfieldids' argument).
 
 **First and second parameter:** (often) the Get connector name and optional filters.
 
   Filters can be a one-dimensional array of field-value comparisons, with an
   optional '#op' that serves as the comparison operator (if that should be
-  different from 'field EQUALS value'). Or it can be a two-dimensional array,
+  different than 'field EQUALS value'). Or it can be a two-dimensional array,
   where each sub-array can have a different operator. Or it can be a mix, as in
   the example in [README.md](README.md). Constants starting with *OP_* are
   defined for each operator, in the connection class. (They map to integer
@@ -96,8 +96,8 @@ explicitly to GET_OUTPUTMODE_LITERAL and the 'Metadata' explicitly to false:
 the 'literal' string from the REST API _implies_ that metadata is returned too.
 
 _Note 2:_ the official values for the Get connector options are 0 and 1, which
-have constants GET_METADATA_NO and GET_METADATA_YES. But passing False/True
-into the option does fine. The argument to the setter is boolean.
+have constants GET_METADATA_NO and GET_METADATA_YES - but passing false/true
+into the option works fine. The argument to setDataIncludeMetadata() is boolean.
 
 #### 'Outputmode' option / Connnection::setDataOutputFormat():
 
@@ -194,7 +194,7 @@ code in the Connection being implemented differently:_
   setDataIncludeEmptyFields().)
 
 
-## AFAS 'bugs' and challenges
+## AFAS bugs / challenges
 
 ### Filtering Get connectors on date fields
 

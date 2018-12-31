@@ -142,7 +142,7 @@ this data for the same reason (though AFAS tends to be unclear in its error
 messages).
 
 Validation is mostly done on output. Calls which set data into the object (e.g.
-create(), setElements(), setField()) only do a small subset of validation by
+create(), addElements(), setField()) only do a small subset of validation by
 default; they e.g. check if field values have a correct data type.
 
 Validation of the data in an object _without_ generating output, can be done by
@@ -215,16 +215,18 @@ $several_more_line_items = [
 $object->getObject('FbSalesLines')->addElements($several_more_line_items);
 ```
 If an existing FbSales object does not already contain an embedded FbSalesLines
-object, this would not work; instead, the following would add one or more
+object, getObject() cannot return an object (or it could... but changes to it
+wouldn't persist). Instead, the following would add one or more
 line items as a new object:
 ```php
 $line_item_data = [ 'item_code' => 'AB123', 'unit_price' => 1.20 ];
 $object->setObject('FbSalesLines', $line_item_data);
 ```
-An alternative is to pre-initialize an empty FbSalesLines object using a
+An alternative is to pre-initialize an empty FbSalesLines object using either a
 ```'line_items' => []``` construct in the element data which is passed into the
-create() or addElements() call for the FbSales object;
-```getObject('line_items')``` will work fine after that.
+create() / addElements() call for the FbSales object, or through
+```$object->setObject('FbSalesLines', [])```. After either of these,
+```getObject('line_items')``` will work fine.
 
 ('line_items' and 'FbSalesLines' can be used interchangeably; 'line_items' is
 an alias for the object name, just like fields have aliases too. Or actually...
@@ -234,15 +236,16 @@ name'... but we won't go into that here. See the source code's comments.)
 ### Using non-numeric keys for elements
 
 As we've seen, one UpdateObject can contain several elements. The indexes of
-these elements are never present in (JSON or XML) output, and they cannot be
-manipulated by create() or addElement() calls. (The reason for that is, with
+these elements are never present in (JSON or XML) output, and array keys for
+the elements cannot be specified in create() or addElement() calls. Non-numeric
+keys for elements to these methods will simply not work - reason being: with
 create() and addElement() accepting single elements as well as arrays of
-elements, any non-numeric key will be seen as a field name in a single element.)
+elements, any non-numeric key will be seen as a field name in a single element.
 
-It is however possible for code to assign keys to the elements as they are
-added, if this is somehow useful for further accessing/manipulating these
-elements. In this case, setElement() needs to be used instead of addElements()
-and only one element can be set at a time.
+However, if for some reason it is considered useful to be able to assign
+keys to the elements as they are added... so they can be accessed/manipulated
+using the same keys later... this is possible. In this case, setElement() needs
+to be used instead of addElements(), and only one element can be set at a time.
 ```php
 $object = UpdateObject::create('FbSales', [], 'insert');
 $object->setElement('order123', $order_data);
