@@ -97,16 +97,21 @@ class UpdateObject
     const FLATTEN_SINGLE_ELEMENT = 1;
 
     /**
+     * @see output(); bitmask value for the $change_behavior argument.
+     */
+    const RENUMBER_ELEMENT_INDEXES = 64;
+
+    /**
      * Default behavior for output(,$change_behavior).
      *
-     * This is ALLOW_EMBEDDED_CHANGES + ALLOW_REFORMAT
-     * + ALLOW_DEFAULTS_ON_INSERT + FLATTEN_SINGLE_ELEMENT.
+     * This is ALLOW_EMBEDDED_CHANGES + ALLOW_DEFAULTS_ON_INSERT
+     * + ALLOW_REFORMAT + FLATTEN_SINGLE_ELEMENT + RENUMBER_ELEMENT_INDEXES
      *
      * If future versions of this class introduce new behavior through
      * additional bitmask values, this value may or may not be changed to
      * incorporate that behavior by default.
      */
-    const DEFAULT_CHANGE = 23;
+    const DEFAULT_CHANGE = 87;
 
     /**
      * @see output(); bitmask value for the $validation_behavior argument.
@@ -1722,9 +1727,11 @@ class UpdateObject
      * @param array $elements
      *   Data representing one or more elements to set; see create() for a
      *   description. Note that an array of elements can only be numerically
-     *   keyed; it will be interpreted as a single array otherwise. (This
+     *   indexed; it will be interpreted as a single array otherwise. (This
      *   unlike setElements(), setField() etc, which allow to set/reference
-     *   elements by alphanumeric indexes.)
+     *   elements by alphanumeric indexes.) Numeric indexes are preserved
+     *   except when they clash with existing elements; then these new ones are
+     *   renumbered.
      * @param int $validation_behavior
      *   (Optional) Specifies whether/how the elements should be validated; see
      *   create() for a more elaborate description.
@@ -1744,17 +1751,24 @@ class UpdateObject
         $validated_elements = [];
         $errors = [];
 
-        // Log messages will contain the index which the element will get; not
-        // the index which the element currently has in $elements. If this
-        // object already contains elements and we are trying to add multiple
-        // elements in this call, that could be confusing. Otherwise, not very.
-        $next_index = count($this->elements);
+        // $elements now contains only numeric keys (because if the input
+        // contained non-numeric keys, this would be considered one element and
+        // 'wrapped'). If the caller specified numeric keys for elements, we
+        // try to keep them but we'll renumber them if they've been used
+        // already.
         foreach ($elements as $index => $element) {
-            // We allow callers to add their own index values so we cannot
-            // assume that the one we want to add does not exist.
-            while (isset($this->elements[$next_index])) {
-                $next_index++;
+            // We use $index for exception messages but pass $next_index to
+            // callers (and we hope it does not get used in messages).
+            $next_index = $index;
+            if (isset($this->elements[$next_index]) || isset($validated_elements[$next_index])) {
+                if (!is_int($next_index)) {
+                    $next_index = (int)$next_index;
+                }
+                do {
+                    $next_index++;
+                } while (isset($this->elements[$next_index]) || isset($validated_elements[$next_index]));
             }
+
             $element = $this->validateElementInput($element, $next_index, $validation_behavior);
 
             if (isset($element['*errors'])) {
@@ -1782,7 +1796,6 @@ class UpdateObject
 
             // We can't set the elements until after all of them are validated.
             $validated_elements[$next_index] = $element;
-            $next_index++;
         }
 
         if ($errors) {
@@ -1791,7 +1804,9 @@ class UpdateObject
             // them useful, or we will get back to this, later.)
             throw new InvalidArgumentException(implode("\n", $errors));
         }
-        $this->elements = array_merge($this->elements, $validated_elements);
+        // Above, we've assured that element keys don't overlap, so we can
+        // 'add' them (instead of merging the array), keeping keys the same.
+        $this->elements = $this->elements + $validated_elements;
     }
 
     /**
@@ -1801,10 +1816,15 @@ class UpdateObject
      * normalized / de-aliased, and possibly validated and changed.
      *
      * @param int $change_behavior
-     *   (Optional) see output(). Unlike output, by default nothing is changed
-     *   in the value stored in this class (e.g. default values are not added).
+     *   (Optional) see output(), plus there's an extra bitmask value which is
+     *   forced on output() but optional here:
+     *   - RENUMBER_ELEMENT_INDEXES: Renumber the keys to be zero-based. (This
+     *     enables outputting the return value as a JSON array rather than an
+     *     object - which is what AFAS expects. This is 'on' by default.)
+     *   Unlike output(), nothing is changed to the element value(s) by default
+     *   (e.g. default values are not added); only the keys are renumbered.
      * @param int $validation_behavior
-     *   (Optional) see output(). Unlike output, by default nothing is
+     *   (Optional) see output(). Unlike output(), by default nothing is
      *   validated.
      *
      * @return array[]
@@ -1824,7 +1844,7 @@ class UpdateObject
      *
      * @see output()
      */
-    public function getElements($change_behavior = self::ALLOW_NO_CHANGES, $validation_behavior = self::VALIDATE_NOTHING)
+    public function getElements($change_behavior = self::RENUMBER_ELEMENT_INDEXES, $validation_behavior = self::VALIDATE_NOTHING)
     {
         if (!is_int($change_behavior)) {
             throw new InvalidArgumentException('$change_behavior argument is not an integer.');
@@ -1872,7 +1892,11 @@ class UpdateObject
                     }
                 }
                 if ($element) {
-                    $return[] = $element;
+                    if ($change_behavior & self::RENUMBER_ELEMENT_INDEXES) {
+                        $return[] = $element;
+                    } else {
+                        $return[$element_index] = $element;
+                    }
                 }
             }
         } finally {
@@ -2552,7 +2576,10 @@ class UpdateObject
         // reference field property instead; see validateObjectValue().)
         $flatten = $change_behavior & self::FLATTEN_SINGLE_ELEMENT;
         $change_behavior = $change_behavior & ~self::FLATTEN_SINGLE_ELEMENT;
-        $elements = $this->getElements($change_behavior, $validation_behavior);
+        // The 'renumber indexes' bit is forced because we never want to
+        // preserve array keys to $this->elements; those would output a JSON
+        // object to be output instead of an array.
+        $elements = $this->getElements($change_behavior | self::RENUMBER_ELEMENT_INDEXES, $validation_behavior);
         // We disallow sending an empty value (i.e. zero elements) into AFAS.
         // (For the rest we allow anything, also e.g. an object with only ID.)
         if (empty($elements)) {

@@ -784,13 +784,14 @@ class OrgPersonContact extends UpdateObject
         // - We don't want to have 'setting AutoNum' be dependent on the
         //   ALLOW_DEFAULTS_ON_INSERT bit. (If someone wants to try and insert
         //   an organisation/person without defaults, it should still be
-        //   auto-numbered.
+        //   auto-numbered.)
         // - On the other hand, if we're called through getElements() with
         //   default arguments, the caller really wants to have the elements
         //   returned unchanged, for whatever purpose (e.g. unit tests).
         // So we'll be slightly hand-wavy here and say: never change in case
         // of those default arguments; otherwise it's allowed.
-        $dont_change_anything = $change_behavior == self::ALLOW_NO_CHANGES && $validation_behavior == self::VALIDATE_NOTHING;
+        $dont_change_anything = ($change_behavior & ~self::RENUMBER_ELEMENT_INDEXES) == self::ALLOW_NO_CHANGES
+            && $validation_behavior == self::VALIDATE_NOTHING;
         if (!isset($element['Fields']['BcCo']) && $action === 'insert' && !$dont_change_anything
             && isset($this->propertyDefinitions['fields']['AutoNum']) && !isset($element['Fields']['AutoNum'])) {
             $element['Fields']['AutoNum'] = true;

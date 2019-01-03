@@ -201,6 +201,32 @@ class UpdateObjectTest extends TestCase
     }
 
     /**
+     * Tests that numeric element indexes are preserved if possible.
+     *
+     * This also tests point 6 mentioned in testEmptyObjects() docs.
+     */
+    public function testNumericElementIndexes()
+    {
+        $properties = [
+            'line_items' => [
+               3 => ['quantity' => 3],
+               4 => ['quantity' => 4],
+            ]
+        ];
+        $object = UpdateObject::create('FbSales', $properties, 'update');
+        $more_elements = [
+            4 => ['quantity' => 40],
+            5 => ['quantity' => 50],
+        ];
+        // Element 4 will be renumbered to 5 and then 5 to 6.
+        $object->getObject('line_items')->addElements($more_elements);
+        $elements = $object->getObject('line_items')->getElements(UpdateObject::DEFAULT_CHANGE & ~UpdateObject::RENUMBER_ELEMENT_INDEXES);
+        $this->assertEquals(4, $elements[4]['Fields']['QuUn']);
+        $this->assertEquals(40, $elements[5]['Fields']['QuUn']);
+        $this->assertEquals(50, $elements[6]['Fields']['QuUn']);
+    }
+
+    /**
      * Test that getElements(NO_CHANGES, NOTHING) actually returns empty array.
      */
     public function testEmptyOutput()
@@ -564,7 +590,7 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
         $this->assertEquals([1, 'meta'], $object->getField('type'));
         $this->assertEquals(['This thing', 'moremeta'], $object->getField('description'));
         // ...which also goes for getElements() without arguments...
-        $elements = $object->getElements();
+        $elements = $object->getElements(UpdateObject::ALLOW_NO_CHANGES);
         $compare = [[
             'Fields' => [
                 'StId' => [1, 'meta'],
