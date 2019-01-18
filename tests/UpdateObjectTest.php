@@ -248,6 +248,198 @@ class UpdateObjectTest extends TestCase
     }
 
     /**
+     * Test UpdateObject::validateFields' requiredness checks.
+     *
+     * This deals primarily with null (passed or default) values because those
+     * are the only ones not tested elsewhere already. It only checks values
+     * in the element, not output - because null outputs are tested through a
+     * test file in update_examples already.
+     */
+    public function testValidateFieldsWithNullValuesAndDefaults()
+    {
+        // Comment from validateFields() copied, interspersed with >>:
+        // - if no field value is set and a default is available, the default
+        //   is returned.
+        // - if required = true, then
+        //   - if no field value is set and no default is available, an
+        //     exception is thrown.
+        //   - if the field value is null, an exception is thrown, unless the
+        //     default value is also null. (We don't silently overwrite null
+        //     values which were explicitly set, with a different default.)
+        // - if the default is null (or the field value is null and the field
+        //   is not required) then null is returned.
+        // Test the last two points:
+        UpdateObject::overridePropertyDefinitions('ttTest', ['fields' => [
+            'required' => [
+                'required' => true,
+            ],
+            'default' => [
+                'default' => 1,
+            ],
+            'requiredDefault' => [
+                'required' => true,
+                'default' => 1,
+            ],
+            'defaultNull' => [
+                'default' => null,
+            ],
+            'requiredDefaultNull' => [
+                'required' => true,
+                'default' => null,
+            ],
+        ]]);
+        $input = [
+            [
+                'required' => 'this-needs-a-value',
+                'default' => null,
+                'defaultNull' => null,
+                'requiredDefaultNull' => null,
+            ],
+            [
+                'required' => 'this-needs-a-value',
+            ],
+        ];
+        $expected = [
+            ['Fields' => [
+                'required' => 'this-needs-a-value',
+                'default' => null,
+                'requiredDefault' => 1,
+                'defaultNull' => null,
+                'requiredDefaultNull' => null,
+            ]],
+            ['Fields' => [
+                'required' => 'this-needs-a-value',
+                'default' => 1,
+                'requiredDefault' => 1,
+                'defaultNull' => null,
+                'requiredDefaultNull' => null,
+            ]],
+        ];
+
+        // Intermezzo 1: also test ALLOW_DEFAULTS_ON_UPDATE.
+        $object = UpdateObject::create('ttTest', $input, 'update');
+        $this->assertEquals($expected, $object->getElements(UpdateObject::DEFAULT_CHANGE | UpdateObject::ALLOW_DEFAULTS_ON_UPDATE, UpdateObject::DEFAULT_VALIDATION));
+        $object->setAction('insert');
+
+        // Test that if we pass null and/or default is null, things are fine -
+        // except if we pass null into requiredDefault; we check that later.
+        $this->assertEquals($expected, $object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION));
+
+        // Intermezzo 2: also test unsetField()...
+        $object->unsetField('requiredDefaultNull');
+        $this->assertEquals($expected, $object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION));
+        // ...and test if setField(,null) makes a null value be actually set in
+        // the object, which is different from 'not specifying a field'.
+        // (Since we re-set requiredDefaultNull back to its original input
+        // value, getElements() should return a value equivalent to $input,
+        // without the defaults.)
+        $object->setField('requiredDefaultNull', NULL);
+        $e2 = [
+            ['Fields' => $input[0]],
+            ['Fields' => $input[1]],
+        ];
+        $this->assertEquals($e2, $object->getElements());
+
+
+        // Repeating the above: errors are thrown if:
+        // - nothing is passed for a required field without default;
+        // - null is passed for a required field without default;
+        // - null is passed for a required field with a non-null default.
+        $input = [
+            [
+            ],
+            [
+                'required' => null,
+                'requiredDefault' => null,
+                'requiredDefaultNull' => null,
+            ],
+        ];
+        $object->setElements($input);
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage("element-key 0: No value provided for required 'required' field.
+element-key 1: No value provided for required 'required' field.
+element-key 1: No value provided for required 'requiredDefault' field.");
+        $object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
+    }
+
+    /**
+     * Test UpdateObject::validateReferenceFields' requiredness checks.
+     */
+    public function testValidateReferenceFieldsWithEmptyValuesAndDefaults()
+    {
+        // Comment from validateFields() copied and modified for the fact that
+        // we have no default values of null (and all reference field values
+        // are objects):
+        // - if no ref-field value is set and a default is available, the
+        //   default is returned.
+        // - if required = true, then
+        //   - if no ref-field value is set and no default is available, an
+        //     exception is thrown.
+        // (Further points do not apply here.)
+        UpdateObject::overridePropertyDefinitions('ttTestEmbedded', ['fields' => [
+            'field' => [
+                'alias' => 'fieldalias',
+                'default' => 2,
+            ],
+        ]]);
+        UpdateObject::overridePropertyDefinitions('ttTest', [
+            // 'fields' is required for a type definition, so we need to
+            // 'override' it here to prevent errors for this type that has no
+            // standard property definitions.
+            'fields' => [],
+            'objects' => [
+                'required' => [
+                    'type' => 'ttTestEmbedded',
+                    'required' => true,
+                ],
+                'default' => [
+                    'type' => 'ttTestEmbedded',
+                    // Watch out here: just like with create() et al, [] is
+                    // zero elements. [[]] is one empty element.
+                    'default' => [[]],
+                ],
+                'requiredDefault' => [
+                    'type' => 'ttTestEmbedded',
+                    'required' => true,
+                    'default' => ['fieldalias' => 3],
+                ],
+            ]]);
+        $input = [
+            'required' => ['field' => 'this-needs-a-value'],
+        ];
+        $expected = [
+            ['Objects' => [
+                'required' => ['Element' => [
+                    'Fields' => [
+                        'field' => 'this-needs-a-value',
+                    ]]],
+                // Default of [] is set as an embedded object, which will have
+                // default field value included during validation.
+                'default' => ['Element' => [
+                    'Fields' => [
+                        'field' => 2,
+                    ]]],
+                // Default of ['field' => 3] is set as an embedded object.
+                'requiredDefault' => ['Element' => [
+                    'Fields' => [
+                        'field' => 3,
+                    ]]],
+            ]],
+        ];
+
+        $object = UpdateObject::create('ttTest', $input, 'insert');
+        $this->assertEquals($expected, $object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION));
+
+        // Unlike testValidateFieldsWithNullValuesAndDefaults() it's no use
+        // trying to set nulls for object values; input validation will
+        // prevent setting non-arrays regardless of validation behavior.
+        $object = UpdateObject::create('ttTest', [[]], 'insert');
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage("No value provided for required embedded object 'required'.");
+        $object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
+    }
+
+    /**
      * Test some things around setting / rendering of ID.
      */
     public function testId()

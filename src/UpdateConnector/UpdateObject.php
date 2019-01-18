@@ -992,7 +992,7 @@ class UpdateObject
         // Check for element value or default value. Both can be null. If the
         // element value is set to null explicitly, we do not replace it with
         // the default.
-        if (array_key_exists($field_name, $element['Fields'])) {
+        if (isset($element['Fields']) && array_key_exists($field_name, $element['Fields'])) {
             $return = $wrap_array ? [$element['Fields'][$field_name]] : $element['Fields'][$field_name];
         } elseif ($return_default && isset($this->propertyDefinitions['fields'][$field_name])
             && array_key_exists('default', $this->propertyDefinitions['fields'][$field_name])) {
@@ -1457,6 +1457,10 @@ class UpdateObject
         if (empty($this->propertyDefinitions)) {
             throw new UnexpectedValueException("'{$this->getType()}' object has no property definitions.");
         }
+        // Check if the 'fields' property is set, even if it's an empty array.
+        // (This is slightly arbitrary because we don't do the same for
+        // 'objects', but it may provide an understandable error if definitions
+        // are set wrongly by accident.)
         if (!isset($this->propertyDefinitions['fields']) || !is_array($this->propertyDefinitions['fields'])) {
             throw new UnexpectedValueException("'{$this->getType()}' object has no / a non-array 'fields' property definition.");
         }
@@ -1962,7 +1966,7 @@ class UpdateObject
 
         // Doublechecks; unlikely to fail because also in addElements(). (We
         // won't repeat them in each individual validate method; we do them
-        // beforehand so child classes overriding validate[Reference]Fields
+        // beforehand so child classes overriding validate[Reference]Fields()
         // don't have to worry about them.
         if (empty($this->propertyDefinitions)) {
             throw new UnexpectedValueException("'{$this->getType()}' object has no property definitions.");
@@ -2082,30 +2086,24 @@ class UpdateObject
                 throw new UnexpectedValueException("'{$this->getType()}' object has a non-array definition for object '$ref_name'.");
             }
 
-            // The structure of this code is equivalent to validateFields() but
-            // a null default value means 'no default available' (instead of
-            // 'a default of null', which it does in validateFields().)
+            // The structure of this code is equivalent to validateFields()
+            // except a null default value means 'no default available' instead
+            // of 'a default of null'. (And the code is simplified by the fact
+            // that reference field values are either objects or not present.)
             $default_available = $defaults_allowed && isset($object_properties['default']);
             $validate_required_value = !empty($object_properties['required'])
                 && $action === 'insert'
                 && ($validation_behavior & self::VALIDATE_REQUIRED
                     || ($object_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
-            // Throw an exception if we have no-or-null ref-field value and no
-            // default, OR if we have null ref-field value and non-null default.
-            // (See validateFields() for details on this reasoning. Note the
-            // array_key_exists() means "is null",)
-            if ($validate_required_value && !isset($element['Objects'][$ref_name])
-                && (!$default_available || array_key_exists($ref_name, $element['Objects']))
-            ) {
+            // Flag an error if we have no ref-field value and no default.
+            if ($validate_required_value && !isset($element['Objects'][$ref_name]) && !$default_available) {
                 $name_and_alias = "'$ref_name'" . (isset($object_properties['alias']) ? " ({$object_properties['alias']})" : '');
                 $element['*errors']["Objects:$ref_name"] = "No value provided for required embedded object $name_and_alias.";
             } else {
                 // Set default if value is missing, or if value is null and
                 // field is required (and if we are allowed to set it, but
                 // that's always the case if $default_available).
-                if ($default_available
-                    && (!array_key_exists($ref_name, $element['Objects'])
-                        || !empty($object_properties['required']) && $element['Objects'][$ref_name] === null)) {
+                if ($default_available && !isset($element['Objects'][$ref_name])) {
                     $element['Objects'][$ref_name] = $this->getObject($ref_name, $element_index, true);
                 }
 
@@ -2178,15 +2176,16 @@ class UpdateObject
 
         // Check required fields and add default values for fields (where
         // defined). About definitions:
+        // - if no field value is set and a default is available, the default
+        //   is returned.
         // - if required = true, then
-        //   - if no data value present and default is provided, it's set.
-        //   - if no data value present and no default is provided, an
+        //   - if no field value is set and no default is available, an
         //     exception is thrown.
-        //   - if a null value is present, an exception is thrown, unless null
-        //     is provided as a default value. (We don't silently overwrite
-        //     null values which were explicitly set with other default values.)
-        // - if the default is null (or value provided is null & not 'required')
-        //   then null is passed.
+        //   - if the field value is null, an exception is thrown, unless the
+        //     default value is also null. (We don't silently overwrite null
+        //     values which were explicitly set, with a different default.)
+        // - if the default is null (or the field value is null and the field
+        //   is not required) then null is returned.
         foreach ($this->propertyDefinitions['fields'] as $name => $field_properties) {
             if (!is_array($field_properties)) {
                 throw new UnexpectedValueException("'{$this->getType()}' object has a non-array definition for field '$name'.");
@@ -2202,12 +2201,13 @@ class UpdateObject
                 && $action === 'insert'
                 && ($validation_behavior & self::VALIDATE_REQUIRED
                     || ($field_properties['required'] === 1 && $validation_behavior & self::VALIDATE_ESSENTIAL));
-            // See above: throw an exception if we have no-or-null field
-            // value and no default, OR if we have null field value and
-            // non-null default. (Note the array_key_exists() means "is null",)
+            // See above: flag an error if we have no-or-null field value and
+            // no default, OR if we have null field value and non-null default.
+            // (Note the array_key_exists() implies "is null".)
             if ($validate_required_value && !isset($element['Fields'][$name])
                 && (!$default_available
-                    || (array_key_exists($name, $element['Fields']) && $field_properties['default'] !== null))
+                    || (isset($element['Fields']) && array_key_exists($name, $element['Fields'])
+                        && $field_properties['default'] !== null))
             ) {
                 $name_and_alias = "'$name'" . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
                 $element['*errors']["Fields:$name"] = "No value provided for required $name_and_alias field.";
@@ -2216,15 +2216,15 @@ class UpdateObject
                 // field is required (and if we are allowed to set it, but
                 // that's always the case if $default_available).
                 if ($default_available
-                    && (!array_key_exists($name, $element['Fields'])
+                    && (!isset($element['Fields']) || !array_key_exists($name, $element['Fields'])
                         || !empty($field_properties['required']) && $element['Fields'][$name] === null)) {
                     // Support dynamic default value of "today" for date
                     // fields; convert it to yyyy-mm-dd today. (We might also
                     // be able to dynamically convert the value "today" set by
                     // the user, but let's not do that unless it has a proven
                     // value.)
-                    if ($field_properties['default'] === 'today'
-                        && isset($field_properties['type']) && $field_properties['type'] === 'date') {
+                    if (isset($field_properties['type']) && $field_properties['type'] === 'date'
+                        && $field_properties['default'] === 'today') {
                         $element['Fields'][$name] = date('Y-m-d');
                     } else {
                         $element['Fields'][$name] = $field_properties['default'];
@@ -2474,10 +2474,6 @@ class UpdateObject
 
         return $value;
     }
-
-/*
-@TODO write tests, especially for validate()
-  */
 
     /**
      * Outputs the object data as a string.
@@ -2789,6 +2785,15 @@ class UpdateObject
                     } else {
                         unset($definitions[$subtype][$name]);
                     }
+                }
+                // Validation functions check if the 'fields' property is set,
+                // even if it's an empty array. Since we support setting
+                // (full definitions, using) overrides for types that do not
+                // have existing standard definitions... we must take care to
+                // always set 'fields' in that case.
+                if ($subtype === 'fields' && empty($definition_overrides[$subtype]) && !isset($definitions[$subtype])) {
+                    // This means 'fields' is an empty array. Set it.
+                    $definitions[$subtype] = $definition_overrides[$subtype];
                 }
             }
         }
@@ -3460,7 +3465,14 @@ class UpdateObject
                 break;
 
             default:
-                throw new InvalidArgumentException("No property definitions found for '{$this->type}' object.");
+                // We allow setting a full definition of an unknown object
+                // through overridePropertyDefinitions(), so don't throw an
+                // exception for types with overridden definitions. (The caller
+                // is expected to merge those into the variable.)
+                if (empty(static::$definitionOverrides[$this->type])) {
+                    throw new InvalidArgumentException("No property definitions found for '{$this->type}' object.");
+                }
+                $this->propertyDefinitions = [];
         }
     }
 }
