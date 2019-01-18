@@ -471,6 +471,21 @@ element-key 1: No value provided for required 'requiredDefault' field.");
         $object2->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
     }
 
+
+    /**
+     * Test some things around setting 'afas assigned id' fields.
+     */
+    public function testAfasAssignedIdField()
+    {
+        // Check setting object with only an ID. Should not yield errors.
+        $element = [[]];
+        // An update action should not work without an ID.
+        $object = UpdateObject::create('FbSalesLines', $element, 'update');
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage("'GuLi' (guid) field must have a value, or Action 'update' must be set to 'insert'.");
+        $object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
+    }
+
     /**
      * Test setting invalid field throws OutOfBoundsException.
      */

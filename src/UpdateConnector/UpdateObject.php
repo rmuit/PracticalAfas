@@ -254,6 +254,14 @@ class UpdateObject
      *                 required values; this can be useful to set if it is
      *                 known that AFAS itself will throw an unclear error when
      *                 it receives no value for the field.
+     *   - 'behavior': A string value that is meant to specify some specific
+     *                 defined behavior. The following behavior types are
+     *                 recognized (and other values are ignored):
+     *     'afas_assigned_id': the field behaves just like the 'id_property'
+     *                   in that it is assumed to be given a value by AFAS and
+     *                   must be present when updating an element. (We do not
+     *                   know why AFAS has such fields and doesn't just define
+     *                   an ID property for the object type...)
      *   'objects':  Arrays describing properties of the 'object reference
      *               fields' defined for this object type, keyed by their names.
      *               An array may be empty but must be defined for an embedded
@@ -2174,23 +2182,53 @@ class UpdateObject
         $defaults_allowed = ($action === 'insert' && $change_behavior & self::ALLOW_DEFAULTS_ON_INSERT)
             || ($action === 'update' && $change_behavior & self::ALLOW_DEFAULTS_ON_UPDATE);
 
-        // Check required fields and add default values for fields (where
-        // defined). About definitions:
-        // - if no field value is set and a default is available, the default
-        //   is returned.
-        // - if required = true, then
-        //   - if no field value is set and no default is available, an
-        //     exception is thrown.
-        //   - if the field value is null, an exception is thrown, unless the
-        //     default value is also null. (We don't silently overwrite null
-        //     values which were explicitly set, with a different default.)
-        // - if the default is null (or the field value is null and the field
-        //   is not required) then null is returned.
         foreach ($this->propertyDefinitions['fields'] as $name => $field_properties) {
             if (!is_array($field_properties)) {
                 throw new UnexpectedValueException("'{$this->getType()}' object has a non-array definition for field '$name'.");
             }
 
+            // If the field is defined as an ID field that is assigned by AFAS
+            // (on insert), then validate it. This is the same behavior that
+            // AFAS has implemented the per-type '@xxId' properties for, so it
+            // is unclear why objects sometimes have regular fields that seem
+            // to behave just like such an ID property... But it seems this is
+            // the case and AFAS is inconsistent in their schema definitions.
+            if (isset($field_properties['behavior']) && $field_properties['behavior'] === 'afas_assigned_id'
+                && $validation_behavior & self::VALIDATE_ESSENTIAL) {
+                // This code is equivalent to the code in validateElements for
+                // the ID property.
+                if (isset($element['Fields'][$name])) {
+                    if (!is_int($element['Fields'][$name]) && !is_string($element['Fields'][$name])) {
+                        $name_and_alias = "'$name'" . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
+                        $element['*errors']["Fields:$name"] = "$name_and_alias field must hold integer/string value.";
+                    }
+                } else {
+                    // If action is "insert", we are guessing that there
+                    // usually isn't, but still could be, a value for the ID
+                    // field; it depends on 'auto numbering' for this object
+                    // type. We don't validate this. (Yet?) We do validate that
+                    // there's an ID value if action is different than "insert".
+                    $action = $this->getAction($element_index);
+                    if ($action !== 'insert') {
+                        $name_and_alias = "'$name'" . (isset($field_properties['alias']) ? " ({$field_properties['alias']})" : '');
+                        $element['*errors']["Fields:$name"] = "$name_and_alias field must have a value, or Action '$action' must be set to 'insert'.";
+                    }
+                }
+            }
+
+            // Check required fields and add default values for fields (where
+            // defined). About definitions:
+            // - if no field value is set and a default is available, the
+            //   default is returned.
+            // - if required = true, then
+            //   - if no field value is set and no default is available, an
+            //     exception is thrown.
+            //   - if the field value is null, an exception is thrown, unless
+            //     the default value is also null. (We don't silently overwrite
+            //     null values which were explicitly set, with a different
+            //     default.)
+            // - if the default is null (or the field value is null and the
+            //   field is not required) then null is returned.
             $default_available = $defaults_allowed && array_key_exists('default', $field_properties);
             // Requiredness is only checked for action "insert"; the
             // VALIDATE_ESSENTIAL bit does not change that. (So far, we've only
@@ -2888,8 +2926,12 @@ class UpdateObject
             case 'FbSubscriptionLines':
                 $this->propertyDefinitions = [
                     'fields' => [
+                        // (This is apparently not an 'ID property', which
+                        // we'll assume a FbSubscriptionLines object doesn't
+                        // have then. Why not? what is the difference?)
                         'Id' => [
                             'alias' => 'guid',
+                            'behavior' => 'afas_assigned_id',
                         ],
                         'ItCd' => [
                             'alias' => 'item_code',

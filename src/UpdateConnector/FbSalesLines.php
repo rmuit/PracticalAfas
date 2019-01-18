@@ -142,9 +142,12 @@ class FbSalesLines extends UpdateObject
             'Re' => [
                 'alias' => 'comment',
             ],
-            // GUID regel
+            // GUID regel. (This is apparently not an 'ID property', which
+            // we'll assume a FbSalesLines object doesn't have then. Why not?
+            // what is the difference?)
             'GuLi' => [
                 'alias' => 'guid',
+                'behavior' => 'afas_assigned_id',
             ],
             // Artikeldimensiecode 1 (verwijzing naar: Artikeldimensiecodes => AfasFbStockDimLines)
             'StL1' => [
