@@ -83,9 +83,9 @@ class OrgPersonContact extends UpdateObject
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
-    protected function setPropertyDefinitions()
+    protected function getDefaultPropertyDefinitions()
     {
         // Below definitions are based on what AFAS calls the 'XSD Schema' for
         // SOAP, retrieved though a Data Connector in november 2014. They're
@@ -98,7 +98,7 @@ class OrgPersonContact extends UpdateObject
             case 'KnContact':
                 // This has no ID property. Updating standalone knContact
                 // objects can be done by passing BcCoOga + BcCoPer values.
-                $this->propertyDefinitions = [
+                $definitions = [
                     // As we are extending ObjectWithCountry (for KnPerson), we
                     // have to define this even though we don't use it.
                     'iso_country_fields' => [],
@@ -108,7 +108,7 @@ class OrgPersonContact extends UpdateObject
                             'type' => 'KnBasicAddress',
                             'alias' => 'address',
                         ],
-                        'KnBasicAddressPad' =>  [
+                        'KnBasicAddressPad' => [
                             'type' => 'KnBasicAddress',
                             'alias' => 'postal_address',
                         ],
@@ -223,17 +223,17 @@ class OrgPersonContact extends UpdateObject
                     // According to the XSD, a knContact can contain a knPerson
                     // if it's inside a knOrganisation, but not if standalone.
                     if ($this->parentType === 'KnOrganisation') {
-                        $this->propertyDefinitions['objects']['KnPerson'] = ['alias' => 'person'];
+                        $definitions['objects']['KnPerson'] = ['alias' => 'person'];
                     }
                     // (It doesn't make immediate sense to me that e.g. BcCoOga
                     // would not be available if the parent is a person;
                     // especially because of above. I assume this came from the
                     // same XSD though, so let's stick with it.)
-                    unset($this->propertyDefinitions['fields']['BcCoOga']);
-                    unset($this->propertyDefinitions['fields']['BcCoPer']);
-                    unset($this->propertyDefinitions['fields']['AddToPortal']);
-                    unset($this->propertyDefinitions['fields']['EmailPortal']);
-                    $this->propertyDefinitions['fields'] += [
+                    unset($definitions['fields']['BcCoOga']);
+                    unset($definitions['fields']['BcCoPer']);
+                    unset($definitions['fields']['AddToPortal']);
+                    unset($definitions['fields']['EmailPortal']);
+                    $definitions['fields'] += [
                         // Soort Contact
                         // Values:  AFD:Afdeling bij organisatie   AFL:Afleveradres
                         // if parent is knOrganisation: + PRS:Persoon bij organisatie (alleen mogelijk i.c.m. KnPerson tak)
@@ -259,7 +259,7 @@ class OrgPersonContact extends UpdateObject
                 break;
 
             case 'KnPerson':
-                $this->propertyDefinitions = [
+                $definitions = [
                     'iso_country_fields' => [
                         'birth_country_iso' => 'DaBi'
                     ],
@@ -502,13 +502,13 @@ class OrgPersonContact extends UpdateObject
                     // Note that a 'standalone' KnContact cannot contain a
                     // knPerson. We know only of the situation where this
                     // parent knContact is embedded in a knOrganisation.
-                    $this->propertyDefinitions['fields'] += [
+                    $definitions['fields'] += [
                         // Land wetgeving (verwijzing naar: Land => AfasKnCountry)
                         'CoLw' => [],
                         // Fake ISO field for CoLw:
                         'regul_country_iso' => [],
                     ];
-                    $this->propertyDefinitions['iso_country_fields']['regul_country_iso'] = 'CoLw';
+                    $definitions['iso_country_fields']['regul_country_iso'] = 'CoLw';
 
                     if ($this->parentType === 'KnSalesRelationPer') {
                         // [ Tested in 2012: ]
@@ -519,18 +519,18 @@ class OrgPersonContact extends UpdateObject
                         // equivalents instead. (At least that was the case for
                         // Qoony.) So it's those you want to fill by default.
                         // Reassign aliases from business to private fields.
-                        $this->propertyDefinitions['fields']['TeN2']['alias'] = $this->propertyDefinitions['fields']['TeNr']['alias'];
-                        unset($this->propertyDefinitions['fields']['TeNr']['alias']);
-                        $this->propertyDefinitions['fields']['MbN2']['alias'] = $this->propertyDefinitions['fields']['MbNr']['alias'];
-                        unset($this->propertyDefinitions['fields']['MbNr']['alias']);
-                        $this->propertyDefinitions['fields']['EmA2']['alias'] = $this->propertyDefinitions['fields']['EmAd']['alias'];
-                        unset($this->propertyDefinitions['fields']['EmAd']['alias']);
+                        $definitions['fields']['TeN2']['alias'] = $definitions['fields']['TeNr']['alias'];
+                        unset($definitions['fields']['TeNr']['alias']);
+                        $definitions['fields']['MbN2']['alias'] = $definitions['fields']['MbNr']['alias'];
+                        unset($definitions['fields']['MbNr']['alias']);
+                        $definitions['fields']['EmA2']['alias'] = $definitions['fields']['EmAd']['alias'];
+                        unset($definitions['fields']['EmAd']['alias']);
                     }
                 }
                 break;
 
             case 'KnOrganisation':
-                $this->propertyDefinitions = [
+                $definitions = [
                     // As we are extending ObjectWithCountry (for KnPerson), we
                     // have to define this even though we don't use it.
                     'iso_country_fields' => [],
@@ -696,16 +696,21 @@ class OrgPersonContact extends UpdateObject
                     ],
                 ];
                 break;
+
+            default:
+                throw new UnexpectedValueException("No property definitions found for '{$this->type}' object in " . get_class($this) . ' class.');
         }
-        if ($this->propertyDefinitions) {
+        if ($definitions) {
             // An object cannot contain its parent type. (Example: knPerson can
             // have knContact as a parent, and it can also contain knContact...
             // except when its parent is knContact. Note this implies the
             // 'reference field name' is the same as the type.
-            if (isset($this->propertyDefinitions['objects'][$this->parentType])) {
-                unset($this->propertyDefinitions['objects'][$this->parentType]);
+            if (isset($definitions['objects'][$this->parentType])) {
+                unset($definitions['objects'][$this->parentType]);
             }
         }
+
+        return $definitions;
     }
 
     /**

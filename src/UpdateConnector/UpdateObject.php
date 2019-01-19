@@ -217,18 +217,21 @@ class UpdateObject
     /**
      * Property definitions for data in this object.
      *
-     * Code is explicitly allowed to reference this variable directly. (There's
-     * no getter). The constructor is responsible for populating it, if it is
-     * not already populated in the class definition.
+     * Code is explicitly allowed to reference this variable directly; there's
+     * no getter. The constructor is responsible for populating it. (However,
+     * it's recommended to define the value in getDefaultPropertyDefinitions()
+     * rather than setting it directly in the constructor or the variable's
+     * definition. The latter two will work fine for most use cases but
+     * resetPropertyDefinitions() will likely fail.)
      *
-     * Code may also modify properties to influence the validation process
-     * but must then obviously be very careful to ensure that all validation
-     * works uniformly. (This requires knowledge of exactly when which types of
-     * validation is performed by which method: validation happen during both
-     * validateElementInput() and validateElement() calls, which each have a
-     * slightly different function and each call a number of other methods. to
-     * do the work.) These modifications are not guaranteed to persist after
-     * validation.
+     * Code may also modify this variable at runtime to influence the
+     * validation process, but must then obviously be very careful to ensure
+     * that all validation works uniformly. (This requires knowledge of exactly
+     * when which types of validation is performed by which method: validation
+     * happens during both validateElementInput() and validateElement() calls,
+     * which each have a slightly different function and each call a number
+     * of other methods. to do the work.) These modifications are not
+     * guaranteed to persist after validation.
      *
      * The format is not related to AFAS but a structure specific to this class.
      * The array has the following keys:
@@ -402,11 +405,10 @@ class UpdateObject
      * Overrides property definitions for a specific object type.
      *
      * The anticipated use of this is defining custom fields for existing
-     * types. Whether calling this method has effect, relies on (constructor)
-     * code in the class which implements the object type. Definitions in
-     * classes which are already instantiated are not affected (with the
-     * possible exception of custom child classes handling these overrides in a
-     * non-standard way).
+     * types. Definitions in objects which are already instantiated are not
+     * affected, except when resetPropertyDefinitions() is called on those
+     * objects afterwards. (Caveat: theoretical exceptions are child classes
+     * that override the related logic in this class.)
      *
      * Overrides set through this method have no effect on overrides set
      * through overrideFieldProperty() (which take precedence) or on properties
@@ -487,7 +489,7 @@ class UpdateObject
      *   (although often) equal to the names of 'object reference fields' in
      *   property definitions. See $propertyDefinitions for the difference.
      * @param string $field_name
-     *   The field name within the object type.
+     *   The field name or alias within the object type. Note: no alias allowed.
      * @param string $property
      *   The property name within the field.
      * @param mixed $value
@@ -513,7 +515,7 @@ class UpdateObject
      *   property definitions. See $propertyDefinitions for the difference.
      * @param string $field_name
      *   (Optional) The field name within the object type. Leave empty to
-     *   remove all overrides for this object type.
+     *   remove all overrides for this object type. Note: no alias allowed.
      * @param string $property
      *   (Optional) The property name within the field. Leave empty to remove
      *   all overrides for this object type + field.
@@ -713,12 +715,13 @@ class UpdateObject
         $this->parentType = $parent_type;
         $this->setAction($action);
 
-        if (empty($this->propertyDefinitions)) {
-            $this->setPropertyDefinitions();
+        // If property definitions were set (which would be by a child class'
+        // constructor or just defined in the variable), then don't set them
+        // again. Child classes shouldn't be doing that though, because
+        // resetPropertyDefinitions() calls won't work in that case.
+        if (!$this->propertyDefinitions) {
+            $this->resetPropertyDefinitions();
         }
-        // Merge the overrides. (Also for definitions that were already set
-        // in child classes.)
-        $this->propertyDefinitions = $this->mergeDefinitionOverrides();
 
         $this->addElements($elements, $validation_behavior);
     }
@@ -2779,9 +2782,33 @@ class UpdateObject
     }
 
     /**
+     * Resets property definitions in this class instance.
+     *
+     * This means setting all currently known definitions including overrides.
+     * This is the way to e.g. apply definition overrides that were set after
+     * this object was instantiated, to this instance anyway.
+     */
+    public function resetPropertyDefinitions()
+    {
+        // Set the default definitions, then override them. This is not the
+        // recommended way of doing things; it's only done for the benefit of
+        // child classes that might have  overridden setPropertyDefinitions().
+        // @todo once the deprecated setPropertyDefinitions() gets removed:
+        // $this->propertyDefinitions = $this->mergeDefinitionOverrides($this->getDefaultPropertyDefinitions();
+        $this->setPropertyDefinitions();
+        $this->propertyDefinitions = $this->mergeDefinitionOverrides($this->propertyDefinitions);
+    }
+
+    /**
      * Produces property definitions with the overrides merged into them.
      *
      * Class properties 'propertyDefinitions' and 'type' must already be set.
+     *
+     * @param array $definitions
+     *   (Optional) The default definitions which the overrides should be
+     *   merged into. If this argument is not passed, the class' current
+     *   propertyDefinitions is taken. However please pass them explicitly;
+     *   this parameter may become non-optional in the future.
      *
      * @return array
      *   The overridden definitions.
@@ -2789,9 +2816,11 @@ class UpdateObject
      * @throws \UnexpectedValueException
      *   If any error is encountered.
      */
-    protected function mergeDefinitionOverrides()
+    protected function mergeDefinitionOverrides($definitions = [])
     {
-        $definitions = $this->propertyDefinitions;
+        if (!$definitions && $this->propertyDefinitions) {
+            $definitions = $this->propertyDefinitions;
+        }
         $type = $this->getType();
         if (!$type) {
             throw new UnexpectedValueException('Object type is not set.');
@@ -2867,21 +2896,26 @@ class UpdateObject
     }
 
     /**
-     * Sets property definitions.
+     * Sets default property definitions into the class variable.
      *
-     * This method is called from the constructor only. It exists to enable
-     * a child class to override existing property definitions (which must be
-     * done during construction) inside the child class' code. It is not called
-     * by every class; only by classes where overriding properties would not be
-     * possible easily by overriding the constructor directly, so now it can be
-     * done by overriding this method instead.
-     *
-     * There is however another, recommended, method for overriding property
-     * definitions: calling the static method overridePropertyDefinitions().
-     * Using that method, there's no need for subclassing just to e.g. add a
-     * custom field to an existing object.
+     * @deprecated will be removed in a future version.
+     *   Use getDefaultPropertyDefinitions().
      */
-    protected function setPropertyDefinitions() {
+    protected function setPropertyDefinitions()
+    {
+        $this->propertyDefinitions = $this->getDefaultPropertyDefinitions();
+    }
+
+    /**
+     * Returns the property definitions, without overrides from static setters.
+     *
+     * @return array
+     *   The definitions.
+     *
+     * @see $propertyDefinitions
+     */
+    protected function getDefaultPropertyDefinitions()
+    {
         // Below definitions are based on what AFAS calls the 'XSD Schema' for
         // SOAP, retrieved though a Data Connector in november 2014. They're
         // amended with extra info like more understandable aliases for the
@@ -2891,7 +2925,7 @@ class UpdateObject
         // documentation.
         switch ($this->type) {
             case 'FbSubscription':
-                $this->propertyDefinitions = [
+                return [
                     'objects' => [
                         'FbSubscriptionLines' => [
                             'alias' => 'line_items',
@@ -2921,10 +2955,9 @@ class UpdateObject
                         'DaRe' => [],
                     ],
                 ];
-                break;
 
             case 'FbSubscriptionLines':
-                $this->propertyDefinitions = [
+                return [
                     'fields' => [
                         // (This is apparently not an 'ID property', which
                         // we'll assume a FbSubscriptionLines object doesn't
@@ -2957,7 +2990,6 @@ class UpdateObject
                         ],
                     ],
                 ];
-                break;
 
             case 'KnCourseMember':
                 // I'm  not sure what the exact usage is. It might be that
@@ -2965,7 +2997,7 @@ class UpdateObject
                 // registration and not the date of the course. And in that
                 // case, I'd expect there to be a KnCourseEvent type which has
                 // the course date... but we don't have that defined yet.
-                $this->propertyDefinitions = [
+                return [
                     'fields' => [
                         'BcCo' => [
                             'alias' => 'organisation_code',
@@ -3000,10 +3032,9 @@ class UpdateObject
                         ],
                     ],
                 ];
-                break;
 
             case 'KnProvApplication':
-                $this->propertyDefinitions = [
+                return [
                     'fields' => [
                         'BcCo' => [
                             'alias' => 'organisation_code',
@@ -3020,7 +3051,6 @@ class UpdateObject
                         ],
                     ],
                 ];
-                break;
 
             // This seems to be where the object model breaks down a bit.
             // KnSalesRelationOrg and KnSalesRelationPer clearly seem to share
@@ -3034,7 +3064,7 @@ class UpdateObject
             // So until further info comes in, we define them as two types.
             case 'KnSalesRelationOrg':
             case 'KnSalesRelationPer':
-                $this->propertyDefinitions = [
+                $definitions = [
                     'id_property' => 'DbId',
                     'fields' => [
                         // 'is debtor'?
@@ -3080,25 +3110,25 @@ class UpdateObject
                     ],
                 ];
                 if ($this->getType() === 'KnSalesRelationOrg') {
-                    $this->propertyDefinitions['fields']['VaId'] = [
+                    $definitions['fields']['VaId'] = [
                         'alias' => 'vat_number',
                     ];
-                    $this->propertyDefinitions['objects'] = [
+                    $definitions['objects'] = [
                         'KnOrganisation' => [
                             'alias' => 'organisation',
                         ],
                     ];
                 } else {
-                    $this->propertyDefinitions['objects'] = [
+                    $definitions['objects'] = [
                         'KnPerson' => [
                             'alias' => 'person',
                         ],
                     ];
                 }
-                break;
+                return $definitions;
 
             case 'KnSubject':
-                $this->propertyDefinitions = [
+                return [
                     'id_property' => 'SbId',
                     // See definition of KnS01: I'm not sure if this is correct.
                     'objects' => [
@@ -3200,10 +3230,9 @@ class UpdateObject
                         'FileStream' => [],
                     ],
                 ];
-                break;
 
             case 'KnSubjectLink':
-                $this->propertyDefinitions = [
+                return [
                     'id_property' => 'SbId',
                     'fields' => [
                         // Save in CRM Subject
@@ -3354,7 +3383,7 @@ class UpdateObject
                         ],
                     ],
                 ];
-                break;
+
 
             // I do not know if the following is correct: back in 2014, the XSD
             // schema / Data Connector contained separate explicit definitions
@@ -3366,7 +3395,7 @@ class UpdateObject
             // KnS01 should be implemented (and the related 'object reference
             // fields' in KnSubject should be overridden) in custom classes.
             case 'KnS01':
-                $this->propertyDefinitions = [
+                return [
                     'id_property' => 'SbId',
                     'fields' => [
                         // Vervaldatum
@@ -3380,10 +3409,9 @@ class UpdateObject
                         ],
                     ],
                 ];
-                break;
 
             case 'KnS02':
-                $this->propertyDefinitions = [
+                return [
                     'id_property' => 'SbId',
                     'fields' => [
                         // Contractnummer
@@ -3421,10 +3449,9 @@ class UpdateObject
                         ],
                     ],
                 ];
-                break;
 
             case 'FbOrderBatchLines':
-                $this->propertyDefinitions = [
+                return [
                     'fields' => [
                         // Partijnummer
                         'BaNu' => [
@@ -3470,10 +3497,9 @@ class UpdateObject
                         ],
                     ],
                 ];
-                break;
 
             case 'FbOrderSerialLines':
-                $this->propertyDefinitions = [
+                return [
                     'fields' => [
                         // Serienummer
                         'SeNu' => [
@@ -3504,7 +3530,6 @@ class UpdateObject
                         ],
                     ],
                 ];
-                break;
 
             default:
                 // We allow setting a full definition of an unknown object
@@ -3512,9 +3537,9 @@ class UpdateObject
                 // exception for types with overridden definitions. (The caller
                 // is expected to merge those into the variable.)
                 if (empty(static::$definitionOverrides[$this->type])) {
-                    throw new InvalidArgumentException("No property definitions found for '{$this->type}' object.");
+                    throw new UnexpectedValueException("No property definitions found for '{$this->type}' object.");
                 }
-                $this->propertyDefinitions = [];
+                return [];
         }
     }
 }

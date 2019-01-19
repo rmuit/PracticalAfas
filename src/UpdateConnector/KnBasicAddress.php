@@ -80,7 +80,8 @@ class KnBasicAddress extends UpdateObject
     /**
      * {@inheritdoc}
      */
-    protected $propertyDefinitions = [
+    protected function getDefaultPropertyDefinitions()
+    {
         // Below definition is based on what AFAS calls the 'XSD Schema'  for
         // SOAP, retrieved though a Data Connector in november 2014, amended
         // with extra info like aliases and defaults. There are  Dutch comment
@@ -115,63 +116,65 @@ class KnBasicAddress extends UpdateObject
          * we won't do this for inserts, to not give people who look at API
          * payloads wrong information.
          */
-        // See ObjectWithCountry class.
-        'iso_country_fields' => [
-            'country_iso' => 'CoId',
-        ],
-        'fields' => [
-            // Land (verwijzing naar: Land => AfasKnCountry)
-            'CoId' => [
+        return [
+            // See ObjectWithCountry class.
+            'iso_country_fields' => [
+                'country_iso' => 'CoId',
             ],
-            // Fake ISO field for CoId:
-            'country_iso' => [],
-            // "is postbusadres" (If true: HmNr has number of P.O. box.)
-            'PbAd' => [
-                'alias' => 'is_po_box',
-                'type' => 'boolean',
-                'required' => true,
-                'default' => false,
+            'fields' => [
+                // Land (verwijzing naar: Land => AfasKnCountry)
+                'CoId' => [
+                ],
+                // Fake ISO field for CoId:
+                'country_iso' => [],
+                // "is postbusadres" (If true: HmNr has number of P.O. box.)
+                'PbAd' => [
+                    'alias' => 'is_po_box',
+                    'type' => 'boolean',
+                    'required' => true,
+                    'default' => false,
+                ],
+                // Toev. voor straat
+                'StAd' => [],
+                // Straat
+                'Ad' => [
+                    'alias' => 'street',
+                    'required' => true,
+                ],
+                // Huisnummer
+                'HmNr' => [
+                    'alias' => 'house_number',
+                    'type' => 'integer',
+                ],
+                // Toev. aan huisnr.
+                'HmAd' => [
+                    'alias' => 'house_number_ext',
+                ],
+                // Postcode
+                'ZpCd' => [
+                    'alias' => 'zip_code',
+                    'required' => true,
+                ],
+                // Woonplaats (verwijzing naar: Woonplaats => AfasKnResidence)
+                // (I think the "AfasKnResidence" reference was outdated docs?)
+                'Rs' => [
+                    'alias' => 'town',
+                    // This is 'conditionally required'; see below.
+                ],
+                // Adres toevoeging
+                'AdAd' => [],
+                // Ingangsdatum adreswijziging (wordt genegeerd bij eerste datum)
+                'BeginDate' => [
+                    'type' => 'date',
+                ],
+                'ResZip' => [
+                    'alias' => 'resolve_zip',
+                    'type' => 'boolean',
+                    'default' => false,
+                ],
             ],
-            // Toev. voor straat
-            'StAd' => [],
-            // Straat
-            'Ad' => [
-                'alias' => 'street',
-                'required' => true,
-            ],
-            // Huisnummer
-            'HmNr' => [
-                'alias' => 'house_number',
-                'type' => 'integer',
-            ],
-            // Toev. aan huisnr.
-            'HmAd' => [
-                'alias' => 'house_number_ext',
-            ],
-            // Postcode
-            'ZpCd' => [
-                'alias' => 'zip_code',
-                'required' => true,
-            ],
-            // Woonplaats (verwijzing naar: Woonplaats => AfasKnResidence)
-            // (I think the "AfasKnResidence" reference was outdated docs?)
-            'Rs' => [
-                'alias' => 'town',
-                // This is 'conditionally required'; see below.
-            ],
-            // Adres toevoeging
-            'AdAd' => [],
-            // Ingangsdatum adreswijziging (wordt genegeerd bij eerste datum)
-            'BeginDate' => [
-                'type' => 'date',
-            ],
-            'ResZip' => [
-                'alias' => 'resolve_zip',
-                'type' => 'boolean',
-                'default' => false,
-            ],
-        ],
-    ];
+        ];
+    }
 
     /**
      * {@inheritdoc}

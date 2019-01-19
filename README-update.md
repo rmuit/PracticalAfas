@@ -306,7 +306,9 @@ The above overrideClass() method ensures two things:
   also use the custom class.
 
 The above static calls only have effect on objects that are instantiated _after_
-the call is done.
+the call is done. In order to propagate changes made by overrideFieldProperty()
+or overridePropertyDefinitions() into an existing object, call
+$object->resetPropertyDefinitions().
 
 
 ## 'Bugs'

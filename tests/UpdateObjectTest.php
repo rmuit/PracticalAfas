@@ -606,6 +606,39 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
     }
 
     /**
+     * Tests that overriding single properties works. (More below, though.)
+     *
+     * Also tests that objects don't change after reset... until
+     * resetPropertyDefinitions() is called.
+     */
+    public function testPropertyOverridesAndReset()
+    {
+        // Reset the overrides from the test above.
+        UpdateObject::overridePropertyDefinitions('FbSales', []);
+
+        $properties = [
+            'order_date' => '2018-12-10',
+            'order_number' => '1',
+            'debtor_id' => 1,
+            'currency_code' => 'EUR',
+        ];
+        $object1 = UpdateObject::create('FbSales', $properties, 'insert');
+        UpdateObject::overrideFieldProperty('FbSales', 'BkOr', 'default', false);
+        $object2 = UpdateObject::create('FbSales', $properties, 'insert');
+
+        // The validated objects should differ. Two ways of testing:
+        $elements1 = $object1->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
+        $elements2 = $object2->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
+        $this->assertNotEquals($elements1, $elements2);
+        $this->assertEquals(false, $elements2[0]['Fields']['BkOr']);
+
+        // Check that resetPropertyDefinitions()  makes things equal.
+        $object1->resetPropertyDefinitions();
+        $elements1 = $object1->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
+        $this->assertEquals($elements1, $elements2);
+    }
+
+    /**
      * Tests that overriding single properties (default, alias) works.
      *
      * Also tests that the 'street splitting' only works for certain countries.
