@@ -1,4 +1,4 @@
-# PracticalAFAS
+# PracticalAFAS [![Build Status](https://travis-ci.com/rmuit/PracticalAfas.svg?branch=master)](https://travis-ci.com/rmuit/PracticalAfas)
 
 A PHP library for communicating with AFAS Profit in a practical way, using
 either SOAP or REST.
@@ -35,12 +35,19 @@ readable (because there's not many different methods) and easy to call for
 
 ## Compatibility
 
-Version 2 of the library works with PHP5 (5.4 and up), though the unit tests for
-the UpdateConnector part are written in PHPUnit v7 (which supports PHP7 only).
+Version 2 of the library works with PHP5 (5.4 and up) and PHP7.
 
 Client classes for REST and SOAP use PHP's standard Curl + JSON and SOAP +
 SimpleXML extensions; if these do not work for you, PRs with new / modified
 clients are welcome.
+
+Automatic testing is done on PHP5.6, 7.1 and 7.2 for the UpdateConnector
+classes. (I currently don't consider the Client classes in need of tests. There
+may be some light tests for Connection in the future but it's not on my list.)
+
+Although PHP5.6 is not officially supported anymore, this library will remain
+compatible with it until there is a real reason to introduce PHP7-only language
+constructs.
 
 
 ## Using the classes

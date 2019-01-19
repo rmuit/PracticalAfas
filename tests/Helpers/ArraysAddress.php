@@ -8,7 +8,7 @@
  * that was distributed with this source code.
  */
 
-namespace PracticalAfas\TestHelpers;
+namespace PracticalAfas\Tests\Helpers;
 
 use PracticalAfas\UpdateConnector\KnBasicAddress;
 

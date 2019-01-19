@@ -884,7 +884,7 @@ class OrgPersonContact extends UpdateObject
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     protected function validateFieldValue($value, $field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, $element_index = null, array $element = null)
     {
@@ -919,7 +919,7 @@ class OrgPersonContact extends UpdateObject
                 // be embedded here so don't look for it.)
                 $personal_nr = in_array($field_name, ['TeN2', 'MbN2'], true);
                 $search_current = $personal_nr;
-                $search_embedded_types = $personal_nr ? : ['KnContact'];
+                $search_embedded_types = $personal_nr ?: ['KnContact'];
             } else {
                 // If KnOrganisation: don't validate the company's numbers
                 // against an address in an embedded object. If KnContact:
@@ -955,7 +955,7 @@ class OrgPersonContact extends UpdateObject
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     protected function validateReferenceFields(array $element, $element_index, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
     {
@@ -1078,7 +1078,8 @@ class OrgPersonContact extends UpdateObject
      *
      * @return array|mixed
      */
-    protected static function getAddressFields(array $element, array $search_address_types = ['KnBasicAddressAdr'], $search_current = true, array $search_embedded_types = []) {
+    protected static function getAddressFields(array $element, array $search_address_types = ['KnBasicAddressAdr'], $search_current = true, array $search_embedded_types = [])
+    {
         $address = [];
         if ($search_current) {
             // First, see if there's an address directly inside this element.
@@ -1283,8 +1284,7 @@ class OrgPersonContact extends UpdateObject
 
         // Area codes start with 0, +31 or the (now deprecated) '+31 (0)'.
         // Non-mobile area codes starting with 0 may be surrounded by brackets.
-        foreach (
-            [
+        foreach ([
                 '((?:\+31[-\s]?(?:\(0\))?\s?|0)6)            # mobile
                 [-\s]* ([1-9]\s*(?:[0-9]\s*){7})',
 
@@ -1296,7 +1296,6 @@ class OrgPersonContact extends UpdateObject
                 |\(0[1-5789][0-9]{2}\))                         # (possibly between brackets...)
                 [-\s]* ([1-9]\s*(?:[0-9]\s*){5})                # ...plus local number.',
             ] as $regex) {
-
             if (preg_match('/^\s*' . $regex . '\s*$/x', $phone_number, $matches)) {
                 $return = [
                     strtr($matches[1], [' ' => '', '-' => '', '+31' => '0']),

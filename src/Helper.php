@@ -69,7 +69,7 @@ class Helper
      * This method does not claim to be perfect but will at least provide a
      * starting point.
      *
-     * Use case: say your system is a webshop and are trying to send in new
+     * Use case: say your system is a webshop which is trying to send in new
      * orders into AFAS. If AFAS returns an error, your system needs to know
      * whether it's temporary (e.g. because of a connection error) or permanent,
      * so it can decide whether to try again later, or inform a human.
@@ -100,14 +100,13 @@ class Helper
     /**
      * Calls a GetConnector to get one batch of a large data set.
      *
-     * Getting data in batches can be useful to prevent timeouts / work with the
-     * required 'take' parameter to AFAS GetConnector calls. For this to work,
-     * we have to be able to order the data set by an immutable field*, so a
-     * unique, immutable field should be added to the data set and its fieldname
-     * must be specified in the 'sortable_id_field' argument. Note that we never
-     * use the 'skip' parameter for fetching subsequent batches: 'skip' is fine
-     * for 'human paging' but poses a risk of data loss if records are deleted
-     * while we're getting data.
+     * Getting data in batches can be useful to prevent timeouts. For this to
+     * work, we have to be able to order the data set by an immutable field*,
+     * so a unique, immutable field should be added to the data set and its
+     * field name must be specified in the 'sortable_id_field' argument. Note
+     * that we never use the 'skip' parameter for fetching subsequent batches:
+     * 'skip' is fine for 'human paging' but poses a risk of data loss if
+     * records are deleted while we're getting data.
      * * The order-by field must be immutable but not necessarily unique; there
      *   is an argument to specify non-uniqueness. In this case, this method
      *   will check for duplicate records in subsequent fetched batches and weed
@@ -128,7 +127,7 @@ class Helper
      * @param array $args
      *   Arguments used to create / process the getData() calls. These must stay
      *   the same over subsequent calls made to fetch a full data set.
-     *   - connection (\PracticalAfas\Connetion; required):
+     *   - connection (\PracticalAfas\Connection; required):
      *     The connection object to use. (If we feel the need, we might remove
      *     the required-ness of this value and make this a non-static method
      *     later.)
@@ -166,7 +165,8 @@ class Helper
      * @param array $context
      *   An array with context data that will be modified by the call, and that
      *   should be passed unmodified to every next call to get the next batch in
-     *   a data set. Two properties are important:
+     *   a data set. One would normally pass an empty array on the first call.
+     *   Two properties are important:
      *   - subtotal: should be empty for calls which fetch the first batch of a
      *     data set.
      *   - finished: should be checked after every call; true means that the

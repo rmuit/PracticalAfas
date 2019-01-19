@@ -91,11 +91,11 @@ class KnBasicAddress extends UpdateObject
 
         /* Note the different format (not 4 letters) for BeginDate & ResZip;
          * AFAS apparently does not consider them 'normal' field names. For
-         * ResZip this is clear: this value is not stored in the object. 
-         * 
+         * ResZip this is clear: this value is not stored in the object.
+         *
          * BeginDate actually is stored like a normal field (AFAICT); it's just
          * connected to the functionality of automatically making a new copy of
-         * the address object when it's updated. For the rest, the only thing 
+         * the address object when it's updated. For the rest, the only thing
          * special about the field is the fact that it's unnecessary & ignored
          * on inserts, and required on updates.
          * (From the docs:
@@ -104,13 +104,13 @@ class KnBasicAddress extends UpdateObject
          *   geen begindatum aan te leveren in het veld 'BeginDate' genegeerd.
          *   Als er al een adres bestaat, geeft u met 'BeginDate' de
          *   ingangsdatum van de adreswijziging aan.)
-         * 
+         *
          * (I don't remember testing whether the BeginDate is actually required
          * to be passed, or if it gets an automatic default of 'today' if left
-         * empty. I also don't remember if passing a BeginDate equal to an 
-         * existing record overwrites an existing address field rather than 
-         * creating a new one. That will have to be tested, I guess.)     
-         * 
+         * empty. I also don't remember if passing a BeginDate equal to an
+         * existing record overwrites an existing address field rather than
+         * creating a new one. That will have to be tested, I guess.)
+         *
          * The simplest way to implement what we need seems to be to just give
          * BeginDate a default of 'today'. This could always be passed, but
          * we won't do this for inserts, to not give people who look at API
@@ -260,8 +260,11 @@ class KnBasicAddress extends UpdateObject
                 ? in_array(strtoupper($fields['CoId']), static::getCountriesWithSeparateHouseNr(), true)
                 : isset($this->propertyDefinitions['fields']['CoId']['default'])
                 && is_string($this->propertyDefinitions['fields']['CoId']['default'])
-                && in_array(strtoupper($this->propertyDefinitions['fields']['CoId']['default']),
-                    static::getCountriesWithSeparateHouseNr(), true))
+                && in_array(
+                    strtoupper($this->propertyDefinitions['fields']['CoId']['default']),
+                    static::getCountriesWithSeparateHouseNr(),
+                    true
+                ))
             && preg_match('/^
           (.*?\S) \s+ (\d+) # normal thoroughfare, followed by spaces and a number;
                             # non-greedy because for STREET NR1 NR2, "nr1" should

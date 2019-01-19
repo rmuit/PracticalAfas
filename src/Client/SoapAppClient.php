@@ -1,4 +1,5 @@
-<?php
+<?php /** @noinspection PhpComposerExtensionStubsInspection */
+
 /**
  * This file is part of the PracticalAfas package.
  *
@@ -32,7 +33,7 @@ class SoapAppClient
 {
     public static function getClientType()
     {
-      return 'SOAP';
+        return 'SOAP';
     }
 
     /**
@@ -297,10 +298,9 @@ class SoapAppClient
      *   For invalid function arguments or unknown connector type.
      * @throws \UnexpectedValueException
      *   If the SoapClient returned a response in an unknown format.
-     * @throws \SoapFault
-     *   If the SOAP function execution encountered an error.
      * @throws \Exception
-     *   For anything else that went wrong, e.g. initializing the SoapClient.
+     *   For anything else that went wrong, e.g. initializing the SoapClient;
+     *   \SoapFault if the SOAP function execution encountered an error.
      */
     public function callAfas($type, $endpoint, array $arguments)
     {

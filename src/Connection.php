@@ -13,7 +13,8 @@ namespace PracticalAfas;
 use InvalidArgumentException;
 use PracticalAfas\UpdateConnector\UpdateObject;
 use RuntimeException;
-use SimpleXMLElement;
+use /** @noinspection PhpComposerExtensionStubsInspection */
+    SimpleXMLElement;
 use UnexpectedValueException;
 
 /**
@@ -360,7 +361,7 @@ class Connection
      *   If any of the arguments are invalid (which includes invalid keys/
      *   values in the array).
      */
-    function sendData($data, $connector_name = '', $action = '')
+    public function sendData($data, $connector_name = '', $action = '')
     {
         // If $data is a simple string and $connector_name is not, then
         // they are switched. We support this for backward compatibility;
@@ -441,13 +442,14 @@ class Connection
      *
      * @param string|int $data_id
      *   Identifier for the data, dependent on $data_type:
-     *   DATA_TYPE_GET (default)      : the name of a GetConnector.
-     *   DATA_TYPE_REPORT             : report ID for a ReportConnector.
-     *   DATA_TYPE_SUBJECT/ATTACHMENT : 'subject ID' (int) for SubjectConnector.
-     *   DATA_TYPE_DATA/SCHEMA        : the function name for which to retrieve
-     *                                  the XSD schema.
-     *   DATA_TYPE_TOKEN              : the user ID to request the token for.
-     *   DATA_TYPE_VERSION_INFO       : this argument is ignored.
+     *   DATA_TYPE_GET (default),
+     *   DATA_TYPE_METAINFO_GET          : The name of a Get connector.
+     *   DATA_TYPE_SCHEMA/METAINFO_UPDATE: The Update connector for which to
+     *                                     retrieve the XSD schema.
+     *   DATA_TYPE_REPORT                : Report ID for a Report connector.
+     *   DATA_TYPE_SUBJECT/ATTACHMENT    : ID (int) for Subject connector.
+     *   DATA_TYPE_TOKEN                 : The user ID to request the token for.
+     *   DATA_TYPE_VERSION_INFO          : This argument is ignored.
      * @param array $filters
      *   (optional) Filters in our own custom format; one (or a combination) of:
      *   1) [ FIELD1 => VALUE1, FIELD2 => VALUE2, ...,  '#op' => operator ],
@@ -714,7 +716,7 @@ class Connection
                     'outputoptions' => $include_empty_fields ? self::GET_OUTPUTOPTIONS_XML_INCLUDE_EMPTY : self::GET_OUTPUTOPTIONS_XML_EXCLUDE_EMPTY,
                 ];
             }
-            list($type, $function, $arguments) = self::parseGetDataArguments($data_id, $filters, $data_type, $extra_arguments);
+            list($type, $function, $arguments) = static::parseGetDataArguments($data_id, $filters, $data_type, $extra_arguments);
         } else {
             // If the 'options' argument holds an array, we've just preprocessed
             // those, to provide compatibility with a SOAP GetConnector. But we
@@ -722,7 +724,7 @@ class Connection
             if (isset($extra_arguments['options']) && is_array($extra_arguments['options'])) {
                 unset($extra_arguments['options']);
             }
-            list($type, $function, $arguments) = self::parseGetDataRestArguments($data_id, $filters, $data_type, $extra_arguments);
+            list($type, $function, $arguments) = static::parseGetDataRestArguments($data_id, $filters, $data_type, $extra_arguments);
         }
 
         // Get the data.
@@ -738,6 +740,7 @@ class Connection
         // processed.
         if (!is_numeric($output_format)) {
             if ($this->getClientType() === 'SOAP') {
+                /** @noinspection PhpComposerExtensionStubsInspection */
                 $doc_element = new SimpleXMLElement($data);
                 if ($output_format === self::GET_OUTPUTMODE_SIMPLEXML) {
                     $data = $doc_element;
@@ -765,6 +768,7 @@ class Connection
                     }
                 }
             } else {
+                /** @noinspection PhpComposerExtensionStubsInspection */
                 $data = json_decode($data, true);
                 // @todo check the data structure for all non-"GET" types; we
                 //   may want to do the below for all of them (i.e. get rid of
@@ -903,19 +907,20 @@ class Connection
                         $extra_arguments['options']['index'] .= '<Field FieldId="' . static::xmlValue($value) . '" OperatorType="' . $asc . '"/>';
                     }
                     unset($extra_arguments['orderbyfieldids']);
-                }
-                elseif (isset($extra_arguments['options']['index'])
+                } elseif (isset($extra_arguments['options']['index'])
                     // Assume the 'index' option is 'old style', an XML snippet.
                     // We don't escape it later on (because it's part of the
                     // XML message) but then we need to validate it.
-                    && (!preg_match('/^\s*
+                    && (!preg_match(
+                        '/^\s*
                               (?: <Field\s+     # match 1 or more <Field tags
                                 (?:             # containing 1 or more FieldId/OperatorType values
                                   (?: FieldId|OperatorType) \s* = \s* "[^"]+" \s*
                                 )+
                               \/ \s* > \s*  )+
                             $/ix',
-                            $extra_arguments['options']['index'])
+                        $extra_arguments['options']['index']
+                    )
                         // Above does not ensure >0 FieldId values, so:
                         || stripos($extra_arguments['options']['index'], 'FieldId') === false)
                 ) {
@@ -1008,6 +1013,7 @@ class Connection
         return [$data_type, $function, $extra_arguments];
     }
 
+    // phpcs:disable Squiz.WhiteSpace.ControlStructureSpacing.SpacingAfterOpen
     /**
      * Constructs filter options, usable by AFAS REST call.
      *
@@ -1054,7 +1060,7 @@ class Connection
                         $op = !empty($filter['#op']) ? $filter['#op'] : self::OP_EQUAL;
                         if (!is_numeric($op) || $op < 1 || $op > 14) {
                             if (!is_scalar($op)) {
-                              $op = is_array($op) ? '[object]' : '[array]';
+                                $op = is_array($op) ? '[object]' : '[array]';
                             }
                             throw new InvalidArgumentException("Unknown filter operator: $op (for key: $outerfield).", 33);
                         }
@@ -1065,7 +1071,7 @@ class Connection
                                     throw new InvalidArgumentException("Filter has more than two array dimensions (for key: $outerfield; field: $key).", 33);
                                 }
                                 if (!is_scalar($value)) {
-                                  throw new InvalidArgumentException("Filter contains a non-scalar value (for key: $outerfield; field: $key).", 33);
+                                    throw new InvalidArgumentException("Filter contains a non-scalar value (for key: $outerfield; field: $key).", 33);
                                 }
                                 $fields[] = $key;
                                 $values[] = $value;
@@ -1096,6 +1102,7 @@ class Connection
 
         return $arguments;
     }
+    // phpcs:enable
 
     /**
      * Constructs a 'FiltersXML' argument, usable by AFAS SOAP call.

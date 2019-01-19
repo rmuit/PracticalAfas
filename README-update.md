@@ -78,15 +78,16 @@ print $out;
 ```
 About the above:
 * Calling output() without arguments will return un-formatted JSON.
-* The field names specified in the input data in this example are aliases for
-  the real AFAS field names; they are defined by the UpdateObject class.
+* The keys in the input array in this example are aliases for the real AFAS 
+  field names; they are defined by the UpdateObject class. The real field names
+  can also be used as keys instead.
 * The input which we passed into create() is 'flatter' than the JSON output
   that can be sent into an Update connector, and the output has default values
   added. However, this output can also serve as input to create() if necessary,
   after it is json-decoded back into a multidimensional array.
-* We are going to assume that the third argument always needs to be specified,
-  and needs to be either "insert" or "update". (It's not completely true, but
-  it helps preventing strange error messages from AFAS.)
+* We are going to assume that the third argument to create() always needs to be
+  specified, and needs to be either "insert" or "update". (This is not
+  completely true, but it helps preventing strange error messages from AFAS.)
 
 ### Validating an object / influencing output
 
@@ -103,8 +104,8 @@ $object = UpdateObject::create('FbSales', $order_data, 'insert');
 $out = $object->output(
   'json',
   ['pretty' => true],
-  UpdateObject::DEFAULT_CHANGE & (~UpdateObject::ALLOW_DEFAULTS_ON_INSERT),
-  UpdateObject::DEFAULT_VALIDATION & (~UpdateObject::VALIDATE_REQUIRED)
+  UpdateObject::DEFAULT_CHANGE & ~UpdateObject::ALLOW_DEFAULTS_ON_INSERT,
+  UpdateObject::DEFAULT_VALIDATION & ~UpdateObject::VALIDATE_REQUIRED
 );
 print $out;
 {
@@ -272,11 +273,11 @@ or setPropertyDefinitions().)
 // To set the default country for addresses to 'NL':
 UpdateObject::overrideFieldProperty('KnBasicAddress', 'CoId', 'default', 'NL');
 
-// To set another alias, id you don't like the standard alias 'debtor_id':
+// To set another alias, if you don't like the standard alias 'debtor_id':
 UpdateObject::overrideFieldProperty('FbSales', 'DbId', 'alias', 'sales_relation');
 
 // To add custom fields or non-field properties, or to override complete
-// definitions rather than just set one property in a definition:
+// definitions for a field rather than just set one property in a definition:
 $definitions = [
     'fields' => [
         // Comment will be required.

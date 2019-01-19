@@ -205,12 +205,12 @@ in that case:
 
 ### Situation 1: inserting a new contact for a new organisation:
 
-See [KnOrg-embedded-insert.txt](test/update-examples/KnOrg-embedded-insert.txt) / 
-[KnOrg-embedded-insert2.txt](test/update-examples/KnOrg-embedded-insert2.txt).
+See [KnOrg-embedded-insert.txt](tests/update_examples/KnOrg-embedded-insert.txt) / 
+[KnOrg-embedded-insert2.txt](tests/update_examples/KnOrg-embedded-insert2.txt).
 
 ### Situation 2: inserting a new contact for (/ while updating) an existing organisation:
 
-See [KnOrg-embedded-upsert.txt](test/update-examples/KnOrg-embedded-upsert.txt).
+See [KnOrg-embedded-upsert.txt](tests/update_examples/KnOrg-embedded-upsert.txt).
 
 To check the differences in output: ...just diff the text files.
 
@@ -224,7 +224,7 @@ around what happens with those.
 
 ### Situation 3: update existing contact, inside an existing organisation.
 
-See [KnOrg-embedded-update.txt](test/update-examples/KnOrg-embedded-update.txt).
+See [KnOrg-embedded-update.txt](tests/update_examples/KnOrg-embedded-update.txt).
 
 (A note: one would expect that the presence of a MatchOga/MatchPer of 0 and
 BcCo numbers would make it clear that this concerns updates. However, last time

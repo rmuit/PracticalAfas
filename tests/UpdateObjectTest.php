@@ -8,11 +8,16 @@
  * that was distributed with this source code.
  */
 
+namespace PracticalAfas\Tests;
+
+use InvalidArgumentException;
+use OutOfBoundsException;
 use PHPUnit\Framework\TestCase;
 use PracticalAfas\UpdateConnector\KnBasicAddress;
 use PracticalAfas\UpdateConnector\UpdateObject;
 use PracticalAfas\UpdateConnector\OrgPersonContact;
-use PracticalAfas\TestHelpers\ArraysObject;
+use PracticalAfas\Tests\Helpers\ArraysObject;
+use UnexpectedValueException;
 
 /**
  * Tests for UpdateObject and child classes.
@@ -84,6 +89,7 @@ class UpdateObjectTest extends TestCase
                     // 'Element' wrapper(s) and an outer wrapper containing the
                     // object type; setElements() should be able to deal with
                     // that format too.
+                    /** @noinspection PhpComposerExtensionStubsInspection */
                     $test = json_decode($output, true);
                     $object->setElements($test);
                     // Now we can't compare to $clone because we will have
@@ -92,6 +98,7 @@ class UpdateObjectTest extends TestCase
                     // order of fields, which can e.g. be added on later by
                     // child classes in one case and not the other.)
                     $output = $object->output('json', ['pretty' => true], $change_behavior);
+                    /** @noinspection PhpComposerExtensionStubsInspection */
                     $test2 = json_decode($output, true);
                     self::sortRecursiveKeys($test);
                     self::sortRecursiveKeys($test2);
@@ -107,11 +114,14 @@ class UpdateObjectTest extends TestCase
      * @param array $array
      *   The array to sort
      */
-    private static function sortRecursiveKeys(array &$array) {
-       foreach ($array as &$value) {
-          if (is_array($value)) self::sortRecursiveKeys($value);
-       }
-       ksort($array);
+    private static function sortRecursiveKeys(array &$array)
+    {
+        foreach ($array as &$value) {
+            if (is_array($value)) {
+                self::sortRecursiveKeys($value);
+            }
+        }
+        ksort($array);
     }
 
     /**
@@ -138,7 +148,7 @@ class UpdateObjectTest extends TestCase
      * with 1.
      * 2b & 4 are a bit arbitrary; we could also choose to throw an exception
      * if an embedded object or any of the elements is empty, but I don't see
-     * an advantage to doing that. 5 and 6 are just an implications of 4. (We
+     * an advantage to doing that. 5 and 6 are just implications of 4. (We
      * could throw exceptions in these cases but I don't see the point in it.)
      *
      * There is an implication: there can be UpdateObjects which produce the
@@ -175,9 +185,13 @@ class UpdateObjectTest extends TestCase
 
         // Populate earlier empty object. See that the empty setObject() works
         // and that the objects are exactly equal.
-        $object1->setField('last_name', 'Muit');
-        $object1->setObject('contact', []);
+        $object1->setField('last_name', 'Muit', 'splut');
+        $object1->setObject('contact', [], null, 'splut');
         $object1->setAction('update');
+        // Even if we used 'randomkey' as index instead of 'splut' (or
+        // specified no index), we still can't compare the objects themselves;
+        // $object2 has extra empty elements stored internally. So compare
+        // elements only.
         $this->assertEquals($object1->getElements(), $object2->getElements());
 
         // Remove the field. The resulting empty embedded object should yield
@@ -209,8 +223,8 @@ class UpdateObjectTest extends TestCase
     {
         $properties = [
             'line_items' => [
-               3 => ['quantity' => 3],
-               4 => ['quantity' => 4],
+                3 => ['quantity' => 3],
+                4 => ['quantity' => 4],
             ]
         ];
         $object = UpdateObject::create('FbSales', $properties, 'update');
@@ -333,7 +347,7 @@ class UpdateObjectTest extends TestCase
         // (Since we re-set requiredDefaultNull back to its original input
         // value, getElements() should return a value equivalent to $input,
         // without the defaults.)
-        $object->setField('requiredDefaultNull', NULL);
+        $object->setField('requiredDefaultNull', null);
         $e2 = [
             ['Fields' => $input[0]],
             ['Fields' => $input[1]],
@@ -610,7 +624,7 @@ Unknown object(s) encountered: KnPerson.");
         // by 'fields'.
         $definitions = [
             'fields' => [
-                // Comment will be reqired.
+                // Comment will be required.
                 'Re' => [
                     'alias' => 'comment',
                     'required' => true,
@@ -682,12 +696,12 @@ Unknown object(s) encountered: KnPerson.");
         // But here, we'd like to have the input array instead of the object.
         // We'll just copy the definitions here.
         $properties = [
-          'name' => 'Wyz',
-          'address' => [
-            'street' => 'Govert Flinckstraat 168A',
-            'postal_code' => '1072EP',
-            'town' => 'Amsterdam',
-          ],
+            'name' => 'Wyz',
+            'address' => [
+                'street' => 'Govert Flinckstraat 168A',
+                'postal_code' => '1072EP',
+                'town' => 'Amsterdam',
+            ],
         ];
         $expected = [[
             'Fields' => [
@@ -856,7 +870,7 @@ Unknown object(s) encountered: KnPerson.");
             // also do non-array value
         ];
         // This should store things as arrays...
-        UpdateObject::overrideClass('KnSubject', '\PracticalAfas\TestHelpers\ArraysObject');
+        UpdateObject::overrideClass('KnSubject', '\PracticalAfas\Tests\Helpers\ArraysObject');
         $object = UpdateObject::create('KnSubject', $properties, 'insert');
         // ...and getFields() should still get those arrays returned, because
         // it does not do any kind of validation/change...
@@ -864,22 +878,21 @@ Unknown object(s) encountered: KnPerson.");
         $this->assertEquals(['This thing', 'moremeta'], $object->getField('description'));
         // ...which also goes for getElements() without arguments...
         $elements = $object->getElements(UpdateObject::ALLOW_NO_CHANGES);
-        $compare = [[
+        $expected = [[
             'Fields' => [
                 'StId' => [1, 'meta'],
                 'Ds' => ['This thing', 'moremeta'],
             ]]];
-        $this->assertEquals($compare, $elements);
+        $this->assertEquals($expected, $elements);
         // ...but getElements() should return only the actual field value,
         // if validated. (If it is given any non-default argument.)
         $elements = $object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
-        $compare = [[
+        $expected = [[
             'Fields' => [
                 'StId' => 1,
                 'Ds' => 'moremeta:This thing',
             ]]];
-        $this->assertEquals($compare, $elements);
-
+        $this->assertEquals($expected, $elements);
     }
 
     // The following methods test custom behavior in extending classes. Not
@@ -951,9 +964,9 @@ No value provided for required 'BcCoPer' (person_code) field.");
      */
     public function testValidateDutchPhoneNr1a()
     {
-        UpdateObject::overrideClass('KnBasicAddress', '\PracticalAfas\TestHelpers\ArraysAddress');
-        UpdateObject::overrideClass('KnContact', '\PracticalAfas\TestHelpers\ArraysOPC');
-        UpdateObject::overrideClass('KnPerson', '\PracticalAfas\TestHelpers\ArraysOPC');
+        UpdateObject::overrideClass('KnBasicAddress', '\PracticalAfas\Tests\Helpers\ArraysAddress');
+        UpdateObject::overrideClass('KnContact', '\PracticalAfas\Tests\Helpers\ArraysOPC');
+        UpdateObject::overrideClass('KnPerson', '\PracticalAfas\Tests\Helpers\ArraysOPC');
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("Phone number 'TeNr' has invalid format.");
@@ -999,9 +1012,9 @@ No value provided for required 'BcCoPer' (person_code) field.");
      */
     public function testValidateDutchPhoneNr2a()
     {
-        UpdateObject::overrideClass('KnBasicAddress', '\PracticalAfas\TestHelpers\ArraysAddress');
-        UpdateObject::overrideClass('KnContact', '\PracticalAfas\TestHelpers\ArraysOPC');
-        UpdateObject::overrideClass('KnOrganisation', '\PracticalAfas\TestHelpers\ArraysOPC');
+        UpdateObject::overrideClass('KnBasicAddress', '\PracticalAfas\Tests\Helpers\ArraysAddress');
+        UpdateObject::overrideClass('KnContact', '\PracticalAfas\Tests\Helpers\ArraysOPC');
+        UpdateObject::overrideClass('KnOrganisation', '\PracticalAfas\Tests\Helpers\ArraysOPC');
 
         $properties = [
             'name' => ['Wyz', 7],
@@ -1081,7 +1094,7 @@ No value provided for required 'BcCoPer' (person_code) field.");
                     if (!is_numeric($change_behavior) || $change_behavior < 0 || $change_behavior > 65535) {
                         throw new \UnexpectedValueException("'change behavior' on first line of $filename is invalid.");
                     }
-                    $change_behavior = (int) $change_behavior;
+                    $change_behavior = (int)$change_behavior;
                 }
             } else {
                 $buffer .= $line;

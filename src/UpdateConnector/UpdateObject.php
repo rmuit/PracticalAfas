@@ -328,7 +328,8 @@ class UpdateObject
      * Sets a custom class to use for a specific object type.
      *
      * This is necessary if you want to use the static create() method for
-     * creating customized objects. This is recommended, though not required.
+     * creating customized objects. Using create() is recommended, though not
+     * required.
      *
      * A project which wants to implement custom behavior for specific object
      * types, or define new object types, can do several things. As an example,
@@ -397,7 +398,8 @@ class UpdateObject
      *
      * @return string[]
      */
-    public static function getClassMap() {
+    public static function getClassMap()
+    {
         return self::$classMap;
     }
 
@@ -739,7 +741,11 @@ class UpdateObject
             foreach ($this->elements as $element_index => $element) {
                 if (!empty($element['Objects']) && is_array($element['Objects'])) {
                     foreach ($element['Objects'] as $ref_field => $object) {
-                        $this->elements[$element_index]['Objects'][$ref_field] = clone $object;
+                        // This should always be true. Silently skip corrupt
+                        // reference field values.
+                        if ($object instanceof UpdateObject) {
+                            $this->elements[$element_index]['Objects'][$ref_field] = clone $object;
+                        }
                     }
                 }
             }
@@ -814,6 +820,7 @@ class UpdateObject
         return $this->actions;
     }
 
+    // phpcs:disable Squiz.WhiteSpace.ControlStructureSpacing.SpacingAfterOpen
     /**
      * Sets the action to perform on element data.
      *
@@ -891,8 +898,8 @@ class UpdateObject
         if ($set_embedded && !empty($this->elements) && is_array($this->elements)) {
             // Change $element_index if it's necessary for key comparisons.
             if (is_float($element_index) || is_bool($element_index) ||
-                is_string($element_index) && (string) (int) $element_index === $element_index) {
-                $element_index = (int) $element_index;
+                is_string($element_index) && (string)(int)$element_index === $element_index) {
+                $element_index = (int)$element_index;
             }
             // Set all actions in embedded objects of the element corresponding
             // to the index we passed into this method.
@@ -901,6 +908,8 @@ class UpdateObject
 
                     if (!empty($element['Objects']) && is_array($element['Objects'])) {
                         foreach ($element['Objects'] as $object) {
+                            // This should always be true. Silently skip
+                            // corrupt reference field values.
                             if ($object instanceof UpdateObject) {
                                 $object->setAction($action, true);
                             }
@@ -910,6 +919,7 @@ class UpdateObject
             }
         }
     }
+    // phpcs:enable
 
     /**
      * Returns the ID value of one of this object's elements.
@@ -1030,7 +1040,7 @@ class UpdateObject
      * @param int|string $value
      *   The field value to set.
      * @param int|string $element_index
-     *   (Optional) The index of the element whose ID is set. If it does not
+     *   (Optional) The index of the element whose field is set. If it does not
      *   exist yet, a new element is created with just this field.
      * @param int $validation_behavior
      *   (Optional) Specifies whether/how the elements should be validated,
@@ -1205,8 +1215,9 @@ class UpdateObject
      *   (Optional) The action to perform on the data. By default, the action
      *   set in the parent element (stored in this object) is taken.
      * @param int|string $element_index
-     *   (Optional) The index of the element whose ID is set. If it does not
-     *   exist yet, a new element is created with just this embedded object.
+     *   (Optional) The index of the element in which the object is embedded.
+     *   If it does not exist yet, a new element is created with just this
+     *   embedded object.
      * @param int $validation_behavior
      *   (Optional) Specifies whether/how the elements should be validated; see
      *   create() for a more elaborate description.
@@ -1249,7 +1260,9 @@ class UpdateObject
         $reference_field_name = $this->checkObjectReferenceFieldName($reference_field_name);
 
         $return = false;
-        if (!empty($this->elements[$element_index]['Objects']) && array_key_exists($reference_field_name, $this->elements[$element_index]['Objects'])) {
+        // Values inside 'Objects' cannot be null; we check that in a few other
+        // places - so we don't need to unset null values here.
+        if (isset($this->elements[$element_index]['Objects'][$reference_field_name])) {
             $return = true;
             unset($this->elements[$element_index]['Objects'][$reference_field_name]);
             // Remove an empty internal 'Objects' array, so output does not
@@ -1561,7 +1574,7 @@ class UpdateObject
         // field validation, embedded objects are already validated. So,
         // 'cheat' by pre-populating a 'Fields' key. (Note that if code
         // populates a new element using individual setObject(), setField() and
-        // setId() calls, it can influence the order of keys in output.)element has a
+        // setId() calls, it can influence the order of keys in output.)
         $normalized_element['Fields'] = [];
 
         // Validate / add objects, if object property definitions exist /
@@ -1596,7 +1609,7 @@ class UpdateObject
                         $normalized_element['*errors']["Objects:$name"] = "Value for $name_and_alias object is not an array.";
                     } else {
                         try {
-                            $normalized_element['Objects'][$name] = $this->createEmbeddedObject($name, $element[$name], NULL, $element_index, $validation_behavior);
+                            $normalized_element['Objects'][$name] = $this->createEmbeddedObject($name, $element[$name], null, $element_index, $validation_behavior);
                         } catch (\Exception $e) {
                             $normalized_element['*errors']["Objects:$name"] = $e->getMessage();
                         }
@@ -1609,7 +1622,7 @@ class UpdateObject
                         $normalized_element['*errors']["Objects:$alias"] = "Value for $name_and_alias object is not an array.";
                     } else {
                         try {
-                            $normalized_element['Objects'][$name] = $this->createEmbeddedObject($name, $element[$alias], NULL, $element_index, $validation_behavior);
+                            $normalized_element['Objects'][$name] = $this->createEmbeddedObject($name, $element[$alias], null, $element_index, $validation_behavior);
                         } catch (\Exception $e) {
                             $normalized_element['*errors']["Objects:$alias"] = $e->getMessage();
                         }
@@ -1820,7 +1833,7 @@ class UpdateObject
 
             if (isset($element['*errors'])) {
                 if (!is_array($element['*errors'])) {
-                    throw new UnexpectedValueException('Something unexpected during validation. We got a single value where we expected an array:' . print_r($element['*errors'], TRUE));
+                    throw new UnexpectedValueException('Something unexpected during validation. We got a single value where we expected an array:' . print_r($element['*errors'], true));
                 }
                 if ($element['*errors']) {
                     // There may be multiple keyed errors; each may contain
@@ -1917,7 +1930,7 @@ class UpdateObject
 
                 if (isset($element['*errors'])) {
                     if (!is_array($element['*errors'])) {
-                        throw new UnexpectedValueException('Something unexpected during validation. We got a single value where we expected an array:' . print_r($element['*errors'], TRUE));
+                        throw new UnexpectedValueException('Something unexpected during validation. We got a single value where we expected an array:' . print_r($element['*errors'], true));
                     }
                     if ($element['*errors']) {
                         // There may be multiple keyed errors; each may have
@@ -2042,9 +2055,8 @@ class UpdateObject
                     // If action is "insert", we are guessing that there
                     // usually isn't, but still could be, a value for the ID
                     // field; it depends on 'auto numbering' for this object
-                    // type (or the value of the 'Autonum' field). We don't
-                    // validate this. (Yet?) We do validate that there is an ID
-                    // value if action is different than "insert".
+                    // type. We don't validate this. (Yet?) We do validate that
+                    // there's an ID value if action is different than "insert".
                     $action = $this->getAction($element_index);
                     if ($action !== 'insert') {
                         $element['*errors'][$id_property] = "'$id_property' property must have a value, or Action '$action' must be set to 'insert'.";
@@ -2058,7 +2070,8 @@ class UpdateObject
         // 'children' are OK, and with their properties accessible (dependent
         // on some $change_behavior values).
         $element = $this->validateReferenceFields($element, $element_index, $change_behavior, $validation_behavior);
-        $element = $this->validateFields($element, $element_index, $change_behavior, $validation_behavior);;
+        $element = $this->validateFields($element, $element_index, $change_behavior, $validation_behavior);
+        ;
 
         if ($validation_behavior & self::VALIDATE_NO_UNKNOWN) {
             // Validate that all Fields/Objects/other properties are known.
@@ -2067,17 +2080,17 @@ class UpdateObject
             // our input is not necessarily divided over 'Objects' and 'Fields'
             // so validateElementInput() has to decide what each property is).
             if (!empty($element['Fields']) && $unknown = array_diff_key($element['Fields'], $this->propertyDefinitions['fields'])) {
-                $element['*errors']['Fields'] = "Unknown field(s) encountered: " . implode(', ', array_keys($unknown));
+                $element['*errors']['Fields'] = "Unknown field(s) encountered: " . implode(', ', array_keys($unknown)) . '.';
             }
             if (!empty($element['Objects']) && !empty($this->propertyDefinitions['objects']) && $unknown = array_diff_key($element['Objects'], $this->propertyDefinitions['objects'])) {
-                $element['*errors']['Objects'] = "Unknown object(s) encountered: " . implode(', ', array_keys($unknown));
+                $element['*errors']['Objects'] = "Unknown object(s) encountered: " . implode(', ', array_keys($unknown)) . '.';
             }
             $known_properties = ['Fields' => true, 'Objects' => true, '*errors' => true];
             if (!empty($this->propertyDefinitions['id_property'])) {
                 $known_properties['@' . $this->propertyDefinitions['id_property']] = true;
             }
             if ($unknown = array_diff_key($element, $known_properties)) {
-                $element['*errors']['*'] = "Unknown properties encountered: " . implode(', ', array_keys($unknown));
+                $element['*errors']['*'] = "Unknown properties encountered: " . implode(', ', array_keys($unknown)) . '.';
             }
         }
 
@@ -2496,7 +2509,7 @@ class UpdateObject
 
                             case 'email':
                                 if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
-                                  throw new InvalidArgumentException("%NAME field value is not a valid e-mail address.");
+                                    throw new InvalidArgumentException("%NAME field value is not a valid e-mail address.");
                                 }
                                 break;
                         }
@@ -2524,15 +2537,15 @@ class UpdateObject
                 if (!empty($this->propertyDefinitions['fields'][$field_name]['type'])) {
                     switch ($this->propertyDefinitions['fields'][$field_name]['type']) {
                         case 'boolean':
-                            $value = (bool) $value;
+                            $value = (bool)$value;
                             break;
 
                         case 'decimal':
-                            $value = (float) $value;
+                            $value = (float)$value;
                             break;
 
                         case 'integer':
-                            $value = (int) $value;
+                            $value = (int)$value;
                             break;
 
                         case 'string':
@@ -2550,6 +2563,14 @@ class UpdateObject
 
     /**
      * Outputs the object data as a string.
+     *
+     * One thing may be noteworthy: the 'action' value for each element can
+     * have an effect on which fields are included in the output, but the value
+     * itself is not present in JSON output - though it is in XML output. This
+     * ties in with the fact that the REST API does inserts and updates through
+     * separate API actions (HTTP verbs), while this distinction does not
+     * exist for SOAP. This also means it's supposedly possible to update and
+     * insert different objects in a single SOAP call, but not in a REST call.
      *
      * @param string $format
      *   (Optional) The format; 'json' (default) or 'xml'.
@@ -2574,7 +2595,8 @@ class UpdateObject
      *   - ALLOW_DEFAULTS_ON_INSERT (default): Allow adding default values to
      *     empty fields when inserting a new element.
      *   - ALLOW_DEFAULTS_ON_UPDATE: Allow adding default values to empty
-     *     fields when updating an existing element.
+     *     fields when updating an existing element. (This one might not be
+     *     useful in practice...)
      *   - ALLOW_REFORMAT (default): Allow reformatting of singular field
      *     values. For 'reformatting' a combination of values (e.g. moving
      *     a house number from a street value into its own field) additional
@@ -2676,6 +2698,7 @@ class UpdateObject
                 // and 'Element'. (Embedded objects have the 'Element' wrapper
                 // added by validateReferenceFields().)
                 $data = [$this->getType() => ['Element' => $elements]];
+                /** @noinspection PhpComposerExtensionStubsInspection */
                 return empty($format_options['pretty']) ? json_encode($data) : json_encode($data, JSON_PRETTY_PRINT);
 
             case 'xml':

@@ -20,7 +20,8 @@ namespace PracticalAfas\Client;
  * of the clients with the first line inside the class definition being:
  * use \PracticalAfas\Client\RememberCallDataTrait;
  */
-trait RememberCallDataTrait {
+trait RememberCallDataTrait
+{
     /**
      * 'Type' of the last call endpoint/function. Values differ per client type.
      *
@@ -217,9 +218,9 @@ trait RememberCallDataTrait {
             $args = array_change_key_case($this->getLastCallArguments());
             switch ($this->getLastCallConnectorType()) {
                 case 'update':
-                  return $args['connectortype'];
+                    return $args['connectortype'];
 
-              case 'get':
+                case 'get':
                     // We may very well need to XML-decode this value but I'm
                     // not totally sure (though the connector-class encodes
                     // it). Let's just assume it contains no decodable chars.
@@ -243,7 +244,7 @@ trait RememberCallDataTrait {
 
                 default:
                   // 'token', 'versioninfo':
-                  return '';
+                    return '';
             }
         } else {
             // The connector name is always in the URL.
@@ -255,11 +256,11 @@ trait RememberCallDataTrait {
 
                 case 'data':
                 case 'get':
-                  $i = 2;
-                  break;
+                    $i = 2;
+                    break;
 
                 default:
-                  $i = 1;
+                    $i = 1;
             }
             return isset($url_parts[$i]) ? rawurldecode($url_parts[$i]) : '?';
         }

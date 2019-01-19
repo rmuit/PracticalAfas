@@ -1,4 +1,5 @@
-<?php
+<?php /** @noinspection PhpComposerExtensionStubsInspection */
+
 /**
  * This file is part of the PracticalAfas package.
  *
@@ -150,7 +151,8 @@ class RestCurlClient
      * @throws \InvalidArgumentException
      *  For disallowed header fields/values.
      */
-    protected function httpHeaders(array $headers) {
+    protected function httpHeaders(array $headers)
+    {
         // The spec for what is allowed (rfc7230) is not extremely detailed:
         // - field names MUST not have spaces before the colon; servers MUST
         //   reject such messages.
@@ -223,8 +225,7 @@ class RestCurlClient
             if (!$request_body) {
                 throw new InvalidArgumentException("Request body must be provided for $type requests.", 40);
             }
-        }
-        else {
+        } else {
             if ($request_body) {
                 throw new InvalidArgumentException('Request body must not be provided for GET requests.', 40);
             }
@@ -292,11 +293,9 @@ class RestCurlClient
             foreach ($arguments as $key => $value) {
                 if (!is_scalar($value)) {
                     throw new InvalidArgumentException("Invalid query argument '$key' value '$value'.", 41);
-                }
-                elseif (!isset($value)) {
+                } elseif (!isset($value)) {
                     $params[] = rawurlencode($key);
-                }
-                else {
+                } else {
                     $params[] = rawurlencode($key) . '=' . rawurlencode($value);
                 }
             }
