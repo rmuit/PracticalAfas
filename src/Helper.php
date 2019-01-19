@@ -11,7 +11,7 @@
 namespace PracticalAfas;
 
 use InvalidArgumentException;
-use RuntimeException;
+use UnexpectedValueException;
 
 /**
  * A collection of standalone helper methods for AFAS data manipulation.
@@ -56,7 +56,7 @@ class Helper
      * @param string $substring
      *   the substring to add to the 'classified as temporary' substrings.
      *
-     * @see IsTemporaryError()
+     * @see isTemporaryError()
      */
     public static function addTemporaryErrorSubstring($substring)
     {
@@ -85,7 +85,7 @@ class Helper
      * @return bool
      *   True if the error is temporary.
      */
-    public static function IsTemporaryError(\Exception $exception)
+    public static function isTemporaryError(\Exception $exception)
     {
         $message = $exception->getMessage();
         foreach (static::$temporaryErrorSubstrings as $error_substring) {
@@ -178,11 +178,10 @@ class Helper
      *
      * @throws \InvalidArgumentException
      *   If values inside the arguments / context have an illegal value / type.
-     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      *   If we cannot process the records returned by getData().
      *
      * @see \PracticalAfas\Connection::getData()
-     * @throws \Exception
      */
     public static function getDataBatch(array $args, array &$context)
     {
@@ -226,7 +225,7 @@ class Helper
             }
             // If we have a non-unique ID field, there is a third indicator:
             if (!empty($args['id_field_not_unique']) && empty($context['last_records'])) {
-                throw new RuntimeException("Context value 'last_records' was emptied out; this should never happen.", 29);
+                throw new UnexpectedValueException("Context value 'last_records' was emptied out; this should never happen.", 29);
             }
 
             // Convert value to filter field if necessary.
@@ -314,11 +313,11 @@ class Helper
 
         $records = $args['connection']->getData($args['connector'], $filters, Connection::DATA_TYPE_GET, $getdata_args);
         if (!is_array($records)) {
-            throw new RuntimeException('Afas GetConnector returned a non-array value. (Has an unsupported Outputmode option been set?)', 28);
+            throw new UnexpectedValueException('Afas GetConnector returned a non-array value. (Has an unsupported Outputmode option been set?)', 28);
         }
         $count = count($records);
         if (!empty($getdata_args['take']) && $count > $getdata_args['take']) {
-            throw new RuntimeException("Afas GetConnector returned more records ($count) than the 'take' parameter specified ($getdata_args[take]). This is impossible.", 28);
+            throw new UnexpectedValueException("Afas GetConnector returned more records ($count) than the 'take' parameter specified ($getdata_args[take]). This is impossible.", 28);
         }
         $orig_count = $count;
 
@@ -330,7 +329,7 @@ class Helper
             $key = null;
             foreach ($records as $key => $item) {
                 if (empty($item[$id_field])) {
-                    throw new RuntimeException("A returned item does not have the '$id_field' value populated, so we cannot reliably fetch items over multiple invocations of start().", 27);
+                    throw new UnexpectedValueException("A returned item does not have the '$id_field' value populated, so we cannot reliably fetch items over multiple invocations of start().", 27);
                 }
                 if ($item[$id_field] !== $context['next_start']) {
                     // We're done. $key acts as a flag that we're OK.
@@ -349,7 +348,7 @@ class Helper
             if ($key !== null) {
                 // If this ever happens: tough luck. This whole code block is
                 // just a hack anyway.
-                throw new RuntimeException("All items in a returned batch have the same ID value. This cannot be supported. Please set a unique 'id_field'.", 26);
+                throw new UnexpectedValueException("All items in a returned batch have the same ID value. This cannot be supported. Please set a unique 'id_field'.", 26);
             }
 
             $count = count($records);
@@ -374,7 +373,7 @@ class Helper
             // Remember where to start at the next call.
             $item = end($records);
             if (empty($item[$id_field])) {
-                throw new RuntimeException("A returned item does not have the '$id_field' value populated, so we cannot reliably fetch items over multiple invocations of start().", 27);
+                throw new UnexpectedValueException("A returned item does not have the '$id_field' value populated, so we cannot reliably fetch items over multiple invocations of start().", 27);
             }
             $context['next_start'] = $item[$id_field];
             if (!empty($args['id_field_not_unique'])) {
@@ -384,10 +383,10 @@ class Helper
                     $context['last_records'][] = $item;
                     $item = prev($records);
                     if ($item === false) {
-                        throw new RuntimeException("All items in a returned batch have the same ID value. This cannot be supported. Please set a unique 'id_field'.", 26);
+                        throw new UnexpectedValueException("All items in a returned batch have the same ID value. This cannot be supported. Please set a unique 'id_field'.", 26);
                     }
                     if (empty($item[$id_field])) {
-                        throw new RuntimeException("A returned item does not have the '$id_field' value populated, so we cannot reliably fetch items over multiple invocations of start().", 27);
+                        throw new UnexpectedValueException("A returned item does not have the '$id_field' value populated, so we cannot reliably fetch items over multiple invocations of start().", 27);
                     }
                 }
             }

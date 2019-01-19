@@ -466,8 +466,8 @@ class Connection
      *   (optional) Type of data to retrieve / connector to call, and/or filter
      *   type. Defaults to GET_FILTER_AND / DATA_TYPE_GET (which is the same).
      *   Use GET_FILTER_OR to apply 'OR' to $filters instead of 'AND', for a
-     *   GetConnector. Use other DATA_TYPE_ constants (see just above) to call
-     *   other connectors.
+     *   GetConnector (REST only). Use other DATA_TYPE_ constants (see just
+     *   above) to call other connectors.
      * @param array $extra_arguments
      *   (optional) Other arguments to pass to the API call, besides the ones
      *   in $filters / hardcoded for convenience. For GetConnectors these are:
@@ -509,9 +509,6 @@ class Connection
      *   If input arguments have an illegal value / unrecognized structure.
      * @throws \UnexpectedValueException
      *   If the SoapClient returned a response in an unknown format.
-     * @throws \Exception
-     *   If anything else went wrong. (a remote error could throw e.g. a
-     *   SoapFault depending on the client class used.)
      *
      * @see parseFilters()
      */
@@ -542,6 +539,15 @@ class Connection
             $extra_arguments['options'] = array_change_key_case($extra_arguments['options']);
         }
 
+        if ($this->getClientType() === 'SOAP') {
+            if ($data_type === self::GET_FILTER_OR) {
+                throw new InvalidArgumentException("SOAP clients do not support 'OR' filters.", 32);
+            }
+            if ($data_type === self::DATA_TYPE_METAINFO_GET) {
+                throw new InvalidArgumentException("SOAP clients do not support getting meta info / schema for Get Connectors.", 32);
+            }
+        }
+
         // The SOAP GetDataWithOptions function supports an 'options' argument
         // with several sub values. This class initially supported three of them
         // ('Outputmode', 'Metadata' and 'Outputoptions') for SOAP calls, which
@@ -558,7 +564,7 @@ class Connection
         // other connectors, the output cannot be converted to arrays /
         // 'Outputmode' was never a thing) and for REST clients (because
         // supposedly all output is JSON, therefore can be converted to an
-        // array? @todo doublecheck this... This will get clear when more PRs are sent in.)
+        // array?
         if ($this->getClientType() === 'SOAP' && $data_type !== self::DATA_TYPE_GET) {
             // We want to return the literal return value from the endpoint.
             $output_format = self::GET_OUTPUTMODE_LITERAL;
@@ -624,7 +630,7 @@ class Connection
                 self::DATA_TYPE_VERSION_INFO,
             ];
             if (!$include_metadata && in_array($data_type, $untested_connectors, true)) {
-                throw new \Exception("REST API '$data_type' connector is not tested yet. Please call it with 'Metadata' option set to true, or 'Outputformat' set to LITERAL, and/or send a Pull Request for the library including the structure of the output.");
+                throw new InvalidArgumentException("REST API '$data_type' connector is not tested yet. Please call it with 'Metadata' option set to true, or 'Outputformat' set to LITERAL, and/or send a Pull Request for the library including the structure of the output.");
             }
         }
 
@@ -653,6 +659,11 @@ class Connection
         //   REST clients. for writing portable getData() calls, use
         //   'orderbyfieldids' instead, which we now support for SOAP clients
         //   too, by converting it to a proper 'Index' argument.)
+        if ($this->getClientType() !== 'SOAP' && !empty($extra_arguments['options']['index'])) {
+            // We won't continue silently, because that might mean the caller
+            // gets too much data returned without realizing it.
+            throw new InvalidArgumentException("Non-SOAP clients do not support 'Index' option. Use the 'OrderByFieldIds' argument as an alternative that is portable from REST to SOAP.", 32);
+        }
         // - 'Take' and 'Skip'. That is right: the AFAS SOAP service recognizes
         //   these arguments as standalone arguments _and_ as 'options'
         //   arguments. They differ in behavior and the regular argument has
