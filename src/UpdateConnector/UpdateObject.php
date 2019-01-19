@@ -1093,6 +1093,27 @@ class UpdateObject
     }
 
     /**
+     * Returns a copy of the current class instance without parentType set.
+     *
+     * This method exists to facilitate getting an embedded object which can be
+     * used standalone. Probably the best way to use this is to not call this
+     * method directly, but call getObject(,,,true) instead.
+     *
+     * @return UpdateObject
+     */
+    public function cloneUnlinked()
+    {
+        $parent_type = $this->parentType;
+        $this->parentType = null;
+        $clone = clone $this;
+        $this->parentType = $parent_type;
+        // Reset the property definitions; they may need to change now that
+        // there is no parent type.
+        $clone->resetPropertyDefinitions();
+        return $clone;
+    }
+
+    /**
      * Returns an object embedded in one of this object's elements.
      *
      * @param string $reference_field_name
@@ -1102,10 +1123,15 @@ class UpdateObject
      * @param int|string $element_index
      *   (Optional) The index of the element whose embedded object value is
      *   requested. The element must exist except if $return_default is passed.
-     * @param bool $return_default
-     *   (Optional) If true, return an object with a default value, if no
-     *   embedded object is set. In this case, changes made to the returned
-     *   default object do not affect the parent element stored in this object.
+     * @param bool $default
+     *   (Optional) If true, then if no embedded object is set, then an object
+     *   with a default value according to property definitions is returned.
+     *   For such a 'default' object, $unembedded = true is implied.
+     * @param bool $unembedded
+     *   (Optional) If true, return a copy of the object which is not linked to
+     *   its parent. ('Copy' implies that changes made to the returned object
+     *   will not affect its former parent element.) This enables it to be
+     *   turned into an output string, and could change validation logic.
      *
      * @return \PracticalAfas\UpdateConnector\UpdateObject
      *   The requested object. Note this has an immutable 'parentType' property
@@ -1119,15 +1145,21 @@ class UpdateObject
      * @throws \UnexpectedValueException
      *   If something's wrong with the default value.
      */
-    public function getObject($reference_field_name, $element_index = 0, $return_default = false)
+    public function getObject($reference_field_name, $element_index = 0, $default = false, $unembedded = false)
     {
-        $element = $this->checkElement($element_index, $return_default);
+        $element = $this->checkElement($element_index, $default);
         $reference_field_name = $this->checkObjectReferenceFieldName($reference_field_name);
 
         // Check for element value or default value.
         if (isset($element['Objects'][$reference_field_name])) {
             $return = $element['Objects'][$reference_field_name];
-        } elseif ($return_default && isset($this->propertyDefinitions['objects'][$reference_field_name]['default'])) {
+            if (!$return instanceof UpdateObject) {
+                throw new UnexpectedValueException("Value for embedded object must be of type UpdateObject.");
+            }
+            if ($unembedded) {
+                $return = $return->cloneUnlinked();
+            }
+        } elseif ($default && isset($this->propertyDefinitions['objects'][$reference_field_name]['default'])) {
             $return = $this->propertyDefinitions['objects'][$reference_field_name]['default'];
             if (is_array($return)) {
                 // The object type is often equal to the name of the 'reference
@@ -2598,6 +2630,15 @@ class UpdateObject
      */
     public function output($format = 'json', array $format_options = [], $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION)
     {
+        // Disallow outputting objects which are embedded inside other objects.
+        // This is slightly arbitrary because getElements() is allowed and the
+        // output could be valid in itself... but there is a potential for
+        // generating wrong data (and lots of resulting confusion) because
+        // property definitions may be different, which could cause issues with
+        // generated output being sent to AFAS, if the parent type is set.
+        if ($this->parentType) {
+            throw new UnexpectedValueException('This object is embedded inside another object, so it cannot be converted to a standalone output string. See getObject(,,,true).');
+        }
         if (!is_int($change_behavior)) {
             throw new InvalidArgumentException('$change_behavior argument is not an integer.');
         }

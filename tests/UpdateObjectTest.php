@@ -561,6 +561,39 @@ element-key 2: 'BkOr' (backorder) field value is not a valid boolean value.");
     }
 
     /**
+     * Tests that outputting an embedded object generates error.
+     */
+    public function testOutputEmbedded()
+    {
+        /** @var \PracticalAfas\UpdateConnector\UpdateObject $object */
+        list($object) = $this->readUpdateExample(__DIR__ . '/update_examples/KnOrg-embedded-insert.txt');
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage("This object is embedded inside another object, so it cannot be converted to a standalone output string. See getObject(,,,true).");
+        $object->getObject('KnContact')->output();
+    }
+
+    /**
+     * Tests testResetPropertyDefinitions() by way of getObject(,,, true).
+     */
+    public function testResetPropertyDefinitions()
+    {
+        /** @var \PracticalAfas\UpdateConnector\UpdateObject $object */
+        list($object) = $this->readUpdateExample(__DIR__ . '/update_examples/KnOrg-embedded-insert.txt');
+        $contact1 = $object->getObject('KnContact');
+        $contact2 = $object->getObject('KnContact', 0, false, true);
+
+        $contact1->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
+        // The not-embedded-in-organisation-anymore object now has several
+        // errors: it doesn't have a required BcCoOga field, and also it cannot
+        // embed a person object (which it now contains illegally).
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage("No value provided for required 'BcCoOga' (organisation_code) field.
+No value provided for required 'BcCoPer' (person_code) field.
+Unknown object(s) encountered: KnPerson.");
+        $contact2->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION);
+    }
+
+    /**
      * Tests that overriding definition generally works.
      */
     public function testDefinitionOverrides()
