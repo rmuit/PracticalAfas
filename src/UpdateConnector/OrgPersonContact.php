@@ -28,7 +28,7 @@ class OrgPersonContact extends UpdateObject
     use IsoCountryTrait;
 
     /**
-     * @see output(); bitmask value for the $change_behavior argument.
+     * Bitmask value for UpdateObject::output() $change_behavior argument.
      *
      * This has been implemented separately from ALLOW_CHANGE / ALLOW_REFORMAT
      * so that it can (and needs to be) explicitly specified if you want to

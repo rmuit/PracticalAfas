@@ -233,7 +233,7 @@ class Connection
      *
      * @return int|string
      *
-     * @see setDataOutputFormat()
+     * @see Connection::setDataOutputFormat()
      */
     public function getDataOutputFormat()
     {
@@ -293,7 +293,7 @@ class Connection
      *
      * @param bool $include
      *
-     * @see getDataIncludeMetadata()
+     * @see Connection::getDataIncludeMetadata()
      */
     public function setDataIncludeMetadata($include)
     {
@@ -323,7 +323,7 @@ class Connection
      *
      * @param bool $include
      *
-     * @see getDataIncludeEmptyFields()
+     * @see Connection::getDataIncludeEmptyFields()
      */
     public function setDataIncludeEmptyFields($include)
     {
@@ -512,7 +512,7 @@ class Connection
      * @throws \UnexpectedValueException
      *   If the SoapClient returned a response in an unknown format.
      *
-     * @see parseFilters()
+     * @see Connection::parseFilters()
      */
     public function getData($data_id, array $filters = [], $data_type = self::DATA_TYPE_GET, array $extra_arguments = [])
     {
@@ -797,7 +797,7 @@ class Connection
      * @throws \InvalidArgumentException
      *   If the input arguments have an unrecognized structure.
      *
-     * @see getData()
+     * @see Connection::getData()
      */
     protected static function parseGetDataRestArguments($data_id, array $filters = [], $data_type = self::DATA_TYPE_GET, array $extra_arguments = [])
     {
@@ -857,7 +857,7 @@ class Connection
      * @throws \InvalidArgumentException
      *   If the input arguments have an unrecognized structure.
      *
-     * @see getData()
+     * @see Connection::getData()
      */
     protected static function parseGetDataArguments($data_id, array $filters = [], $data_type = self::DATA_TYPE_GET, array $extra_arguments = [])
     {
@@ -1032,7 +1032,7 @@ class Connection
      * @throws \InvalidArgumentException
      *   If the input argument has an unrecognized structure.
      *
-     * @see getData()
+     * @see Connection::getData()
      */
     protected static function parseRestFilters(array $filters, $or = false)
     {
@@ -1118,7 +1118,7 @@ class Connection
      * @throws \InvalidArgumentException
      *   If the input argument has an unrecognized structure.
      *
-     * @see getData()
+     * @see Connection::getData()
      */
     protected static function parseFilters(array $filters)
     {

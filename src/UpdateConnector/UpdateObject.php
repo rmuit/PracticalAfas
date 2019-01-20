@@ -62,42 +62,42 @@ use UnexpectedValueException;
 class UpdateObject
 {
     /**
-     * @see output(); bitmask value for the $change_behavior argument.
+     * Bitmask value for output() $change_behavior argument.
      */
     const ALLOW_NO_CHANGES = 0;
 
     /**
-     * @see output(); bitmask value for the $change_behavior argument.
+     * Bitmask value for output() $change_behavior argument.
      */
     const ALLOW_EMBEDDED_CHANGES = 2;
 
     /**
-     * @see output(); bitmask value for the $change_behavior argument.
+     * Bitmask value for output() $change_behavior argument.
      */
     const ALLOW_DEFAULTS_ON_INSERT = 4;
 
     /**
-     * @see output(); bitmask value for the $change_behavior argument.
+     * Bitmask value for output() $change_behavior argument.
      */
     const ALLOW_DEFAULTS_ON_UPDATE = 8;
 
     /**
-     * @see output(); bitmask value for the $change_behavior argument.
+     * Bitmask value for output() $change_behavior argument.
      */
     const ALLOW_REFORMAT = 16;
 
     /**
-     * @see output(); bitmask value for the $change_behavior argument.
+     * Bitmask value for output() $change_behavior argument.
      */
     const ALLOW_CHANGES = 32;
 
     /**
-     * @see output(); bitmask value for the $change_behavior argument.
+     * Bitmask value for output() $change_behavior argument.
      */
     const FLATTEN_SINGLE_ELEMENT = 1;
 
     /**
-     * @see output(); bitmask value for the $change_behavior argument.
+     * Bitmask value for output() $change_behavior argument.
      */
     const RENUMBER_ELEMENT_INDEXES = 64;
 
@@ -114,27 +114,27 @@ class UpdateObject
     const DEFAULT_CHANGE = 87;
 
     /**
-     * @see output(); bitmask value for the $validation_behavior argument.
+     * Bitmask value for output() $validation_behavior argument.
      */
     const VALIDATE_NOTHING = 0;
 
     /**
-     * @see output(); bitmask value for the $validation_behavior argument.
+     * Bitmask value for output() $validation_behavior argument.
      */
     const VALIDATE_ESSENTIAL = 1;
 
     /**
-     * @see output(); bitmask value for the $validation_behavior argument.
+     * Bitmask value for output() $validation_behavior argument.
      */
     const VALIDATE_REQUIRED = 2;
 
     /**
-     * @see output(); bitmask value for the $validation_behavior argument.
+     * Bitmask value for output() $validation_behavior argument.
      */
     const VALIDATE_NO_UNKNOWN = 4;
 
     /**
-     * @see output(); bitmask value for the $validation_behavior argument.
+     * Bitmask value for output() $validation_behavior argument.
      */
     const VALIDATE_FORMAT = 8;
 
@@ -305,7 +305,7 @@ class UpdateObject
     /**
      * The action(s) to perform on the data: "insert", "update" or "delete".
      *
-     * @see setAction()
+     * @see UpdateObject::setAction()
      *
      * @var string[]
      */
@@ -318,7 +318,7 @@ class UpdateObject
      * object inside a JSON representation for the REST API. This variable
      * should not be referenced directly, though.
      *
-     * @see getElements()
+     * @see UpdateObject::getElements()
      *
      * @var array[]
      */
@@ -368,9 +368,9 @@ class UpdateObject
      *   If any of the arguments are not a string or the class does not exist /
      *   cannot be autoloaded.
      *
-     * @see overridePropertyDefinitions()
-     * @see $classMap
-     * @see $propertyDefinitions
+     * @see UpdateObject::overridePropertyDefinitions()
+     * @see UpdateObject::$classMap
+     * @see UpdateObject::$propertyDefinitions
      */
     public static function overrideClass($object_type, $class)
     {
@@ -445,8 +445,8 @@ class UpdateObject
      * @throws \InvalidArgumentException
      *   If any of the arguments are invalid.
      *
-     * @see $propertyDefinitions
-     * @see overrideFieldProperty()
+     * @see UpdateObject::$propertyDefinitions
+     * @see UpdateObject::overrideFieldProperty()
      */
     public static function overridePropertyDefinitions($object_type, array $definitions)
     {
@@ -497,8 +497,8 @@ class UpdateObject
      * @param mixed $value
      *   The value to set.
      *
-     * @see overridePropertyDefinitions()
-     * @see unOverrideFieldProperty()
+     * @see UpdateObject::overridePropertyDefinitions()
+     * @see UpdateObject::unOverrideFieldProperty()
      */
     public static function overrideFieldProperty($object_type, $field_name, $property, $value)
     {
@@ -522,7 +522,7 @@ class UpdateObject
      *   (Optional) The property name within the field. Leave empty to remove
      *   all overrides for this object type + field.
      *
-     * @see overrideFieldProperty()
+     * @see UpdateObject::overrideFieldProperty()
      */
     public static function unOverrideFieldProperty($object_type, $field_name = '', $property = '')
     {
@@ -625,9 +625,9 @@ class UpdateObject
      * @throws \UnexpectedValueException
      *   If this object's defined properties are invalid.
      *
-     * @see __construct()
-     * @see output()
-     * @see overrideClass()
+     * @see UpdateObject::__construct()
+     * @see UpdateObject::output()
+     * @see UpdateObject::overrideClass()
      */
     public static function create($type, array $elements = [], $action = '', $validation_behavior = self::VALIDATE_ESSENTIAL, $parent_type = '')
     {
@@ -706,7 +706,7 @@ class UpdateObject
      * @param int $validation_behavior
      * @param string $parent_type
      *
-     * @see create()
+     * @see UpdateObject::create()
      */
     public function __construct(array $elements = [], $action = '', $type = '', $validation_behavior = self::VALIDATE_ESSENTIAL, $parent_type = '')
     {
@@ -1058,7 +1058,7 @@ class UpdateObject
      *   If the field name/alias does not exist in this object type's "fields"
      *   definition.
      *
-     * @see output()
+     * @see UpdateObject::output()
      */
     public function setField($field_name, $value, $element_index = 0, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
@@ -1228,8 +1228,8 @@ class UpdateObject
      *   If the field name/alias does not exist in this object type's "fields"
      *   definition.
      *
-     * @see create()
-     * @see setAction()
+     * @see UpdateObject::create()
+     * @see UpdateObject::setAction()
      */
     public function setObject($reference_field_name, array $embedded_elements, $action = null, $element_index = 0, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
@@ -1304,7 +1304,7 @@ class UpdateObject
      *
      * @return static
      *
-     * @see setObject()
+     * @see UpdateObject::setObject()
      */
     protected function createEmbeddedObject($reference_field_name, array $embedded_elements, $action = null, $element_index = 0, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
@@ -1506,7 +1506,7 @@ class UpdateObject
      * @throws \UnexpectedValueException
      *   If this object's defined properties are invalid.
      *
-     * @see create()
+     * @see UpdateObject::create()
      */
     protected function validateElementInput(array $element, $element_index, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
@@ -1734,7 +1734,7 @@ class UpdateObject
      * @throws \UnexpectedValueException
      *   If this object's defined properties are invalid.
      *
-     * @see create()
+     * @see UpdateObject::create()
      */
     public function setElement($element_index, array $element, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
@@ -1769,7 +1769,7 @@ class UpdateObject
      * @throws \UnexpectedValueException
      *   If this object's defined properties are invalid.
      *
-     * @see create()
+     * @see UpdateObject::create()
      */
     public function setElements(array $elements, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
@@ -1803,7 +1803,7 @@ class UpdateObject
      * @throws \UnexpectedValueException
      *   If this object's defined properties are invalid.
      *
-     * @see create()
+     * @see UpdateObject::create()
      */
     public function addElements(array $elements, $validation_behavior = self::VALIDATE_ESSENTIAL)
     {
@@ -1902,7 +1902,7 @@ class UpdateObject
      *   the data is invalid, although in theory it can also indicate that the
      *   validation is based on improper logic/definitions.)
      *
-     * @see output()
+     * @see UpdateObject::output()
      */
     public function getElements($change_behavior = self::RENUMBER_ELEMENT_INDEXES, $validation_behavior = self::VALIDATE_NOTHING)
     {
@@ -2976,7 +2976,7 @@ class UpdateObject
      * @return array
      *   The definitions.
      *
-     * @see $propertyDefinitions
+     * @see UpdateObject::$propertyDefinitions
      */
     protected function getDefaultPropertyDefinitions()
     {

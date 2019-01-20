@@ -282,8 +282,8 @@ trait RememberCallDataTrait
      * @return string
      *   The response from the API endpoint.
      *
-     * @see \PracticalAfas\Client\RestCurlClient::callAfas()
-     * @see \PracticalAfas\Client\SoapAppClient::callAfas()
+     * @see RestCurlClient::callAfas()
+     * @see SoapAppClient::callAfas()
      */
     public function callAfas($type, $endpoint, array $arguments, $request_body = '')
     {

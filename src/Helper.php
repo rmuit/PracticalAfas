@@ -56,7 +56,7 @@ class Helper
      * @param string $substring
      *   the substring to add to the 'classified as temporary' substrings.
      *
-     * @see isTemporaryError()
+     * @see Helper::isTemporaryError()
      */
     public static function addTemporaryErrorSubstring($substring)
     {
@@ -181,7 +181,7 @@ class Helper
      * @throws \UnexpectedValueException
      *   If we cannot process the records returned by getData().
      *
-     * @see \PracticalAfas\Connection::getData()
+     * @see Connection::getData()
      */
     public static function getDataBatch(array $args, array &$context)
     {
