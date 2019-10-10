@@ -13,6 +13,7 @@ namespace PracticalAfas\Client;
 
 use InvalidArgumentException;
 use RuntimeException;
+use PracticalAfas\Exception\ProfitErrorException;
 
 /**
  * Client for getting/sending data from/to AFAS, using REST API through CURL.
@@ -324,6 +325,20 @@ class RestCurlClient
 
         $ch = curl_init();
         curl_setopt_array($ch, $forced_options + $this->curlOptions);
+        $headers = [];
+        curl_setopt($ch, CURLOPT_HEADERFUNCTION,
+            function($curl, $header) use (&$headers)
+            {
+                $len = strlen($header);
+                $header = explode(':', $header, 2);
+                if (count($header) < 2) // ignore invalid headers
+                    return $len;
+
+                $headers[strtolower(trim($header[0]))][] = trim($header[1]);
+
+                return $len;
+            }
+        );
         $response = curl_exec($ch);
         $response_headers = '';
         if ($response !== false) {
@@ -341,6 +356,10 @@ class RestCurlClient
         }
         // We'll start out strict, and cancel on all unexpected return codes.
         if ($http_code != 200 && ($http_code != 201 || !in_array($type, ['POST', 'PUT'], true))) {
+
+            if (isset($headers['x-profit-error'][0])) {
+                throw new ProfitErrorException(base64_decode($headers['x-profit-error'][0]), $http_code);
+            }
             // For e.g. code 500, we've seen a message in the response (at least
             // when we entered an invalid URL). For 401 (Unauthorized. when we
             // did not specify a token) the response is empty but headers
