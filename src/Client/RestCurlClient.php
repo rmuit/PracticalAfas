@@ -308,7 +308,7 @@ class RestCurlClient
         $forced_options = [
             CURLOPT_URL => $endpoint,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HEADER => true,
+            CURLOPT_HEADER => false,
         ];
         if ($type !== 'GET') {
             $forced_options[CURLOPT_CUSTOMREQUEST] = $type;
@@ -325,25 +325,23 @@ class RestCurlClient
 
         $ch = curl_init();
         curl_setopt_array($ch, $forced_options + $this->curlOptions);
+        // Collect headers as array of arrays, keyed by lowercased header names.
         $headers = [];
         curl_setopt($ch, CURLOPT_HEADERFUNCTION,
-            function($curl, $header) use (&$headers)
+            function($ch, $header) use (&$headers)
             {
+                // Length is mandatory return value for HEADERFUNCTION.
                 $len = strlen($header);
                 $header = explode(':', $header, 2);
-                if (count($header) < 2) // ignore invalid headers
-                    return $len;
-
-                $headers[strtolower(trim($header[0]))][] = trim($header[1]);
+                // Ignore invalid headers.
+                if (count($header) == 2) {
+                    $headers[strtolower(trim($header[0]))][] = trim($header[1]);
+                }
 
                 return $len;
             }
         );
         $response = curl_exec($ch);
-        $response_headers = '';
-        if ($response !== false) {
-            list($response_headers, $response) = explode("\r\n\r\n", $response);
-        }
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curl_errno = curl_errno($ch);
         $curl_error = curl_error($ch);
@@ -355,18 +353,24 @@ class RestCurlClient
             throw new RuntimeException("CURL returned code: $curl_errno / error: \"$curl_error\" / response body: \"$response\"", $curl_errno + 800);
         }
         // We'll start out strict, and cancel on all unexpected return codes.
+        // Treat any response containing an X-Profit-Error header as an error,
+        // regardless of HTTP code.
+        if (isset($headers['x-profit-error'][0])) {
+            throw new ProfitErrorException(base64_decode($headers['x-profit-error'][0]), $http_code);
+        }
+        // There might not be any non-200/201 responses without X-Profit-Error
+        // header but you never know.
         if ($http_code != 200 && ($http_code != 201 || !in_array($type, ['POST', 'PUT'], true))) {
-
-            if (isset($headers['x-profit-error'][0])) {
-                throw new ProfitErrorException(base64_decode($headers['x-profit-error'][0]), $http_code);
-            }
             // For e.g. code 500, we've seen a message in the response (at least
-            // when we entered an invalid URL). For 401 (Unauthorized. when we
-            // did not specify a token) the response is empty but headers
-            // indicate that something is wrong. We'll separate body & headers
+            // when we entered an invalid URL). We'll separate body & headers
             // in an arbitrary way that hopefully looks somewhat clear in most
-            // 'outputs' of the exception message.
-            throw new RuntimeException("CURL returned HTTP code $http_code / Response body: \"$response\"//\nResponse headers: \"$response_headers\"", $http_code);
+            // 'outputs' of the exception message. Headers will be lowercased
+            // but noone cares.
+            $response_headers = '';
+            foreach ($headers as $name => $value) {
+                $response_headers .= "$name: " . implode("\n", $value) . "\n";
+            }
+            throw new RuntimeException("CURL returned HTTP code $http_code / Response body: \"$response\"//\nResponse headers: \"" . rtrim($response_headers) . '"', $http_code);
         }
 
         return $response;
