@@ -1,4 +1,6 @@
-<?php /** @noinspection PhpComposerExtensionStubsInspection */
+<?php
+
+/** @noinspection PhpComposerExtensionStubsInspection */
 
 /**
  * This file is part of the PracticalAfas package.
@@ -327,9 +329,10 @@ class RestCurlClient
         curl_setopt_array($ch, $forced_options + $this->curlOptions);
         // Collect headers as array of arrays, keyed by lowercased header names.
         $headers = [];
-        curl_setopt($ch, CURLOPT_HEADERFUNCTION,
-            function($ch, $header) use (&$headers)
-            {
+        curl_setopt(
+            $ch,
+            CURLOPT_HEADERFUNCTION,
+            function ($ch, $header) use (&$headers) {
                 // Length is mandatory return value for HEADERFUNCTION.
                 $len = strlen($header);
                 $header = explode(':', $header, 2);

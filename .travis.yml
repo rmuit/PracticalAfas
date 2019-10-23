@@ -2,8 +2,7 @@ language: php
 
 php:
   - 5.6
-  - 7.1
-  - 7.2
+  - 7.3
 
 before_install:
   - cd ${TRAVIS_BUILD_DIR}
@@ -12,5 +11,7 @@ install:
   - composer install
 
 script:
-  - vendor/bin/phpcs --ignore='vendor/*' --standard=PSR12 --exclude=Generic.Files.LineLength .
+  # PHPCS prints loads of warnings for undefined visibility for constants.
+  # Ignore those until we really want to drop PHP <= 7.1 compatibility.
+  - vendor/bin/phpcs --runtime-set ignore_warnings_on_exit true --ignore='vendor/*' --standard=PSR12 --exclude=Generic.Files.LineLength .
   - vendor/bin/phpunit tests

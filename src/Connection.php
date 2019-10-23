@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file is part of the PracticalAfas package.
  *
@@ -366,8 +367,10 @@ class Connection
         // If $data is a simple string and $connector_name is not, then
         // they are switched. We support this for backward compatibility;
         // it was defined that way in v2.0.
-        if (is_string($data) && (!is_string($connector_name) || !preg_match('/^\w+$/', $connector_name))
-            && preg_match('/^\w+$/', $data)) {
+        if (
+            is_string($data) && (!is_string($connector_name) || !preg_match('/^\w+$/', $connector_name))
+            && preg_match('/^\w+$/', $data)
+        ) {
             $temp = $connector_name;
             $connector_name = $data;
             $data = $temp;
@@ -675,11 +678,13 @@ class Connection
             // We will accept both arguments as input (for REST clients too; why
             // not...) but warn if they are duplicate, because we don't want to
             // rely on the undocumented behavior of which one gets preference...
-            if (isset($extra_arguments[$arg]) && isset($extra_arguments['options'][$arg])
+            if (
+                isset($extra_arguments[$arg]) && isset($extra_arguments['options'][$arg])
                 // Non-numeric arguments will fail later anyway; this slightly
                 // strange comparison makes sure '0' is not replaced by '' just
                 // below.
-                && ($extra_arguments[$arg] != $extra_arguments['options'][$arg] || !is_numeric($extra_arguments['options'][$arg]))) {
+                && ($extra_arguments[$arg] != $extra_arguments['options'][$arg] || !is_numeric($extra_arguments['options'][$arg]))
+            ) {
                 throw new InvalidArgumentException("Duplicate '$arg' argument found, both as regular argument and inside 'options'. One should be deleted (preferrably the option).", 38);
             }
             // ... and we'll always move the option to the regular argument,
@@ -907,7 +912,8 @@ class Connection
                         $extra_arguments['options']['index'] .= '<Field FieldId="' . static::xmlValue($value) . '" OperatorType="' . $asc . '"/>';
                     }
                     unset($extra_arguments['orderbyfieldids']);
-                } elseif (isset($extra_arguments['options']['index'])
+                } elseif (
+                    isset($extra_arguments['options']['index'])
                     // Assume the 'index' option is 'old style', an XML snippet.
                     // We don't escape it later on (because it's part of the
                     // XML message) but then we need to validate it.
@@ -995,7 +1001,8 @@ class Connection
                 if (empty($extra_arguments['apikey']) || empty($extra_arguments['environmentkey'])) {
                     throw new InvalidArgumentException("Required extra arguments 'apiKey' and 'environmentKey' not both provided.", 34);
                 }
-                if (!is_string($extra_arguments['apikey']) || strlen($extra_arguments['apikey']) != 32
+                if (
+                    !is_string($extra_arguments['apikey']) || strlen($extra_arguments['apikey']) != 32
                     || !is_string($extra_arguments['environmentkey']) || strlen($extra_arguments['environmentkey']) != 32
                 ) {
                     throw new InvalidArgumentException("Extra arguments 'apiKey' and 'environmentKey' should both be 32-character strings.", 34);

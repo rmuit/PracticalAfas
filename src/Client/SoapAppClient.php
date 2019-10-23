@@ -1,4 +1,6 @@
-<?php /** @noinspection PhpComposerExtensionStubsInspection */
+<?php
+
+/** @noinspection PhpComposerExtensionStubsInspection */
 
 /**
  * This file is part of the PracticalAfas package.
@@ -113,8 +115,10 @@ class SoapAppClient
         // a minimum. We know how to force a specific TLS version but
         // apparently cannot specify '1.2 or higher'. If people want TLS 1.3 or
         // higher, they will have to pass their own stream_context option.
-        if ($options['soapClientClass'] === '\SoapClient'
-            && !isset($soap_client_options['stream_context'])) {
+        if (
+            $options['soapClientClass'] === '\SoapClient'
+            && !isset($soap_client_options['stream_context'])
+        ) {
             if (!defined('STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT')) {
                 throw new RuntimeException("PHP's OpenSSL extension does not support TLS v1.2, which AFAS requires.");
             }
@@ -256,8 +260,10 @@ class SoapAppClient
             // - The regular 'skip' cannot be non-numeric, but the
             //   'options->skip' argument can be, in which it is treated
             //   equal to a value smaller than -1.
-            if ((empty($arguments['skip']) || $arguments['skip'] != -1)
-                && (empty($arguments['options']) || !preg_match('|<skip>\s*-1\s*</skip>|i', $arguments['options']))) {
+            if (
+                (empty($arguments['skip']) || $arguments['skip'] != -1)
+                && (empty($arguments['options']) || !preg_match('|<skip>\s*-1\s*</skip>|i', $arguments['options']))
+            ) {
                 // This class generally does not want to force any logic on the
                 // specified arguments, but since the behavior of returning
                 // nothing by default is confusing, we'll throw an exception if

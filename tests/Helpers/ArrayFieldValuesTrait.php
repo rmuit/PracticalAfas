@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file is part of the PracticalAfas package.
  *
@@ -98,8 +99,10 @@ trait ArrayFieldValuesTrait
         // if ALLOW_NO_CHANGES and VALIDATE_NOTHING are specified, then skip
         // custom behavior and return the element literally. (We can argue over
         // why only with this specific combination - and will ignore that here.)
-        if (is_array($value) && isset($value[0]) && isset($value[1])
-            && ($change_behavior != UpdateObject::ALLOW_NO_CHANGES || $validation_behavior !== UpdateObject::VALIDATE_NOTHING)) {
+        if (
+            is_array($value) && isset($value[0]) && isset($value[1])
+            && ($change_behavior != UpdateObject::ALLOW_NO_CHANGES || $validation_behavior !== UpdateObject::VALIDATE_NOTHING)
+        ) {
             // First validate the first value in the array; then perform some
             // logic on it. (Some other class might swap this order.)
             $validated = parent::validateFieldValue($value[0], $field_name, $change_behavior, $validation_behavior, $element_index, $element);
@@ -110,9 +113,11 @@ trait ArrayFieldValuesTrait
                 // validation has changed the value (which is really not
                 // expected) we'll set the changed value.
                 $value[0] = $validated;
-            } elseif (is_scalar($value[1])
+            } elseif (
+                is_scalar($value[1])
                 && (empty($this->propertyDefinitions['fields'][$field_name]['type']) || $this->propertyDefinitions['fields'][$field_name]['type'] === 'string')
-                && $field_name !== 'CoId' && $field_name !== 'country_iso') {
+                && $field_name !== 'CoId' && $field_name !== 'country_iso'
+            ) {
                 // On output, we might want to modify the element according to
                 // some logic combined with the other elements. Example logic:
                 // only if the data type is a string, prepend the second

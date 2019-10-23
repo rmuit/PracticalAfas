@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file is part of the PracticalAfas package.
  *
@@ -68,9 +69,11 @@ class KnBasicAddress extends UpdateObject
      */
     public static function setCountriesWithSeparateHouseNr(array $countries)
     {
-        if (array_filter($countries, function ($c) {
-            return !is_string($c);
-        })) {
+        if (
+            array_filter($countries, function ($c) {
+                return !is_string($c);
+            })
+        ) {
             throw new \InvalidArgumentException('Countries are not all strings');
         }
 
@@ -240,7 +243,8 @@ class KnBasicAddress extends UpdateObject
         // most fields which are not set to a derived value, are not set at all.
 
         // If any of the relevant fields are non-strings, skip silently.
-        if (isset($fields['Ad']) && !is_string($fields['Ad'])
+        if (
+            isset($fields['Ad']) && !is_string($fields['Ad'])
             || isset($fields['HmNr']) && !is_string($fields['HmNr'])
             || isset($fields['HmAd']) && !is_string($fields['HmAd'])
             || isset($fields['CoId']) && !is_string($fields['CoId'])
@@ -250,7 +254,10 @@ class KnBasicAddress extends UpdateObject
         }
 
         $matches = [];
-        if (!empty($fields['Ad']) && (!isset($fields['HmNr']) || $fields['HmNr'] === '') && (!isset($fields['HmAd']) || $fields['HmAd'] === '')
+        if (
+            !empty($fields['Ad'])
+            && (!isset($fields['HmNr']) || $fields['HmNr'] === '')
+            && (!isset($fields['HmAd']) || $fields['HmAd'] === '')
             // Split off house number and possible extension from street,
             // because AFAS has separate fields for those. (This code comes
             // from Drupal's addressfield_tfnr module and was adjusted later to
@@ -259,13 +266,13 @@ class KnBasicAddress extends UpdateObject
             && (isset($fields['CoId'])
                 ? in_array(strtoupper($fields['CoId']), static::getCountriesWithSeparateHouseNr(), true)
                 : isset($this->propertyDefinitions['fields']['CoId']['default'])
-                && is_string($this->propertyDefinitions['fields']['CoId']['default'])
-                && in_array(
-                    strtoupper($this->propertyDefinitions['fields']['CoId']['default']),
-                    static::getCountriesWithSeparateHouseNr(),
-                    true
-                ))
-            && preg_match('/^
+                    && is_string($this->propertyDefinitions['fields']['CoId']['default'])
+                    && in_array(
+                strtoupper($this->propertyDefinitions['fields']['CoId']['default']),
+                static::getCountriesWithSeparateHouseNr(),
+                true
+            )
+            ) && preg_match('/^
           (.*?\S) \s+ (\d+) # normal thoroughfare, followed by spaces and a number;
                             # non-greedy because for STREET NR1 NR2, "nr1" should
                             # end up in the number field, not "nr2".
@@ -306,11 +313,14 @@ class KnBasicAddress extends UpdateObject
         }
 
         // Set 'is P.O. box' for NL addresses.
-        if (!isset($fields['PbAd']) && (isset($fields['CoId'])
+        if (
+            !isset($fields['PbAd'])
+            && (isset($fields['CoId'])
                 ? strtoupper($fields['CoId']) === 'NL'
                 : isset($this->propertyDefinitions['fields']['CoId']['default'])
-                && is_string($this->propertyDefinitions['fields']['CoId']['default'])
-                && $this->propertyDefinitions['fields']['CoId']['default'] === 'NL')
+                    && is_string($this->propertyDefinitions['fields']['CoId']['default'])
+                    && $this->propertyDefinitions['fields']['CoId']['default'] === 'NL'
+            )
         ) {
             if (isset($fields['Ad']) && stripos(ltrim($fields['Ad']), 'postbus ') === 0) {
                 $fields['PbAd'] = true;

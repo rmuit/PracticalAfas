@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file is part of the PracticalAfas package.
  *
@@ -134,14 +135,16 @@ class NusoapNtlmClient
         // gives no response until it sends the result of a call back. So
         // changing the 'timeout' (default 0) has no effect; the
         // 'response_timeout' can be upped to max. 5 minutes.
-        foreach ([
-                     'soap_defencoding',
-                     'xml_encoding',
-                     'timeout',
-                     'response_timeout',
-                     'soap_defencoding',
-                     'decode_utf8'
-                 ] as $opt) {
+        foreach (
+            [
+                'soap_defencoding',
+                'xml_encoding',
+                'timeout',
+                'response_timeout',
+                'soap_defencoding',
+                'decode_utf8'
+            ] as $opt
+        ) {
             if (isset($options[$opt])) {
                 $client->$opt = $options[$opt];
             }

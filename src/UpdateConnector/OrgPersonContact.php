@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file is part of the PracticalAfas package.
  *
@@ -770,7 +771,8 @@ class OrgPersonContact extends UpdateObject
         // is a mistake so we'll just do the two names, always. (Note that PbAd
         // means something different in KnBasicAddress, but that is not defined
         // by this class.)
-        if ($defaults_allowed && isset($this->propertyDefinitions['objects']['KnBasicAddressAdr'])
+        if (
+            $defaults_allowed && isset($this->propertyDefinitions['objects']['KnBasicAddressAdr'])
             && isset($this->propertyDefinitions['objects']['KnBasicAddressPad'])
             && !empty($element['Objects']['KnBasicAddressAdr'])
             && empty($element['Objects']['KnBasicAddressPad'])
@@ -797,8 +799,10 @@ class OrgPersonContact extends UpdateObject
         // of those default arguments; otherwise it's allowed.
         $dont_change_anything = ($change_behavior & ~self::RENUMBER_ELEMENT_INDEXES) == self::ALLOW_NO_CHANGES
             && $validation_behavior == self::VALIDATE_NOTHING;
-        if (!isset($element['Fields']['BcCo']) && $action === 'insert' && !$dont_change_anything
-            && isset($this->propertyDefinitions['fields']['AutoNum']) && !isset($element['Fields']['AutoNum'])) {
+        if (
+            !isset($element['Fields']['BcCo']) && $action === 'insert' && !$dont_change_anything
+            && isset($this->propertyDefinitions['fields']['AutoNum']) && !isset($element['Fields']['AutoNum'])
+        ) {
             $element['Fields']['AutoNum'] = true;
         }
 
@@ -899,9 +903,11 @@ class OrgPersonContact extends UpdateObject
         // default, and the code is a good start. Skip all this if any errors
         // were encountered earlier because we only want to search address
         // fields in embedded elements that could be validated.
-        if ($element && empty($element['*errors'])
+        if (
+            $element && empty($element['*errors'])
             && isset($value) && in_array($field_name, ['TeNr', 'MbNr', 'FaNr', 'TeN2', 'MbN2'], true)
-            && ($change_behavior & self::ALLOW_REFORMAT_PHONE_NR || $validation_behavior & self::VALIDATE_FORMAT)) {
+            && ($change_behavior & self::ALLOW_REFORMAT_PHONE_NR || $validation_behavior & self::VALIDATE_FORMAT)
+        ) {
             // First, establish whether we even know the country code, since
             // that is inside an address object. This means this validation /
             // change is not water tight; it will be skipped for updates (or
@@ -970,9 +976,10 @@ class OrgPersonContact extends UpdateObject
         if (empty($element['*errors']) && ($change_behavior & self::ALLOW_REFORMAT_PHONE_NR || $validation_behavior & self::VALIDATE_FORMAT)) {
             $address = static::getAddressFields($element, ['KnBasicAddressAdr', 'KnBasicAddressPad']);
             // Defaults are not populated into the field yet.
-            if (isset($address['CoId'])
-                ? is_string($address['CoId']) && strtoupper($address['CoId']) === 'NL'
-                : isset($this->propertyDefinitions['fields']['CoId']['default'])
+            if (
+                isset($address['CoId'])
+                    ? is_string($address['CoId']) && strtoupper($address['CoId']) === 'NL'
+                    : isset($this->propertyDefinitions['fields']['CoId']['default'])
                 && is_string($this->propertyDefinitions['fields']['CoId']['default'])
                 && $this->propertyDefinitions['fields']['CoId']['default'] === 'NL'
             ) {
@@ -1008,8 +1015,10 @@ class OrgPersonContact extends UpdateObject
                 // Each embedded type has only one element, keyed by 'Element'.
                 // (It's all arrays, not objects, because the structure was
                 // validated already.)
-                if (!empty($element['Objects'][$ref_name]['Element']['Fields'])
-                    && !static::getAddressFields($element['Objects'][$ref_name]['Element'], ['KnBasicAddressAdr', 'KnBasicAddressPad'])) {
+                if (
+                    !empty($element['Objects'][$ref_name]['Element']['Fields'])
+                    && !static::getAddressFields($element['Objects'][$ref_name]['Element'], ['KnBasicAddressAdr', 'KnBasicAddressPad'])
+                ) {
                     foreach ($number_fields as $field_name) {
                         if (!empty($element['Objects'][$ref_name]['Element']['Fields'][$field_name])) {
                             $parts = static::validateDutchPhoneNr($element['Objects'][$ref_name]['Element']['Fields'][$field_name]);
@@ -1028,8 +1037,10 @@ class OrgPersonContact extends UpdateObject
                             }
                         }
                     }
-                    if ($ref_name2 && !empty($element['Objects'][$ref_name]['Element']['Objects'][$ref_name2]['Element']['Fields'])
-                        && !static::getAddressFields($element['Objects'][$ref_name]['Element']['Objects'][$ref_name2]['Element'], ['KnBasicAddressAdr', 'KnBasicAddressPad'])) {
+                    if (
+                        $ref_name2 && !empty($element['Objects'][$ref_name]['Element']['Objects'][$ref_name2]['Element']['Fields'])
+                        && !static::getAddressFields($element['Objects'][$ref_name]['Element']['Objects'][$ref_name2]['Element'], ['KnBasicAddressAdr', 'KnBasicAddressPad'])
+                    ) {
                         foreach ($number_fields as $field_name) {
                             if (!empty($element['Objects'][$ref_name]['Element']['Objects'][$ref_name2]['Element']['Fields'][$field_name])) {
                                 $parts = static::validateDutchPhoneNr($element['Objects'][$ref_name]['Element']['Objects'][$ref_name2]['Element']['Fields'][$field_name]);
@@ -1136,7 +1147,8 @@ class OrgPersonContact extends UpdateObject
         // most fields which are not set to a derived value, are not set at all.
 
         // If any of the relevant fields are non-strings, skip silently.
-        if (isset($fields['LaNm']) && !is_string($fields['LaNm'])
+        if (
+            isset($fields['LaNm']) && !is_string($fields['LaNm'])
             || isset($fields['FiNm']) && !is_string($fields['FiNm'])
             || isset($fields['SeNm']) && !is_string($fields['SeNm'])
             || isset($fields['Is']) && !is_string($fields['Is'])
@@ -1152,17 +1164,19 @@ class OrgPersonContact extends UpdateObject
             $fields['LaNm'] = trim($fields['LaNm']);
             $name = strtolower($fields['LaNm']);
             $found = false;
-            foreach ([
-                         'de ',
-                         'v.',
-                         'v ',
-                         'v/d ',
-                         'v.d.',
-                         'van de ',
-                         'van der ',
-                         'van ',
-                         "'t "
-                     ] as $value) {
+            foreach (
+                [
+                    'de ',
+                    'v.',
+                    'v ',
+                    'v/d ',
+                    'v.d.',
+                    'van de ',
+                    'van der ',
+                    'van ',
+                    "'t "
+                ] as $value
+            ) {
                 if (strpos($name, $value) === 0) {
                     $fields['Is'] = rtrim($value);
                     $fields['LaNm'] = trim(substr($fields['LaNm'], strlen($value)));
@@ -1189,7 +1203,8 @@ class OrgPersonContact extends UpdateObject
             // dot. It will then insert spaces in between every letter of the
             // initials, but we won't do that last part. (It may be good for
             // user UI input, but coded data does not expect it.)
-            if (strlen($fields['FiNm']) == 1
+            if (
+                strlen($fields['FiNm']) == 1
                 || strlen($fields['FiNm']) < 16
                 && strpos($fields['FiNm'], '.') !== false
                 && strpos($fields['FiNm'], ' ') === false
@@ -1284,7 +1299,8 @@ class OrgPersonContact extends UpdateObject
 
         // Area codes start with 0, +31 or the (now deprecated) '+31 (0)'.
         // Non-mobile area codes starting with 0 may be surrounded by brackets.
-        foreach ([
+        foreach (
+            [
                 '((?:\+31[-\s]?(?:\(0\))?\s?|0)6)            # mobile
                 [-\s]* ([1-9]\s*(?:[0-9]\s*){7})',
 
@@ -1295,7 +1311,8 @@ class OrgPersonContact extends UpdateObject
                 '((?:\+31[-\s]?(?:\(0\))?\s?|0)[1-5789][0-9]{2} # 4-digit area code...
                 |\(0[1-5789][0-9]{2}\))                         # (possibly between brackets...)
                 [-\s]* ([1-9]\s*(?:[0-9]\s*){5})                # ...plus local number.',
-            ] as $regex) {
+            ] as $regex
+        ) {
             if (preg_match('/^\s*' . $regex . '\s*$/x', $phone_number, $matches)) {
                 $return = [
                     strtr($matches[1], [' ' => '', '-' => '', '+31' => '0']),

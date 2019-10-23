@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file is part of the PracticalAfas package.
  *
@@ -897,8 +898,10 @@ class UpdateObject
 
         if ($set_embedded && !empty($this->elements) && is_array($this->elements)) {
             // Change $element_index if it's necessary for key comparisons.
-            if (is_float($element_index) || is_bool($element_index) ||
-                is_string($element_index) && (string)(int)$element_index === $element_index) {
+            if (
+                is_float($element_index) || is_bool($element_index) ||
+                is_string($element_index) && (string)(int)$element_index === $element_index
+            ) {
                 $element_index = (int)$element_index;
             }
             // Set all actions in embedded objects of the element corresponding
@@ -1015,8 +1018,10 @@ class UpdateObject
         // the default.
         if (isset($element['Fields']) && array_key_exists($field_name, $element['Fields'])) {
             $return = $wrap_array ? [$element['Fields'][$field_name]] : $element['Fields'][$field_name];
-        } elseif ($return_default && isset($this->propertyDefinitions['fields'][$field_name])
-            && array_key_exists('default', $this->propertyDefinitions['fields'][$field_name])) {
+        } elseif (
+            $return_default && isset($this->propertyDefinitions['fields'][$field_name])
+            && array_key_exists('default', $this->propertyDefinitions['fields'][$field_name])
+        ) {
             $return = $wrap_array ? [$this->propertyDefinitions['fields'][$field_name]['default']] : $this->propertyDefinitions['fields'][$field_name]['default'];
         } else {
             $return = $wrap_array ? [] : null;
@@ -1316,8 +1321,10 @@ class UpdateObject
         // Check if we are allowed to add multiple embedded objects into this
         // reference field, and if not, whether we are doing that. On 'output'
         // this is a mandatory check, but on 'input' it can be suppressed.
-        if ($validation_behavior & self::VALIDATE_ESSENTIAL && count($embedded_elements) > 1
-            && empty($this->propertyDefinitions['objects'][$reference_field_name]['multiple'])) {
+        if (
+            $validation_behavior & self::VALIDATE_ESSENTIAL && count($embedded_elements) > 1
+            && empty($this->propertyDefinitions['objects'][$reference_field_name]['multiple'])
+        ) {
             $name_and_alias = "'$reference_field_name'" . (isset($this->propertyDefinitions['objects'][$reference_field_name]['alias']) ? " ({$this->propertyDefinitions['objects'][$reference_field_name]['alias']})" : '');
             throw new InvalidArgumentException("Embedded object $name_and_alias contains " . count($embedded_elements) . ' elements but can only contain a single element.');
         }
@@ -2241,8 +2248,10 @@ class UpdateObject
             // is unclear why objects sometimes have regular fields that seem
             // to behave just like such an ID property... But it seems this is
             // the case and AFAS is inconsistent in their schema definitions.
-            if (isset($field_properties['behavior']) && $field_properties['behavior'] === 'afas_assigned_id'
-                && $validation_behavior & self::VALIDATE_ESSENTIAL) {
+            if (
+                isset($field_properties['behavior']) && $field_properties['behavior'] === 'afas_assigned_id'
+                && $validation_behavior & self::VALIDATE_ESSENTIAL
+            ) {
                 // This code is equivalent to the code in validateElements for
                 // the ID property.
                 if (isset($element['Fields'][$name])) {
@@ -2290,7 +2299,8 @@ class UpdateObject
             // See above: flag an error if we have no-or-null field value and
             // no default, OR if we have null field value and non-null default.
             // (Note the array_key_exists() implies "is null".)
-            if ($validate_required_value && !isset($element['Fields'][$name])
+            if (
+                $validate_required_value && !isset($element['Fields'][$name])
                 && (!$default_available
                     || (isset($element['Fields']) && array_key_exists($name, $element['Fields'])
                         && $field_properties['default'] !== null))
@@ -2301,16 +2311,20 @@ class UpdateObject
                 // Set default if value is missing, or if value is null and
                 // field is required (and if we are allowed to set it, but
                 // that's always the case if $default_available).
-                if ($default_available
+                if (
+                    $default_available
                     && (!isset($element['Fields']) || !array_key_exists($name, $element['Fields'])
-                        || !empty($field_properties['required']) && $element['Fields'][$name] === null)) {
+                        || !empty($field_properties['required']) && $element['Fields'][$name] === null)
+                ) {
                     // Support dynamic default value of "today" for date
                     // fields; convert it to yyyy-mm-dd today. (We might also
                     // be able to dynamically convert the value "today" set by
                     // the user, but let's not do that unless it has a proven
                     // value.)
-                    if (isset($field_properties['type']) && $field_properties['type'] === 'date'
-                        && $field_properties['default'] === 'today') {
+                    if (
+                        isset($field_properties['type']) && $field_properties['type'] === 'date'
+                        && $field_properties['default'] === 'today'
+                    ) {
                         $element['Fields'][$name] = date('Y-m-d');
                     } else {
                         $element['Fields'][$name] = $field_properties['default'];
