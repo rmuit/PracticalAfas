@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<ruleset name="PSR12-Wyz-Afas">
+    <description>PSR12 standard with exceptions for things that I don't want to deal with right now.</description>
+
+    <file>.</file>
+    <exclude-pattern>src/CopernicaRestAPI.php</exclude-pattern>
+    <exclude-pattern>vendor/*</exclude-pattern>
+
+    <rule ref="PSR12">
+        <!--
+            I make an effort to keep lines under 120 characters, except:
+            - function declarations, which I don't split into multiple lines
+            - exceptions thrown, where I don't split the message into a
+              variable just to keep the line length OK.
+            I might change my mind one day but I don't think that improves
+            readability, and I don't think a line length check is very
+            necessary in general, as long as we can keep the 'real code'
+            adhering to a rough standard.
+        -->
+        <exclude name="Generic.Files.LineLength"/>
+        <!--
+            "Visibility must be declared on all constants if your project
+            supports PHP 7.1 or later". - this seems weird to me. Should this
+            warning not be triggered only if the _minimum_ version is 7.1?
+            That is apparently not the case right now.
+        -->
+        <exclude name="PSR12.Properties.ConstantVisibility.NotFound"/>
+    </rule>
+
+    <!-- Extra sniffs -->
+    <rule ref="Generic.Arrays.DisallowLongArraySyntax"/>
+</ruleset>

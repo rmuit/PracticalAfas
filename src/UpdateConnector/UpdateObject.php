@@ -57,7 +57,7 @@ use UnexpectedValueException;
  * again (depending on the key/object type) contain one or multiple elements.
  *
  * About subclassing: see the comments at overrideClass(). Custom fields to
- * extend standard AFAS objects don't necessarily need subclasssing; see
+ * extend standard AFAS objects don't necessarily need subclassing; see
  * overridePropertyDefinitions().
  */
 class UpdateObject

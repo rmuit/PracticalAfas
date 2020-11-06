@@ -268,10 +268,10 @@ class KnBasicAddress extends UpdateObject
                 : isset($this->propertyDefinitions['fields']['CoId']['default'])
                     && is_string($this->propertyDefinitions['fields']['CoId']['default'])
                     && in_array(
-                strtoupper($this->propertyDefinitions['fields']['CoId']['default']),
-                static::getCountriesWithSeparateHouseNr(),
-                true
-            )
+                        strtoupper($this->propertyDefinitions['fields']['CoId']['default']),
+                        static::getCountriesWithSeparateHouseNr(),
+                        true
+                    )
             ) && preg_match('/^
           (.*?\S) \s+ (\d+) # normal thoroughfare, followed by spaces and a number;
                             # non-greedy because for STREET NR1 NR2, "nr1" should

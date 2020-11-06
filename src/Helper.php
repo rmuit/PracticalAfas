@@ -125,6 +125,12 @@ class Helper
      *
      * Batched fetching does not work with 'OR type' filters, only with 'AND'.
      *
+     * The structure of this method is admittedly ugly. It should really be in
+     * a dedicated class which extends Connection and keeps state in class
+     * variables so it doesn't need the $context argument. The structure can
+     * likely be the same as the BatchableRestClient class in
+     * https://github.com/rmuit/copernica-api.
+     *
      * @param array $args
      *   Arguments used to create / process the getData() calls. These must stay
      *   the same over subsequent calls made to fetch a full data set.
