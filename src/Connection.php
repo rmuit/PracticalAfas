@@ -63,7 +63,7 @@ class Connection
     const OP_NOT_LIKE = 11;
     const OP_NOT_STARTS_WITH = 12;
     const OP_ENDS_WITH = 13;
-    const OP_NOT_ENDS_WITH = 4;
+    const OP_NOT_ENDS_WITH = 14;
     // 'alias' constants because "like" is a bit ambiguous.
     const OP_CONTAINS = 6;
     const OP_NOT_CONTAINS = 11;
