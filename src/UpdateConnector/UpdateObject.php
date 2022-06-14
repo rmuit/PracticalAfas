@@ -163,6 +163,11 @@ class UpdateObject
         'KnContact' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
         'KnOrganisation' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
         'KnPerson' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
+        'FiInvoice' => '\PracticalAfas\UpdateConnector\FiInvoice',
+        'FiEntries' => '\PracticalAfas\UpdateConnector\FiEntries',
+        'FiEntryPar' => '\PracticalAfas\UpdateConnector\FiEntryPar',
+        'KnSubject' => '\PracticalAfas\UpdateConnector\KnSubject',
+        'KnSubjectLink' => '\PracticalAfas\UpdateConnector\KnSubjectLink',
     ];
 
     /**
