@@ -1,5 +1,5 @@
 {
-    "name": "wyz/practicalafas",
+    "name": "kjsoftware/practicalafas",
     "type": "library",
     "description": "A PHP library for communicating with AFAS Profit in a practical way.",
     "license": "MIT",
@@ -28,3 +28,4 @@
         "squizlabs/php_codesniffer": "^3.5"
     }
 }
+
