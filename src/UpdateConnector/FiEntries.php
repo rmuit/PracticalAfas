@@ -81,6 +81,9 @@ class FiEntries extends UpdateObject
                 ],
                 'Fref' => [
                     'alias' => 'Factuurreferentie',
+                ],
+                'Rate' => [
+                    'alias' => 'Factuurreferentie',
                 ]
             ],
         ];
