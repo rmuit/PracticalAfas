@@ -3180,6 +3180,10 @@ class UpdateObject
                         'ColA' => [
                             'alias' => 'coll_account',
                         ],
+                        // TypeRekening
+                        'VaTp' => [
+                            'alias' => 'type_verkooprelatie',
+                        ],
                         // [ comment 2014: ]
                         // ?? Doesn't seem to be required, but we're still
                         // setting default to the old value we're used to,
