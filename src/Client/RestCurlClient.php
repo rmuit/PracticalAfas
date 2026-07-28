@@ -348,7 +348,10 @@ class RestCurlClient
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curl_errno = curl_errno($ch);
         $curl_error = curl_error($ch);
-        curl_close($ch);
+        // Manually call curl_close in php versions prior to 8.0, php versions after 8.0 automatically do this and deprecated curl_close
+        if (PHP_VERSION_ID < 80000) {
+            curl_close($ch);
+        }
         if ($curl_errno) {
             // Body is likely empty but we'll still log it. Since our Connection
             // uses low error codes, add 800 to the thrown code, in case the
