@@ -329,24 +329,36 @@ class SoapAppClient
 
         $arguments = $this->validateArguments($arguments, $endpoint);
 
-        // The SOAP argument names are case sensitive so we need to turn them
+        // The SOAP argument names are case-sensitive, so we need to turn them
         // back to valid ones.
-        $correct_params = ['connectorid' => 'connectorId', 'filtersxml' => 'filtersXml'];
+        $correct_params = [
+            'connectortype' => 'connectorType',
+            'connectorid' => 'connectorId',
+            'filtersxml' => 'filtersXml',
+            'dataxml' => 'dataXml'
+        ];
+        // Arguments holding XML values, which need CDATA encoding: is a hack,
+        // see https://stackoverflow.com/questions/11015959/how-can-i-create-a-soapvar-containing-cdata-with-xml
+        $xml_keys = ['dataXml', 'token'];
         $params = [];
         foreach ($arguments as $name => $value) {
-        // We could specify integer values as 'int' like the below, but the examples
-        // from AFAS' documentation do not do this either. It just bloats the XML with
-        // namespaces. We can start doing it if ever necessary.
-        //      if (is_int($value)) {
-        //        $params[] = new SoapVar($value, XSD_STRING, 'int', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
-        //      }
-        //      else {
-        //        $params[] = new SoapVar($value, XSD_STRING, 'string', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
-        //      }
+            // We could specify integer values as 'int' like the below, but the
+            // examples from AFAS' documentation do not do this either. It just
+            // bloats the XML with namespaces. Start doing it if ever necessary.
+            // if (is_int($value)) {
+            //   $params[] = new SoapVar($value, XSD_STRING, 'int', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
+            // }
+            // else {
+            //   $params[] = new SoapVar($value, XSD_STRING, 'string', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
+            // }
             if (isset($correct_params[$name])) {
                 $name = $correct_params[$name];
             }
-            $params[] = new SoapVar($value, XSD_STRING, null, null, $name, 'urn:Afas.Profit.Services');
+            if (in_array($name, $xml_keys)) {
+                $params[] = new SoapVar("<ns1:{$name}><![CDATA[{$value}]]></ns1:{$name}>", XSD_ANYXML);
+            } else {
+                $params[] = new SoapVar($value, XSD_STRING, null, null, $name, 'urn:Afas.Profit.Services');
+            }
         }
         $function_wrapper = new SoapVar($params, SOAP_ENC_OBJECT, null, null, $endpoint, 'urn:Afas.Profit.Services');
         $function_param = new SoapParam($function_wrapper, $endpoint);
