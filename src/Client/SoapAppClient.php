@@ -334,15 +334,15 @@ class SoapAppClient
         $correct_params = ['connectorid' => 'connectorId', 'filtersxml' => 'filtersXml'];
         $params = [];
         foreach ($arguments as $name => $value) {
-// We could specify integer values as 'int' like the below, but the examples
-// from AFAS' documentation do not do this either. It just bloats the XML with
-// namespaces. We can start doing it if ever necessary.
-//      if (is_int($value)) {
-//        $params[] = new SoapVar($value, XSD_STRING, 'int', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
-//      }
-//      else {
-//        $params[] = new SoapVar($value, XSD_STRING, 'string', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
-//      }
+        // We could specify integer values as 'int' like the below, but the examples
+        // from AFAS' documentation do not do this either. It just bloats the XML with
+        // namespaces. We can start doing it if ever necessary.
+        //      if (is_int($value)) {
+        //        $params[] = new SoapVar($value, XSD_STRING, 'int', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
+        //      }
+        //      else {
+        //        $params[] = new SoapVar($value, XSD_STRING, 'string', 'http://www.w3.org/2001/XMLSchema', $name, 'urn:Afas.Profit.Services');
+        //      }
             if (isset($correct_params[$name])) {
                 $name = $correct_params[$name];
             }

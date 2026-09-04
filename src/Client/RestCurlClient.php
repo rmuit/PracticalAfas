@@ -31,7 +31,6 @@ use PracticalAfas\Exception\ProfitErrorException;
  */
 class RestCurlClient
 {
-
     public static function getClientType()
     {
         return 'REST';
