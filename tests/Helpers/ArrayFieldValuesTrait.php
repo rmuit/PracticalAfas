@@ -93,7 +93,7 @@ trait ArrayFieldValuesTrait
     /**
      * {@inheritdoc}
      */
-    protected function validateFieldValue($value, $field_name, $change_behavior = UpdateObject::DEFAULT_CHANGE, $validation_behavior = UpdateObject::DEFAULT_VALIDATION, $element_index = null, array $element = null)
+    protected function validateFieldValue($value, $field_name, $change_behavior = UpdateObject::DEFAULT_CHANGE, $validation_behavior = UpdateObject::DEFAULT_VALIDATION, $element_index = null, ?array $element = null)
     {
         // Custom behavior is only implemented for arrays with keys 0 & 1. Also
         // if ALLOW_NO_CHANGES and VALIDATE_NOTHING are specified, then skip

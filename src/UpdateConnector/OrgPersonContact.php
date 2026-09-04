@@ -890,7 +890,7 @@ class OrgPersonContact extends UpdateObject
     /**
      * {@inheritDoc}
      */
-    protected function validateFieldValue($value, $field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, $element_index = null, array $element = null)
+    protected function validateFieldValue($value, $field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, $element_index = null, ?array $element = null)
     {
         $value = parent::validateFieldValue($value, $field_name, $change_behavior, $validation_behavior, $element_index, $element);
 

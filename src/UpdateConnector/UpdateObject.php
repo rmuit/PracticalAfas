@@ -1119,7 +1119,7 @@ class UpdateObject
     public function cloneUnlinked()
     {
         $parent_type = $this->parentType;
-        $this->parentType = null;
+        $this->parentType = '';
         $clone = clone $this;
         $this->parentType = $parent_type;
         // Reset the property definitions; they may need to change now that
@@ -2479,7 +2479,7 @@ class UpdateObject
      * @throws \InvalidArgumentException
      *   If the value does not pass validation.
      */
-    protected function validateFieldValue($value, $field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, $element_index = null, array $element = null)
+    protected function validateFieldValue($value, $field_name, $change_behavior = self::DEFAULT_CHANGE, $validation_behavior = self::DEFAULT_VALIDATION, $element_index = null, ?array $element = null)
     {
         // No validation for null values. (Requiredness is validated elsewhere.)
         if (isset($value)) {
