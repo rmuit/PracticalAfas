@@ -77,13 +77,15 @@ class RestCurlClient
      *
      * @param array $options
      *   Configuration options. (Case sensitive.)
-     *   Required:
-     *   - customerId:      Customer ID, as used in the AFAS endpoint URL.
-     *   - appToken:        Token used for the App connector.
-     *   Optional:
+     *   - appToken:        REQUIRED: Token used for the App connector.
+     *   - customerId:      REQUIRED IF 'baseUrl' is empty / has '%customerId%':
+     *                      Customer ID, as used in the AFAS endpoint URLs.
+     *   - baseUrl:         Custom Base URL (template) for endpoints.
+     *                      - %customerId% is replaced with 'customerId' option;
+     *                      - %env% is replaced with 'environment' option.
      *   - environment:     Which AFAS environment to connect to. Can be 'test'
-     *                      or 'accept'; if not specified, the client connects
-     *                      to the live environment.
+     *                      or 'accept'; if not specified (and not overwritten
+     *                      by 'baseUrl'), connect to the live environment.
      *   - headers:         HTTP headers to pass to Curl: an array of key-value
      *                      pairs in the form of ['User-Agent' => 'Me', ...].
      * @param array $curl_options
@@ -97,7 +99,18 @@ class RestCurlClient
      */
     public function __construct(array $options, $curl_options = [])
     {
-        foreach (['customerId', 'appToken'] as $required_key) {
+        $required_keys = ['customerId', 'appToken'];
+        if (empty($options['baseUrl'])) {
+            $options['baseUrl'] = 'https://%customerId%.rest%env%.afas.online/profitrestservices/';
+        } else {
+            if (strpos($options['baseUrl'], '%customerId%') === false) {
+                unset($required_keys[0]);
+            }
+            if (substr($options['baseUrl'], -1) != '/') {
+                $options['baseUrl'] .= '/';
+            }
+        }
+        foreach ($required_keys as $required_key) {
             if (empty($options[$required_key])) {
                 $classname = get_class($this);
                 throw new InvalidArgumentException("Required configuration parameter for $classname missing: $required_key.", 1);
@@ -117,7 +130,7 @@ class RestCurlClient
             throw new InvalidArgumentException("Non-array 'headers' option passed to $classname constructor.", 2);
         }
         // Determine default headers with names not present in the 'headers'
-        // option (case insensitive comparison).
+        // option (case-insensitive comparison).
         $default_headers = array_diff_ukey([
             'User-Agent' => 'PHP Curl/PracticalAfas',
             'Authorization' => 'AfasToken ' . base64_encode('<token><version>1</version><data>' . $options['appToken'] . '</data></token>')
@@ -125,19 +138,20 @@ class RestCurlClient
         // Sanitize/set HTTPHEADER Curl option.
         $this->curlOptions[CURLOPT_HTTPHEADER] = $this->httpHeaders($options['headers'] + $default_headers);
 
-        // From ~november 2018, AFAS has a new endpoint that forces TLS 1.2 as
-        // a minimum. We know how to force a specific TLS version but
-        // apparently cannot specify '1.2 or higher'. If people want TLS 1.3 or
-        // higher, they will have to pass CURLOPT_SSLVERSION in curlOptions.
-        if (!isset($this->curlOptions[CURLOPT_SSLVERSION])) {
-            if (!defined('CURL_SSLVERSION_TLSv1_2')) {
-                throw new RuntimeException("PHP's Curl extension does not support TLS v1.2, which AFAS requires.");
-            }
+        // - ~november 2018, AFAS has a new endpoint that forces min. TLS 1.2.
+        // - 2026: if CURL_SSLVERSION_TLSv1_2 is not defined, we assume the
+        //   world has moved on to higher default versions, so skip this.
+        if (!isset($this->curlOptions[CURLOPT_SSLVERSION]) && defined('CURL_SSLVERSION_TLSv1_2')) {
             $this->curlOptions[CURLOPT_SSLVERSION] = CURL_SSLVERSION_TLSv1_2;
         }
 
-        // We will not use 'headers' and 'appToken' in our own code (because
-        // they are contained in 'curlOptions'), but won't clean them out.
+        // Set 'endpointBase' here. All other options are unused (because
+        // contained in other values), but don't clean them out, for possible
+        // use by subclasses.
+        $options['endpointBase'] = strtr($options['baseUrl'], [
+            '%customerId%' => !empty($options['customerId']) ? rawurlencode($options['customerId']) : '',
+            '%env%' => !empty($options['environment']) ? rawurlencode($options['environment']) : '',
+        ]);
         $this->options = $options;
     }
 
@@ -286,10 +300,9 @@ class RestCurlClient
 
         $arguments = $this->validateArguments($arguments, $endpoint, $type, $request_body);
 
-        $env = !empty($this->options['environment']) ? $this->options['environment'] : '';
         // Unlike other input, we don't escape $endpoint (we assume it is safe)
         // because otherwise we can't have slashes in there.
-        $endpoint = 'https://' . rawurlencode($this->options['customerId']) . ".rest$env.afas.online/profitrestservices/$endpoint";
+        $endpoint = $this->options['endpointBase'] . $endpoint;
         if ($arguments) {
             $params = [];
             foreach ($arguments as $key => $value) {
@@ -320,7 +333,7 @@ class RestCurlClient
                 $this->curlOptions[CURLOPT_HTTPHEADER][] = 'Content-Type: application/json; charset="utf-8"';
             }
             // We will not set Content-Length because it seems to potentially
-            // complicate matters (w.r.t. multi-byte strings) and does not
+            // complicate matters (w.r.t. multibyte strings) and does not
             // appear necessary for servers that accept HTTP/1.1.
         }
 
@@ -364,7 +377,7 @@ class RestCurlClient
             throw new ProfitErrorException(base64_decode($headers['x-profit-error'][0]), $http_code);
         }
         // There might not be any non-200/201 responses without X-Profit-Error
-        // header but you never know.
+        // header, but you never know.
         if ($http_code != 200 && ($http_code != 201 || !in_array($type, ['POST', 'PUT'], true))) {
             // For e.g. code 500, we've seen a message in the response (at least
             // when we entered an invalid URL). We'll separate body & headers

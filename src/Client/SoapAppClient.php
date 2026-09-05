@@ -73,16 +73,21 @@ class SoapAppClient
      * constructor and throw an exception if we know any AFAS calls will fail.
      *
      * @param array $options
-     *   Configuration options used by this class.
-     *   Required:
-     *   - customerId:      Customer ID, as used in the AFAS endpoint URL.
-     *   - appToken:        Token used for the App connector.
-     *   Optional:
+     *   Configuration options. (Case sensitive.)
+     *   - appToken:        REQUIRED: Token used for the App connector.
+     *   - customerId:      REQUIRED IF 'endpoint' is empty / has '%customerId%'
+     *                      Customer ID, as used in the AFAS endpoint URL.
+     *   - endpoint:        Custom URL template for soap endpoint.
+     *                      - MUST contain "%connectorPath%" (usually
+     *                        "%connectorPath%.asmx")
+     *                      - Optional:
+     *                        - %customerId% is replaced with customerId option;
+     *                        - %env% is replaced with environment option.
      *   - environment:     Which AFAS environment to connect to. Can be 'test'
      *                      or 'accept'; if not specified, the client connects
      *                      to the live environment.
      *   - soapClientClass: classname for the actual Soap client to use. Should
-     *     be compatible with PHP's SoapClient.
+     *                      be compatible with PHP's SoapClient.
      *   - useWSDL:         boolean. (Suggestion: don't set it.)
      *   - cacheWSDL:       How long the WSDL should be cached locally in
      *     seconds. Other options (which are usually not camelCased but
@@ -96,7 +101,19 @@ class SoapAppClient
      */
     public function __construct(array $options, $soap_client_options = [])
     {
-        foreach (['customerId', 'appToken'] as $required_key) {
+        $required_keys = ['customerId', 'appToken'];
+        if (empty($options['endpoint'])) {
+            $options['endpoint'] = 'https://%customerId%.soap%env%.afas.online/profitservices/%connectorPath%.asmx';
+        } else {
+            if (strpos($options['endpoint'], '%customerId%') === false) {
+                unset($required_keys[0]);
+            }
+            if (strpos($options['endpoint'], '%connectorPath%') === false) {
+                $classname = get_class($this);
+                throw new InvalidArgumentException("'endpoint' configuration parameter for $classname must contain substring '%connectorPath%'.", 1);
+            }
+        }
+        foreach ($required_keys as $required_key) {
             if (empty($options[$required_key])) {
                 $classname = get_class($this);
                 throw new InvalidArgumentException("Required configuration parameter for $classname missing: $required_key.", 1);
@@ -140,7 +157,7 @@ class SoapAppClient
      *   (optional) The SOAP endpoint URL to use. (It's generally not necessary
      *   to set this because AFAS has a well defined structure for its endpoint
      *   URLs. If this somehow changes, it's possible to create a child class
-     *   that overrides getSoapClient() to pass an endpoint to this parent.
+     *   that overrides getSoapClient() to pass an endpoint to this parent.)
      *
      * @return \SoapClient
      *   Initialized SoapClient object.
@@ -156,8 +173,11 @@ class SoapAppClient
             } else {
                 $connector_path = 'appconnector' . strtolower($type);
             }
-            $env = !empty($this->options['environment']) ? $this->options['environment'] : '';
-            $endpoint = 'https://' . $this->options['customerId'] . ".soap$env.afas.online/profitservices/$connector_path.asmx";
+            $endpoint = strtr($this->options['endpoint'], [
+                '%customerId%' => !empty($this->options['customerId']) ? rawurlencode($this->options['customerId']) : '',
+                '%env%' => !empty($this->options['environment']) ? rawurlencode($this->options['environment']) : '',
+                '%connectorPath%' => $connector_path,
+            ]);
         }
 
         if (!empty($this->soapClient)) {
