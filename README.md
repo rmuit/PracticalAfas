@@ -1,4 +1,4 @@
-# PracticalAFAS [![Build Status](https://travis-ci.com/rmuit/PracticalAfas.svg?branch=master)](https://travis-ci.com/rmuit/PracticalAfas)
+# PracticalAFAS
 
 A PHP library for communicating with AFAS Profit in a practical way, using
 either SOAP or REST.
@@ -8,117 +8,164 @@ either SOAP or REST.
 
 This is library code, for use by your own code/another project. Whoever is
 reading this, supposedly already has an idea of what they want to achieve and
-what AFAS is, so we won't address that here. (http://www.afas.nl/ - their
-current documentation is at https://static-kb.afas.nl/datafiles/help/2_9_7/SE/EN/index.htm
-though that URL will undoubtedly change.)
+what [AFAS Profit](https://docs.afas.help/profit/) is, so we won't address that
+here.
 
 This code formed through three principles:
 
-* _Practical usability (by programmers)_;
+* _Practical usability (by developers)_;
 * Making REST API calls work similarly to SOAP API calls;
 * Where possible, not obscuring any of the functionality of the API endpoints
   (e.g. sending several items in one call) or any known arguments to API calls.
 
-The first (and third) principle means understandable code is preferred over
-future-proof extensibility that creates separate classes for each little thing
-and introduces loads of boiler plate code. It means well commented code. And it
-means no unexpected / undocumented behavior. (The validation of input arguments,
-and of results received from the remote system, covers situations which are
-unexpected for the programmer, and throws documented exceptions.)
+### Alternative / rough comparison
 
-That said: the second / third principle, plus evolving AFAS functionality plus
-backward compatibility considerations, have made the Connection::getData()
-arguments illogical in some aspects. But the code is still fairly easily
-readable (because there's not many different methods) and easy to call for
-'simple' use cases.
+An (as of 2026) equally often used project is [Afas Profit API](https://github.com/MegaChriz/afasprofit).
 
+A very rough / estimated comparison:
 
-## Compatibility
+For simple tasks (fetching data using non-complicated filters): both are fine.
+For somewhat more advanced use:
 
-Version 2 of the library works with PHP5 (5.4 and up) and PHP7.
+* Afas Profit API code looks more modern. It has nicely chained methods to set
+  individual aspects of a query (filters, etc), rather than a single array.
+  (Compare the examples in both README.mds.)
+* PracticalAFAS
+  * has uglier function definitions. (Above second / third principle, plus
+    evolving AFAS functionality plus backward compatibility considerations,
+    have made the `Connection::getData()` arguments illogical in some aspects.)
+  * almost certainly exposes some more edge-case API behavior, and has some
+    more validation to prevent it going unnoticed. (This is an assumption.
+    But for code whose purpose is as simple as sending/receiving API data,
+    customizing validation / workarounds is often harder if responsibilities are
+    divided over a tree of neatly abstracted classes. At least, that was my
+    view in 2013, while seeing quirky [undocumented API behavior](https://github.com/rmuit/PracticalAfas/blob/master/README-get.md#other-options) -
+    that I wanted to keep under control, but not hide away.)
+  * aims to make it easier (for developers) to [update/insert data](README-update.md).
+    It provides
+    * aliases for the short names of AFAS' object fields, making those objects
+      in your own code better readable;
+    * (optional) data manipulation, like a 'virtual' country field that
+      converts a name/ISO code to a custom AFAS country code, and splitting
+      address into street and house number.
+    * **Note** Afas Profit API also has support for data objects. Both projects
+      do e.g. custom validation of some interdependent fields. Afas Profit API's
+      data validation may well be better / more up to date, when using its
+      ability to fetch schema data from AFAS.
+* For developers who want to know exactly what is happening:
+  * In terms of fetching/sending data: PracticalAFAS code is likely easier to
+    trace, because there's almost no boilerplate code. Almost all behavior is
+    traceable by starting to read `Connection::getData()` and mostly staying
+    within the same class.
+  * The logic behind manipulation / validation of AFAS objects for updating is
+    _not_ easy to read. AFAS Profit API may be easier to understand and extend.
+    (PracticalAFAS needs you to [add definitions](README-update.md#customizing-behavior)
+    for any unknown objects + fields that it does not know about, which is not
+    hard. But tracing any custom behavior in code likely _is_.)
 
-Client classes for REST and SOAP use PHP's standard Curl + JSON and SOAP +
-SimpleXML extensions; if these do not work for you, PRs with new / modified
-clients are welcome.
+## Code structure
 
-Automatic testing is done on PHP5.6, 7.1 and 7.2 for the UpdateConnector
-classes. (I currently don't consider the Client classes in need of tests. There
-may be some light tests for Connection in the future but it's not on my list.)
-
-Although PHP5.6 is not officially supported anymore, this library will remain
-compatible with it until there is a real reason to introduce PHP7-only language
-constructs.
-
-
-## Using the classes
-
-There are a few parts of this library which are not all tightly coupled:
-
-- The client classes can be used standalone to make calls to AFAS connectors.
-  You'll need to know the exact parameters that AFAS expects for their REST or
-  SOAP API; there is a client for both. If you want to keep things close to
-  AFAS' own structure, the REST client seems most suitable. Use RestCurlClient
-  (see the example below) and forget about the other classes. All you need to
-  know is there is one public method, callAfas(), which either returns a (JSON)
-  string with a successful call result, or throws exceptions.
-
-- The Connection class wraps around the SOAP or REST client and abstracts away
-  some parameters which are not so easy to handle. Use it if you e.g.
-  * do not like the structure of the filter arguments in calls (including the
-    fact that there are numeric codes for operators)
-  * want array data returned, instead of XML (for SOAP) / JSON (for REST)
-  * want to specify simpler array structures (rather than the JSON/XML strings
-    which AFAS accepts) for sending data to Update connectors
-  * want to be able to change between the REST and SOAP APIs, for some reason.
-    (They do not provide 100% equal results though; see [README.get.md](README-get.md)
-    for details.)
-  * want to fetch a large data set in batches, with as little risk of skipping
-    rows as possible. There's a method in the Helper class for this.
-
-- UpdateObject (plus child classes) can be used to create XML or JSON payloads
-  for Update Connectors, and validate their contents. Their output is strings,
-  which can be used in any way you want (e.g. send the string data through a
-  client class, or through Connection::sendData(), or use UpdateObjects with
-  your own custom code).
-
-- There's also a Helper class with some extra static methods which could be
-  useful for some programmers, but which I did not want to overload the
-  clients / Connection with. (Also, IsoCountryTrait / KnBasicAddress /
-  OrgPersonContact contain some public methods that programmers could use for
-  their own custom validation of e.g. addresses, without using the main
+The code can be divided in several parts which are not tightly coupled:
+* The Connection class, which might be the only one whose methods you call
+  for getting/sending data.
+* The (SOAP or REST) client classes: used internally by `Connection`; could be
+  used standalone if needed.
+* UpdateObject (plus child classes): used internally by `Connection::sendData()`
+  when passing an array argument. Could be used standalone for constructing
+  validated JSON/XML from array data, or manipulating individual fields in a
+  data object. See [Update connectors](README-update.md) if needed.
+* A Helper class with some extra static methods which could be useful for some
+  developers, but which I did not want to overload the clients / Connection
+  with. (Besides this helper code, IsoCountryTrait / KnBasicAddress /
+  OrgPersonContact contain some public static methods that developers could use
+  for their own custom validation of e.g. addresses, without using the main
   functionality of these classes. These are not documented further.)
 
-We'll first discuss the clients and give call examples for comparison purposes
-with the Connection. You can skip these, unless you're curious about the
-differences.
+### Using the Connection class
 
-### Client classes
+Your code needs to instantiate a client first, like in this example:
 
-These could be used standalone to make SOAP / REST calls to AFAS Profit, if you
-know the structure of the calls. A client class only deals with:
+```php
+use PracticalAfas\Connection;
+use PracticalAfas\Client\RestCurlClient;
+// This can be changed to SoapAppClient.
+// Below 2 options are required; see the constructor for other options.
+$client = new RestCurlClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
+$connection = new Connection($client);
+
+// A common example got calling a Get connector with simple filter, returning an
+// array of data rows:
+$result_as_array = $connection->getData('MyGetConnectorName',  [ 'SomeCategory' => 'CategName' ] );
+
+// A more elaborate example of filtering/sorting, and returning the response
+// value as a string (JSON for REST client, or XML for SOAP client).
+$result_as_string = $connection->getData(
+  'MyGetConnectorName',
+  [ 'SomeCategory' => 'CategName',
+    [ 'Updated' => '2017-01-01T16:00:00', '#op' => Connection::OP_LARGER_THAN ],
+  ],
+  Connection::GET_FILTER_AND,
+  [ 'take' => 1000,
+    'orderbyfieldids' => '-Updated',
+    'options' => ['Outputmode' => Connection::GET_OUTPUTMODE_LITERAL ]
+  ]
+);
+
+// Get a 'subject' (data blob):
+$attachment = $connection->getData(123, [], Connection::DATA_TYPE_SUBJECT);
+
+// This inserts a new organisation with only its name populated:
+$connection->sendData(['name' => 'MyCompany Ltd.'], 'KnOrganisation', 'insert');
+```
+...so if the 'Outputmode' option is _not_ set, getData() returns an array
+of data rows instead (i.e. the XML/JSON string gets decoded for you).
+
+This is all that's necessary for 'simple' use. More info about Get connectors
+is in a [separate text](README-get.md), and the below is included for comparison, but is
+optional reading.
+
+### Client classes / difference with using Connection
+
+If you want to stay as close to AFAS endpoints' data structure as possible:
+there is nothing against simply using a client class standalone, and ignoring
+all other code. There is one public method, callAfas(), which either returns a
+string containing the return value from a successful API call, or throws an
+exception.
+
+You will need to know a bit more about AFAS endpoints' behavior, because the
+clients contain almost no logic around argument/output validation. All they
+handle is
 * connection details (e.g. a different REST client could be written that does
-  not use Curl)
-* authentication details for making the connection. (E.g. inserting the App
-  token into every call; there used to be different classes doing NTLM
-  authentication instead of tokens.)
+  not use Curl);
+* authentication details for making the connection (which is token based
+  nowadays; there used to be another class using another method, NTLM);
 * very basic argument validation only (e.g. skip & take being numeric).
 
-The connection and authentication settings get passed into the constructor; not
-to every individual AFAS call.
+Choose the client that suits you. (The structure of JSON data returned from
+the REST endpoint sometimes seems closer to AFAS' own data structures, and
+seemed to be more lenient with certain queries which the SOAP endpoint
+refused. The SOAP endpoint also returns a data schema, in case you need that.)
 
-You will only use one public method: callAfas(). (There is a second public
-method: static getClientType() - but this is not necessary for standalone use.)
-Client classes make (almost) no assumptions about the remote API calls; the
-exact (type of) remote method and arguments need to be passed to it, and it
-will return the result body as a string.
+You would want to use Connection class (per above) instead, if you
+* do not like the structure of the filter arguments in calls (including the
+  fact that there are numeric codes for operators)
+* want array data returned, instead of XML (for SOAP) / JSON (for REST)
+* want to specify simpler array structures (rather than the JSON/XML strings
+  which AFAS accepts) for sending data to Update connectors
+* want to be able to switch between the REST and SOAP APIs, for some reason.
+  (They do not provide 100% equal results though; see [README.get.md](README-get.md#differences-between-rest-and-soap)
+  for details.)
+* want to fetch a large data set in batches, with as little risk of skipping
+  rows as possible. There's a method in the Helper class for this.
+
 
 #### RestCurlClient examples
-The required options are in the constructor below; see the code for other
-options.
 ```php
 use PracticalAfas\Client\RestCurlClient;
+// Below 2 options are required; see the constructor for other options.
 $client = new RestCurlClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
 
+// Equivalent of above Connection::getData() example:
 $result_as_json_string = $client->callAfas(
   'GET',
   'connectors/MyGetConnectorName',
@@ -129,20 +176,28 @@ $result_as_json_string = $client->callAfas(
     'orderbyfieldids' => '-Updated'
   ]
 );
+
+// Get a 'subject' (data blob):
 $attachment = $client->callAfas('GET', 'subjectconnector/123');
 
-// This is inserting a new organisation with only its name filled:
-$client->callAfas('POST', 'connectors/KnOrganisation', [], '{"KnOrganisation":{"Element":{ "Fields":{"MatchOga":0,"Nm":MyCompany Ltd."}}}}'
+// Equivalent of above Connection::sendData() example:
+$client->callAfas('POST', 'connectors/KnOrganisation', [], json_encode([
+  'KnOrganisation' => [
+    'Element' => [
+      'Fields' => [
+       'MatchOga' => 0,
+       'Nm' => 'MyCompany Ltd.',
+  ]]]]
+));
 ```
 
 #### SoapAppClient examples
-The below is (almost) equivalent to the above REST example (except it returns
-an XML string instead of a JSON string). Note that this is not a PHP
-'Soapclient' class; it's a wrapper around SOAPClient.
 ```php
 use PracticalAfas\Client\SoapAppClient;
+// Below 2 options are required; see the constructor for other options.
 $client = new SoapAppClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
 
+// Equivalent of above Connection::getData() example:
 $result_as_xml_string = $client->callAfas(
   'get',
   'GetDataWithOptions',
@@ -154,50 +209,15 @@ $result_as_xml_string = $client->callAfas(
       <Outputoptions>3</Outputoptions><Outputmode>1</Outputmode><Metadata>0</Metadata></options>',
   ]
 );
+
+// Get a 'subject' (data blob):
 $attachment = $client->callAfas('subject', 'GetAttachment', [ 'subjectID' => 123 ] );
 
-$client->callAfas('update', 'Execute', [ 'connectorType' => 'KnOrganisation', 'dataXml => '<KnOrganisation xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Element><Fields Action="insert"><MatchOga>0</MatchOga><Nm>MyCompany Ltd.</Nm></Fields></Element></KnOrganisation>' ] );
-```
-
-### Connection
-
-The Connection wraps around a Client and abstracts away all argument validation
-/ data processing that is not client specific. It has a.o. its own syntax for
-filters. It has two important methods: sendData() which wraps AFAS' Update
-connector, and getData() which wraps all other connectors. (All other methods
-are getters and setters that you might never need.)
-
-The equivalent to the above example is:
-
-```php
-use PracticalAfas\Connection;
-use PracticalAfas\Client\RestCurlClient;
-$client = new RestCurlClient( [ 'customerId' => 12345, 'appToken' => '64CHARS' ] );
-$connection = new Connection($client);
-
-// A (more common) example for a Get connector with simple filter, returning an
-// array of rows:
-$result_as_array = $connection->getData('MyGetConnectorName',  [ 'SomeCategory' => 'CategName' ] );
-
-// The equivalent of above:
-$result_as_string = $connection->getData(
-  'MyGetConnectorName',
-  [ 'SomeCategory' => 'CategName',
-    [ 'Updated' => '2017-01-01T16:00:00', '#op' => Connection::OP_LARGER_THAN ],
-  ],
-  Connection::GET_FILTER_AND,
-  [ 'take => 1000,
-    'orderbyfieldids' => '-Updated',
-    'options' => ['Outputmode' => Connection::GET_OUTPUTMODE_LITERAL ]
-  ]
+// Equivalent of above Connection::sendData() example:
+$client->callAfas('update', 'Execute', [ 'connectorType' => 'KnOrganisation', 'dataXml' =>
+ '<KnOrganisation xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Element><Fields Action="insert"><MatchOga>0</MatchOga><Nm>MyCompany Ltd.</Nm></Fields></Element></KnOrganisation>' ]
 );
-$attachment = $connection->getData(123, [], Connection::DATA_TYPE_SUBJECT);
-
-$connection->sendData(['name' => 'MyCompany Ltd.'], 'KnOrganisation', 'insert');
 ```
-...so if the 'Outputmode' option is _not_ provided, getData() returns an array
-of data rows instead (i.e. the XML/JSON string gets decoded for you).
-
 
 ## Further reading
 
@@ -206,6 +226,22 @@ of data rows instead (i.e. the XML/JSON string gets decoded for you).
 [Update connectors / UpdateObject classes](README-update.md)
 
 [Hints for developers](README-devs.md)
+
+## Compatibility
+
+The code likely is still compatible with PHP5 (5.4 and up) although v2.4 has
+only been tested on PHP8.
+
+As of v2.4: I am not opposed to adding code that is incompatible with PHP5,
+but at the same time am not planning a rewrite of the existing code.
+
+Client classes for REST and SOAP use PHP's standard Curl + JSON and SOAP +
+SimpleXML extensions; if these do not work for you, PRs with new / modified
+clients are welcome.
+
+Automatic testing is only done for the UpdateConnector classes. (I currently
+don't consider the Client classes in need of tests. Connection could use some
+light tests, but it's not on my to-do list.)
 
 ## Authors
 

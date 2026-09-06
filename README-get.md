@@ -9,11 +9,8 @@ ways to call this are, admittedly, convoluted and somewhat confusing.
 (I personally still prefer doing one call (even with strange arguments) over
 having to set all arguments like filters, ordering, skip, take etc. in separate
 chained calls to execute a single Get call... but if people prefer making
-chained calls: they are welcome to contribute a class which does that, or to
-write their own library that uses PracticalAfas. Tip: you might want to wrap
-the existing Connection class, if you care about the validation of various
-forms of strangeness - or the compatibility between SOAP and REST clients for
-e.g. the 'orderbyfieldids' argument).
+chained calls: [Afas Profit API](https://github.com/MegaChriz/afasprofit)
+is likely a better fit.)
 
 **First and second parameter:** (often) the Get connector name and optional filters.
 
@@ -56,8 +53,8 @@ see the Helper class.)
 
 In the (older) SOAP API for Get connectors, the GetDataWithOptions call has an
 'options' argument with various sub-values which influence the contents of the
-response. These would get passed as `'options' => [ ... ]`  in the
-$extra_arguments parameter to getData(); see the example in [README.md](README.md).
+response. These would get passed as `'options' => [ ... ]`  in the fourth
+parameter to getData(); see the example in [README.md](README.md).
 
 To preserve compatibility, most 'options' are supported regardless whether the
 Connection object wraps around a REST or SOAP client. (The options will not

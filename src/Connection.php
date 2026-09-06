@@ -569,7 +569,7 @@ class Connection
         // other connectors, the output cannot be converted to arrays /
         // 'Outputmode' was never a thing) and for REST clients (because
         // supposedly all output is JSON, therefore can be converted to an
-        // array?
+        // array).
         if ($this->getClientType() === 'SOAP' && $data_type !== self::DATA_TYPE_GET) {
             // We want to return the literal return value from the endpoint.
             $output_format = self::GET_OUTPUTMODE_LITERAL;

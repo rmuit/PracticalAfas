@@ -3,17 +3,17 @@
 
 ## Connection::sendData()
 
-The second argument to sendData() can be a string, which needs to be JSON or
-XML suitable to send into the connector directly. In this case there isn't much
-advantage over calling a REST Client class directly to send data; this is not
-portable from REST to JSON.
+The second argument to sendData() can be a string, which must be JSON or XML
+suitable to send into the connector directly. In this case there isn't much
+advantage over using a REST/SOAP Client class directly to send data; the JSON
+cannot be ported to XML or vice versa.
 
-It is also possible to specify an array (which can have a variation of slightly
-different structures; see examples in the next section for example array data
-which is also accepted as sendData() argument). In this case, the array is
-converted to either XML or JSON, depending on which client you're using with
-the connection. So in theory, these calls should be completely portable between
-SOAP and REST APIs. (In practice, this isn't always the case; see 'bugs' below.)
+The argument can also be an array (which can have a variation of slightly
+different structures; see the next section for example array data which is also
+accepted as sendData() argument). In this case, the array is converted to either
+XML or JSON, depending on which client you're using with the connection. So in
+theory, these calls should be completely portable between SOAP and REST APIs.
+(In practice, this isn't always the case; see 'bugs' below.)
 
 The conversion from the array to JSON/XML is done by sendData() internally
 using UpdateObject classes, so in that case you don't need to use those objects
@@ -78,16 +78,16 @@ print $out;
 ```
 About the above:
 * Calling output() without arguments will return un-formatted JSON.
-* The keys in the input array in this example are aliases for the real AFAS 
+* The keys in the input array in this example are aliases for the real AFAS
   field names; they are defined by the UpdateObject class. The real field names
   can also be used as keys instead.
 * The input which we passed into create() is 'flatter' than the JSON output
   that can be sent into an Update connector, and the output has default values
-  added. However, this output can also serve as input to create() if necessary,
-  after it is json-decoded back into a multidimensional array.
-* We are going to assume that the third argument to create() always needs to be
-  specified, and needs to be either "insert" or "update". (This is not
-  completely true, but it helps preventing strange error messages from AFAS.)
+  added. However, this non-flat output (after json-decoding) can _also_ serve
+  as input to create(), if necessary.
+* We are going to assume that the third argument to create() must always be
+  specified, and must be either "insert" or "update". (This is not completely
+  true, but it helps preventing strange error messages from AFAS.)
 
 ### Validating an object / influencing output
 
@@ -139,8 +139,8 @@ output is not useful in practice. If we only disable the
 ALLOW_DEFAULTS_ON_INSERT flag, output() itself would throw an exception
 mentioning missing required fields. Now that we also disable the
 VALIDATE_REQUIRED flag, this is not done - but AFAS will very likely not accept
-this data for the same reason (though AFAS tends to be unclear in its error
-messages).
+this data for the same reason. (AFAS tends to be unclear in its error messages,
+which is one reason for validating data by the UpdateObject code.)
 
 Validation is mostly done on output. Calls which set data into the object (e.g.
 create(), addElements(), setField()) only do a small subset of validation by
@@ -148,8 +148,8 @@ default; they e.g. check if field values have a correct data type.
 
 Validation of the data in an object _without_ generating output, can be done by
 calling ```$object->getElements(UpdateObject::DEFAULT_CHANGE, UpdateObject::DEFAULT_VALIDATION)```.
-The arguments need to be explicitly specified in this case, because the
-defaults for getElements() are to return the element unchanged/un-validated.
+The arguments must be explicitly specified in this case, because getElements()
+returns the element unchanged/un-validated by default.
 
 Further information on the different types of validation, and how to change
 them on 'input' or 'output' calls, can be found in the source code.
@@ -245,8 +245,8 @@ elements, any non-numeric key will be seen as a field name in a single element.
 
 However, if for some reason it is considered useful to be able to assign
 keys to the elements as they are added... so they can be accessed/manipulated
-using the same keys later... this is possible. In this case, setElement() needs
-to be used instead of addElements(), and only one element can be set at a time.
+using the same keys later... this is possible. In this case, setElement() must
+be used instead of addElements(), and only one element can be set at a time.
 ```php
 $object = UpdateObject::create('FbSales', [], 'insert');
 $object->setElement('order123', $order_data);
@@ -311,13 +311,15 @@ the call is done. In order to propagate changes made by overrideFieldProperty()
 or overridePropertyDefinitions() into an existing object, call
 $object->resetPropertyDefinitions().
 
+If you want to _really_ customize the code (e.g. add custom validation), check
+[Hints for developers](README-devs.md).
 
 ## 'Bugs'
 
-The property definitions in UpdateObjects are permanently incomplete and depend
-on comments and PRs to gradually make them more complete. In feedback/PRs,
-please clarify (as far as needed) that any proposed changes are generally
-applicable to all AFAS installations.
+The property definitions in UpdateObject.php are permanently incomplete and
+depend on comments and PRs to gradually make them more complete. In
+feedback/PRs, please clarify (as far as needed) that any proposed changes
+are generally applicable to all AFAS installations.
 
 The REST API seems to be more lenient in accepting certain data when the SOAP
 API is returning errors for the exact same XML equivalent; mostly "_Object

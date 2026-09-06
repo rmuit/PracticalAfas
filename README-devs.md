@@ -23,7 +23,7 @@ sortable field. Helper::getDataBatch() assists with this.
 The class is suitable for doing more than simply passing an array structure in
 and getting a string out immediately. Code which handles user input can e.g.
 set all fields in an object separately by first calling ```UpdateObject::create(TYPE)```
-and then setting the fields and the (insert/update) action later, using 
+and then setting the fields and the (insert/update) action later, using
 setField() and setAction() calls - perhaps followed by validating the input.
 
 Some hints for people writing code that _uses_ UpdateObjects:
@@ -69,6 +69,6 @@ into '*error' keys or vice versa, depending on their place in the tree of
 methods called during validation.
 
 _In theory_, validation functions cannot assume anything about the field values
-they are validating; not even that have the right type. (A caller could have
-called an 'input' method explicitly with the UpdateObject::VALIDATE_NONE
-argument.)
+they are validating; not even that they are of the correct type. (A caller
+could have called an 'input' method explicitly with the
+`UpdateObject::VALIDATE_NONE` argument.)
