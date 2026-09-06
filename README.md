@@ -1,4 +1,5 @@
 # PracticalAFAS
+[![Basic tests](https://github.com/rmuit/PracticalAfas/actions/workflows/test.yml/badge.svg)](https://github.com/rmuit/PracticalAfas/actions/workflows/test.yml)
 
 A PHP library for communicating with AFAS Profit in a practical way, using
 either SOAP or REST.
