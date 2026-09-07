@@ -551,6 +551,14 @@ class OrgPersonContact extends UpdateObject
                         ],
                     ],
                     'fields' => [
+                        // Postadres is adres
+                        'PadAdr' => [
+                            'alias' => 'postal_address_is_address',
+                            'type' => 'boolean',
+                            // Default of true is set dynamically in
+                            // validateFields(), depending on presence of
+                            // KnAddress objects.
+                        ],
                         'AutoNum' => [
                             'alias' => 'auto_num',
                             'type' => 'boolean',

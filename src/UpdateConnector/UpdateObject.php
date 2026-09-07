@@ -163,6 +163,11 @@ class UpdateObject
         'KnContact' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
         'KnOrganisation' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
         'KnPerson' => '\PracticalAfas\UpdateConnector\OrgPersonContact',
+        'FiInvoice' => '\PracticalAfas\UpdateConnector\FiInvoice',
+        'FiEntries' => '\PracticalAfas\UpdateConnector\FiEntries',
+        'FiEntryPar' => '\PracticalAfas\UpdateConnector\FiEntryPar',
+        'KnSubject' => '\PracticalAfas\UpdateConnector\KnSubject',
+        'KnSubjectLink' => '\PracticalAfas\UpdateConnector\KnSubjectLink',
     ];
 
     /**
@@ -3174,6 +3179,10 @@ class UpdateObject
                         // administration?
                         'ColA' => [
                             'alias' => 'coll_account',
+                        ],
+                        // TypeRekening
+                        'VaTp' => [
+                            'alias' => 'type_verkooprelatie',
                         ],
                         // [ comment 2014: ]
                         // ?? Doesn't seem to be required, but we're still
